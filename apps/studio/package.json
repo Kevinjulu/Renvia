@@ -1,0 +1,42 @@
+{
+  "name": "@renvia/studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@clerk/react": "^6.14.8",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@renvia/types": "workspace:*",
+    "konva": "^9.3.16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10",
+    "react-router-dom": "^7.1.1",
+    "use-image": "^1.1.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@clerk/testing": "^2.2.31",
+    "@neondatabase/serverless": "^0.10.4",
+    "@playwright/test": "^1.62.1",
+    "@renvia/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^16.4.7",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

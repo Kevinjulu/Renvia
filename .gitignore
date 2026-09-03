@@ -1,0 +1,32 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+.dev.vars
+.vercel/
+
+# build outputs
+.next/
+out/
+dist/
+.turbo/
+.wrangler/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# drizzle
+packages/db/migrations/meta/
+
+# playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

@@ -1,0 +1,46 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@clerk/shared': true
+  esbuild: true
+  protobufjs: true
+  sharp: true
+  workerd: true
+
+minimumReleaseAgeExclude:
+  - '@aws-sdk/client-s3@3.1126.0'
+
+# Studio (React 18) and marketing (React 19) intentionally pin different
+# @types/react majors. Packages below don't declare @types/react themselves,
+# so without an explicit peer edge pnpm falls back to an ancestor lookup that
+# can resolve the wrong major (see README notes on this scaffold's assumptions).
+# Adding it as a peer here makes pnpm resolve it per-consumer, same as `react` itself.
+packageExtensions:
+  "@clerk/react":
+    peerDependencies:
+      "@types/react": "*"
+      "@types/react-dom": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
+      "@types/react-dom":
+        optional: true
+  react-konva:
+    peerDependencies:
+      "@types/react": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
+  react-router-dom:
+    peerDependencies:
+      "@types/react": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
+  react-router:
+    peerDependencies:
+      "@types/react": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
