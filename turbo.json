@@ -8,7 +8,21 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "out/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "out/**", "!.next/cache/**"],
+      "env": [
+        "DATABASE_URL",
+        "CLERK_PUBLISHABLE_KEY",
+        "CLERK_SECRET_KEY",
+        "FAL_KEY",
+        "REPLICATE_API_TOKEN",
+        "NEON_STORAGE_ACCESS_KEY_ID",
+        "NEON_STORAGE_SECRET_ACCESS_KEY",
+        "NEON_STORAGE_ENDPOINT",
+        "NEON_STORAGE_BUCKET",
+        "NEON_STORAGE_REGION",
+        "INNGEST_EVENT_KEY",
+        "INNGEST_SIGNING_KEY"
+      ]
     },
     "lint": {
       "dependsOn": ["^build"]
