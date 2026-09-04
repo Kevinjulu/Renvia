@@ -34,29 +34,34 @@ function RenderedImage() {
 
 export function Hero() {
   return (
-    <section className="px-6 pb-16 pt-20 sm:pt-24">
-      <div className="mx-auto grid max-w-content gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-14">
+    <section className="px-6 pb-20 pt-32 sm:pb-28 sm:pt-40 lg:pb-32 lg:pt-44">
+      <div className="mx-auto grid max-w-content gap-12 lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-16">
         <div
           className="animate-rise-in text-left"
           style={{ animationDelay: "0ms", animationDuration: "220ms" }}
         >
-          <h1 className="font-display text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
+          <div className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-secondary">
+            <span className="h-1.5 w-1.5 rounded-full bg-blueprint" />
+            AI-powered architectural visualization
+          </div>
+
+          <h1 className="mt-6 font-display text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
             <span className="text-primary">Change the finish,</span>
             <br />
             <span className="text-primary/35">not the floor plan.</span>
           </h1>
 
-          <p className="mt-5 max-w-md text-base leading-relaxed text-muted sm:text-lg">
+          <p className="mt-6 max-w-lg text-base leading-relaxed text-muted sm:text-lg">
             Renvia isn&apos;t an AI image generator. Upload your model or
             sketch and Renvia renders photoreal materials, lighting, and
             context on your exact geometry — the walls, windows, and
             proportions stay exactly as you drew them.
           </p>
 
-          <div className="mt-7 flex flex-wrap items-center gap-4">
+          <div className="mt-8 flex flex-wrap items-center gap-4">
             <a
               href={SIGNUP_URL}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-base font-medium text-white transition-opacity hover:opacity-90"
             >
               Start rendering
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -65,7 +70,7 @@ export function Hero() {
             </a>
             <a
               href="#how-it-works"
-              className="inline-flex items-center gap-2 rounded-lg border border-hairline px-6 py-3 text-sm font-medium text-primary transition-colors hover:border-primary/30"
+              className="inline-flex items-center gap-2 rounded-lg border border-hairline px-7 py-3.5 text-base font-medium text-primary transition-colors hover:border-primary/30"
             >
               See how it works
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -74,7 +79,7 @@ export function Hero() {
             </a>
           </div>
 
-          <div className="mt-6 flex items-center gap-2 text-xs text-faint">
+          <div className="mt-8 flex items-center gap-2 text-xs text-faint">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" className="shrink-0">
               <rect x="3" y="6.5" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.1" />
               <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.1" />
