@@ -9,7 +9,7 @@ function OriginalGeometryImage() {
         src="/hero/lakeside-house-sketch.png"
         alt="Original CAD geometry, uploaded model"
         fill
-        sizes="(min-width: 1024px) 55vw, 100vw"
+        sizes="100vw"
         className="object-cover"
         priority
       />
@@ -24,7 +24,7 @@ function RenderedImage() {
         src="/hero/lakeside-house.jpg"
         alt="Photoreal visualization of the same house, unchanged geometry"
         fill
-        sizes="(min-width: 1024px) 55vw, 100vw"
+        sizes="100vw"
         className="object-cover"
         priority
       />
@@ -35,23 +35,18 @@ function RenderedImage() {
 export function Hero() {
   return (
     <section className="px-6 pb-20 pt-32 sm:pb-28 sm:pt-40 lg:pb-32 lg:pt-44">
-      <div className="mx-auto grid max-w-content gap-12 lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-16">
+      <div className="mx-auto max-w-content">
         <div
-          className="animate-rise-in text-left"
+          className="animate-rise-in max-w-3xl text-left"
           style={{ animationDelay: "0ms", animationDuration: "220ms" }}
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-secondary">
-            <span className="h-1.5 w-1.5 rounded-full bg-blueprint" />
-            AI-powered architectural visualization
-          </div>
-
-          <h1 className="mt-6 font-display text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
+          <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
             <span className="text-primary">Change the finish,</span>
             <br />
             <span className="text-primary/35">not the floor plan.</span>
           </h1>
 
-          <p className="mt-6 max-w-lg text-base leading-relaxed text-muted sm:text-lg">
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-muted sm:text-lg lg:text-xl">
             Renvia isn&apos;t an AI image generator. Upload your model or
             sketch and Renvia renders photoreal materials, lighting, and
             context on your exact geometry — the walls, windows, and
@@ -95,7 +90,7 @@ export function Hero() {
           afterLabel="Renvia Rendered"
           cornerLabel="Drag to compare"
           initialPosition={45}
-          className="animate-rise-in aspect-[4/3] shadow-[0_20px_60px_-30px_rgba(20,20,20,0.25)]"
+          className="animate-rise-in mt-14 w-full shadow-[0_20px_60px_-30px_rgba(20,20,20,0.25)] sm:mt-16 lg:mt-20"
         />
       </div>
     </section>
