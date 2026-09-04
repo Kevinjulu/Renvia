@@ -104,3 +104,26 @@ export interface DeleteProjectResponse {
 export interface ListProjectsResponse {
   projects: Project[];
 }
+
+export type ReferenceImageSource = "upload" | "unsplash" | "url";
+
+export interface ReferenceImage {
+  id: string;
+  ownerId: string;
+  url: string;
+  source: ReferenceImageSource;
+  createdAt: string;
+}
+
+export interface CreateReferenceImageRequest {
+  url: string;
+  source: ReferenceImageSource;
+}
+
+export interface ListReferenceImagesResponse {
+  references: ReferenceImage[];
+}
+
+export interface DeleteReferenceImageResponse {
+  id: string;
+}

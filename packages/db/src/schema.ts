@@ -48,6 +48,18 @@ export const renders = pgTable("renders", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const referenceImages = pgTable("reference_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id),
+  url: text("url").notNull(),
+  source: text("source", { enum: ["upload", "unsplash", "url"] })
+    .notNull()
+    .default("upload"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const creditLedger = pgTable("credit_ledger", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

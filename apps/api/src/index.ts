@@ -7,6 +7,7 @@ import { falWebhook } from "./routes/webhooks/fal.js";
 import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
+import { references } from "./routes/references.js";
 import { createInngestHandler } from "./jobs/generateRender.js";
 
 export interface Env {
@@ -67,6 +68,7 @@ app.route("/webhooks/fal", falWebhook);
 app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);
+app.route("/references", references);
 app.on(["GET", "POST", "PUT"], "/inngest", (c) => createInngestHandler(c.env)(c));
 
 // Mounted under /api so Vercel's api/ directory convention can serve this

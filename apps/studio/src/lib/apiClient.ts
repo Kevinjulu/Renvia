@@ -3,15 +3,19 @@ import type {
   CreateCanvasNodeRequest,
   CreateCanvasNodeResponse,
   CreateProjectRequest,
+  CreateReferenceImageRequest,
   CreateRenderRequest,
   CreateRenderResponse,
   DeleteProjectResponse,
+  DeleteReferenceImageResponse,
   GetRenderResponse,
   ListCanvasNodesResponse,
   ListProjectsResponse,
+  ListReferenceImagesResponse,
   ListRendersResponse,
   MeResponse,
   Project,
+  ReferenceImage,
   UpdateCanvasNodeRequest,
   UpdateCanvasNodeResponse,
   UpdateProjectRequest,
@@ -85,5 +89,14 @@ export function useApiClient() {
         body: JSON.stringify(body),
       }),
     deleteProject: (id: string) => request<DeleteProjectResponse>(getToken, `/projects/${id}`, { method: "DELETE" }),
+    listReferences: () => request<ListReferenceImagesResponse>(getToken, "/references"),
+    createReference: (body: CreateReferenceImageRequest) =>
+      request<ReferenceImage>(getToken, "/references", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    deleteReference: (id: string) =>
+      request<DeleteReferenceImageResponse>(getToken, `/references/${id}`, { method: "DELETE" }),
   };
 }
