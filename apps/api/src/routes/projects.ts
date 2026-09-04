@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
-import type { AppContext } from "../index";
-import { requireAuth } from "../middleware/auth";
-import { getOrCreateUserId } from "../lib/users";
-import { findOwnedProject } from "../lib/projects";
+import type { AppContext } from "../index.js";
+import { requireAuth } from "../middleware/auth.js";
+import { getOrCreateUserId } from "../lib/users.js";
+import { findOwnedProject } from "../lib/projects.js";
 
 export const projects = new Hono<AppContext>();
 

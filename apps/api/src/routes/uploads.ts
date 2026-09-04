@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
-import type { AppContext } from "../index";
-import { requireAuth } from "../middleware/auth";
-import { getObject, objectKeyFor, putObject } from "../lib/storage";
+import type { AppContext } from "../index.js";
+import { requireAuth } from "../middleware/auth.js";
+import { getObject, objectKeyFor, putObject } from "../lib/storage.js";
 
 export const uploads = new Hono<AppContext>();
 

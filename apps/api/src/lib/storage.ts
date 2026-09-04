@@ -1,5 +1,5 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { Env } from "../index";
+import type { Env } from "../index.js";
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   "image/png": "png",

@@ -1,6 +1,6 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
 import { createMiddleware } from "hono/factory";
-import type { AppContext } from "../index";
+import type { AppContext } from "../index.js";
 
 export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
   const authHeader = c.req.header("Authorization");

@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ZodError } from "zod";
-import { renders } from "./routes/renders";
-import { uploads } from "./routes/uploads";
-import { falWebhook } from "./routes/webhooks/fal";
-import { me } from "./routes/me";
-import { projects } from "./routes/projects";
-import { canvasNodes } from "./routes/canvasNodes";
-import { createInngestHandler } from "./jobs/generateRender";
+import { renders } from "./routes/renders.js";
+import { uploads } from "./routes/uploads.js";
+import { falWebhook } from "./routes/webhooks/fal.js";
+import { me } from "./routes/me.js";
+import { projects } from "./routes/projects.js";
+import { canvasNodes } from "./routes/canvasNodes.js";
+import { createInngestHandler } from "./jobs/generateRender.js";
 
 export interface Env {
   DATABASE_URL: string;

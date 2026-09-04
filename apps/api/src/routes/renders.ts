@@ -2,12 +2,12 @@ import { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
-import type { AppContext } from "../index";
-import { requireAuth } from "../middleware/auth";
-import { getOrCreateUserId } from "../lib/users";
-import { findOwnedProject } from "../lib/projects";
-import { buildRenderPrompt } from "../lib/prompts";
-import { inngest } from "../lib/inngest";
+import type { AppContext } from "../index.js";
+import { requireAuth } from "../middleware/auth.js";
+import { getOrCreateUserId } from "../lib/users.js";
+import { findOwnedProject } from "../lib/projects.js";
+import { buildRenderPrompt } from "../lib/prompts.js";
+import { inngest } from "../lib/inngest.js";
 
 export const renders = new Hono<AppContext>();
 

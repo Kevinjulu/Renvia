@@ -1,6 +1,6 @@
 import { serve } from "inngest/hono";
-import type { Env } from "../index";
-import { inngest } from "../lib/inngest";
+import type { Env } from "../index.js";
+import { inngest } from "../lib/inngest.js";
 
 export const generateRenderJob = inngest.createFunction(
   { id: "generate-render" },
