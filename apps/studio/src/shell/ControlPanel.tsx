@@ -5,6 +5,7 @@ import { ResolutionPicker } from "./panel/ResolutionPicker";
 import { RenderEditTabs } from "./panel/RenderEditTabs";
 import { RenderTabBody } from "./panel/RenderTabBody";
 import { EditTabBody } from "./panel/EditTabBody";
+import { EditModeHeader } from "./panel/EditModeHeader";
 import { GenerateBar } from "./panel/GenerateBar";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
@@ -27,11 +28,16 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
 
   return (
     <div className="flex h-full w-[340px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-hairline bg-white p-4">
-      <ProjectDropdown projectName={projectName} />
-
-      <RenderFromUploadZone currentImageUrl={currentImageUrl} />
-      <StylePicker value={style} onChange={setStyle} />
-      <ResolutionPicker value={resolution} onChange={setResolution} />
+      {activeTab === "render" ? (
+        <>
+          <ProjectDropdown projectName={projectName} />
+          <RenderFromUploadZone currentImageUrl={currentImageUrl} />
+          <StylePicker value={style} onChange={setStyle} />
+          <ResolutionPicker value={resolution} onChange={setResolution} />
+        </>
+      ) : (
+        <EditModeHeader />
+      )}
 
       <div className="flex flex-1 flex-col">
         <RenderEditTabs active={activeTab} onChange={setActiveTab} />
@@ -39,7 +45,7 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
           {activeTab === "render" ? (
             <RenderTabBody prompt={prompt} onPromptChange={setPrompt} />
           ) : (
-            <EditTabBody />
+            <EditTabBody currentImageUrl={currentImageUrl} />
           )}
         </div>
       </div>
