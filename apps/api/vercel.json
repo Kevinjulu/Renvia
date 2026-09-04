@@ -1,4 +1,4 @@
 {
   "framework": null,
-  "buildCommand": ""
+  "buildCommand": "pnpm exec tsc --noEmit"
 }
