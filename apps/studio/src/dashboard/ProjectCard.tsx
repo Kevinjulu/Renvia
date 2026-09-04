@@ -69,9 +69,13 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
         disabled={renaming}
         className="relative flex flex-1 items-center justify-center overflow-hidden bg-surface-2 disabled:cursor-default"
       >
-        <span className="font-display text-4xl font-semibold text-hairline-strong">
-          {project.name.trim().charAt(0).toUpperCase() || "P"}
-        </span>
+        {project.thumbnailUrl ? (
+          <img src={project.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="font-display text-4xl font-semibold text-hairline-strong">
+            {project.name.trim().charAt(0).toUpperCase() || "P"}
+          </span>
+        )}
       </button>
 
       <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5">

@@ -85,6 +85,7 @@ export interface Project {
   id: string;
   ownerId: string;
   name: string;
+  thumbnailUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,7 +95,8 @@ export interface CreateProjectRequest {
 }
 
 export interface UpdateProjectRequest {
-  name: string;
+  name?: string;
+  thumbnailUrl?: string;
 }
 
 export interface DeleteProjectResponse {

@@ -16,7 +16,8 @@ const createProjectSchema = z.object({
 });
 
 const updateProjectSchema = z.object({
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().min(1).max(200).optional(),
+  thumbnailUrl: z.string().url().optional(),
 });
 
 projects.post("/", async (c) => {
@@ -76,7 +77,11 @@ projects.patch("/:id", async (c) => {
 
   const [updated] = await db
     .update(schema.projects)
-    .set({ name: body.name, updatedAt: new Date() })
+    .set({
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.thumbnailUrl !== undefined ? { thumbnailUrl: body.thumbnailUrl } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(schema.projects.id, id))
     .returning();
 

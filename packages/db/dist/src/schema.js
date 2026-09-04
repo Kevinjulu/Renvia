@@ -12,6 +12,7 @@ export const projects = pgTable("projects", {
         .notNull()
         .references(() => users.id),
     name: text("name").notNull(),
+    thumbnailUrl: text("thumbnail_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
