@@ -37,7 +37,9 @@ export function ReferenceBar() {
   const [pasteUrl, setPasteUrl] = useState("");
 
   useEffect(() => {
-    if (!openPanel) return;
+    // The library is a full modal with its own backdrop/close button, so it
+    // manages its own dismissal instead of the outside-click check below.
+    if (!openPanel || openPanel === "library") return;
     const handlePointerDown = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpenPanel(null);
@@ -136,6 +138,7 @@ export function ReferenceBar() {
   };
 
   return (
+    <>
     <div ref={containerRef} className="relative">
       {attached.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
@@ -232,32 +235,6 @@ export function ReferenceBar() {
           </svg>
         </button>
       </div>
-
-      {openPanel === "library" && (
-        <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-lg border border-hairline bg-white p-3 shadow-lg">
-          <p className="text-xs font-medium text-secondary">Your reference library</p>
-          {libraryLoading ? (
-            <p className="mt-3 text-xs text-muted">Loading…</p>
-          ) : library.length === 0 ? (
-            <p className="mt-3 text-xs text-muted">
-              Nothing saved yet — uploads and images you pick from Unsplash or elsewhere will show up here.
-            </p>
-          ) : (
-            <div className="mt-2 grid max-h-56 grid-cols-4 gap-1.5 overflow-y-auto">
-              {library.map((reference) => (
-                <button
-                  key={reference.id}
-                  type="button"
-                  onClick={() => attach(reference)}
-                  className="aspect-square overflow-hidden rounded-md border border-transparent hover:border-blueprint"
-                >
-                  <img src={reference.url} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {openPanel === "unsplash" && (
         <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-lg border border-hairline bg-white p-3 shadow-lg">
@@ -362,5 +339,73 @@ export function ReferenceBar() {
         </div>
       )}
     </div>
+
+    {openPanel === "library" && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4"
+        onClick={() => setOpenPanel(null)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reference-library-title"
+          className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
+            <h2 id="reference-library-title" className="font-display text-base font-semibold text-primary">
+              Reference library
+            </h2>
+            <button
+              type="button"
+              onClick={() => setOpenPanel(null)}
+              aria-label="Close"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-secondary hover:bg-surface-muted hover:text-primary"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="m2 2 8 8M10 2 2 10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5">
+            {libraryLoading ? (
+              <p className="py-12 text-center text-sm text-muted">Loading your references…</p>
+            ) : library.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-14 text-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-muted text-faint">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M4 2.5h6l2 2v9H4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                    <path d="M6.5 6h3M6.5 8.5h3M6.5 11h2" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-primary">Your library is empty</p>
+                <p className="max-w-xs text-sm text-muted">
+                  Upload an image or pick one from Unsplash — everything you save shows up here so you don't have to
+                  upload it again.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+                {library.map((reference) => (
+                  <button
+                    key={reference.id}
+                    type="button"
+                    onClick={() => {
+                      attach(reference);
+                      setOpenPanel(null);
+                    }}
+                    className="aspect-square overflow-hidden rounded-lg border border-transparent transition-colors hover:border-blueprint"
+                  >
+                    <img src={reference.url} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
