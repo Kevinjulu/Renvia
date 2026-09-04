@@ -1,5 +1,5 @@
 import app from "../src/index.js";
 
-export default function handler(request: Request) {
+export function fetch(request: Request): Response | Promise<Response> {
   return app.fetch(request, process.env);
 }
