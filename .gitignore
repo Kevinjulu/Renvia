@@ -9,6 +9,8 @@ node_modules/
 .next/
 out/
 dist/
+!packages/db/dist/
+!packages/types/dist/
 .turbo/
 .wrangler/
 
