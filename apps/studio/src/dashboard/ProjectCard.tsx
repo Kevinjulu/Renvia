@@ -9,12 +9,19 @@ export function NewProjectTile({ onClick, disabled }: { onClick: () => void; dis
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-hairline-strong bg-white text-faint transition-colors hover:border-blueprint hover:text-blueprint disabled:opacity-50"
+      className="group flex flex-col rounded-xl border border-dashed border-hairline-strong bg-white transition-colors hover:border-blueprint disabled:opacity-50"
     >
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <path d="M10 3.5v13M3.5 10h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      </svg>
-      <span className="text-sm font-medium">{disabled ? "Creating…" : "New project"}</span>
+      <span className="flex aspect-[4/3] items-center justify-center">
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-muted text-muted transition-colors group-hover:bg-blueprint-soft group-hover:text-blueprint">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 3.5v13M3.5 10h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </span>
+      </span>
+      <span className="flex flex-col items-start gap-0.5 px-3.5 py-3 text-left">
+        <span className="text-sm font-medium text-primary">{disabled ? "Creating…" : "New project"}</span>
+        <span className="text-xs text-faint">Start with a sketch, model or photo</span>
+      </span>
     </button>
   );
 }
@@ -62,12 +69,12 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
   };
 
   return (
-    <div className="group relative flex aspect-[4/3] flex-col overflow-hidden rounded-xl border border-hairline bg-white transition-colors hover:border-hairline-strong">
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-hairline bg-white transition-all hover:border-hairline-strong hover:shadow-[0_2px_10px_rgba(20,20,20,0.06)]">
       <button
         type="button"
         onClick={onOpen}
         disabled={renaming}
-        className="relative flex flex-1 items-center justify-center overflow-hidden bg-surface-2 disabled:cursor-default"
+        className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-surface-2 disabled:cursor-default"
       >
         {project.thumbnailUrl ? (
           <img src={project.thumbnailUrl} alt="" className="h-full w-full object-cover" />

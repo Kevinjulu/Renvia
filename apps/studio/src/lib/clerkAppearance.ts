@@ -44,10 +44,10 @@ export const clerkAppearance = {
     footerPages: "hidden",
 
     // Avatar trigger button
-    userButtonBox: "flex-row-reverse gap-2",
-    userButtonOuterIdentifier: "text-sm font-medium text-primary",
+    userButtonBox: "min-w-0 flex-row-reverse gap-2",
+    userButtonOuterIdentifier: "min-w-0 truncate text-sm font-medium text-primary",
     userButtonTrigger:
-      "rounded-full outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-blueprint focus-visible:ring-offset-2",
+      "max-w-full rounded-full outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-blueprint focus-visible:ring-offset-2",
     userButtonAvatarBox: "h-8 w-8 rounded-full ring-1 ring-hairline transition-shadow hover:ring-hairline-strong",
 
     // The small popover that opens on click
