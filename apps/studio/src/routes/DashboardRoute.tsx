@@ -14,6 +14,8 @@ import { DashboardSidebar, type DashboardView } from "../dashboard/DashboardSide
 import { DashboardTopBar } from "../dashboard/DashboardTopBar";
 import { NewProjectTile, ProjectCard } from "../dashboard/ProjectCard";
 import { HelpArticles } from "../dashboard/HelpArticles";
+import { DashboardHero } from "../dashboard/DashboardHero";
+import { DashboardPanels } from "../dashboard/DashboardPanels";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
 const VIEW_TITLE: Record<DashboardView, string> = {
@@ -32,7 +34,7 @@ export function DashboardRoute() {
   const [isCreating, setIsCreating] = useState(false);
   const [view, setView] = useState<DashboardView>("home");
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
-  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
+  const [, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -101,20 +103,20 @@ export function DashboardRoute() {
   const showNewTile = view !== "favorites";
 
   return (
-    <div className="flex h-screen bg-surface">
-      <DashboardSidebar view={view} onChangeView={setView} recentlyViewed={recentlyViewed} />
-
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <DashboardTopBar title={VIEW_TITLE[view]} />
-
-        <main className="mx-auto w-full max-w-6xl px-8 py-8">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-base font-semibold text-primary">{heading}</h2>
+    <div className="dashboard-shell">
+      <DashboardSidebar view={view} onChangeView={setView} onCreate={() => void handleCreate()} />
+      <div className="dashboard-workspace">
+        <DashboardTopBar />
+        <div className="dashboard-layout">
+          <main className="dashboard-main">
+            {view === "home" && <><div className="dashboard-greeting"><p>Dashboard</p><h1>Good afternoon, Kevin <span>👋🏻</span></h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
+          <div className="dashboard-section-heading">
+            <h2>{heading}</h2>
             {view === "home" && sortedProjects.length > RECENT_LIMIT && (
               <button
                 type="button"
                 onClick={() => setView("all")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-surface-muted px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-surface-2"
+                className="dashboard-view-all"
               >
                 View all
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -125,11 +127,11 @@ export function DashboardRoute() {
           </div>
 
           {isLoading ? (
-            <p className="mt-8 text-sm text-muted">Loading…</p>
+            <p className="dashboard-empty">Loading…</p>
           ) : view === "favorites" && visibleProjects.length === 0 ? (
-            <p className="mt-8 text-sm text-muted">No favorites yet — star a project to pin it here.</p>
+            <p className="dashboard-empty">No favorites yet — star a project to pin it here.</p>
           ) : (
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="dashboard-project-grid">
               {showNewTile && <NewProjectTile onClick={() => void handleCreate()} disabled={isCreating} />}
               {visibleProjects.map((project) => (
                 <ProjectCard
@@ -145,8 +147,10 @@ export function DashboardRoute() {
             </div>
           )}
 
-          {view === "home" && <HelpArticles />}
-        </main>
+            {view === "home" && <HelpArticles />}
+          </main>
+          {view === "home" && <DashboardPanels onCreate={() => void handleCreate()} />}
+        </div>
       </div>
 
       {deletingProject && (

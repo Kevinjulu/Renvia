@@ -9,12 +9,13 @@ export function NewProjectTile({ onClick, disabled }: { onClick: () => void; dis
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-hairline-strong bg-white text-faint transition-colors hover:border-blueprint hover:text-blueprint disabled:opacity-50"
+      className="dashboard-new-project"
     >
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <span className="dashboard-new-plus"><svg width="22" height="22" viewBox="0 0 20 20" fill="none" aria-hidden="true">
         <path d="M10 3.5v13M3.5 10h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      </svg>
-      <span className="text-sm font-medium">{disabled ? "Creating…" : "New project"}</span>
+      </svg></span>
+      <strong>{disabled ? "Creating…" : "New project"}</strong>
+      <small>Start with a sketch, model or<br/>photo</small>
     </button>
   );
 }
@@ -33,6 +34,8 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
   const [value, setValue] = useState(project.name);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fallbackImages = ["/dashboard/house-exterior.jpg", "/dashboard/house-interior.png", "/dashboard/house-dark.jpg"];
+  const fallbackIndex = [...project.id].reduce((total, character) => total + character.charCodeAt(0), 0) % fallbackImages.length;
 
   useEffect(() => {
     if (!renaming) setValue(project.name);
@@ -62,23 +65,17 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
   };
 
   return (
-    <div className="group relative flex aspect-[4/3] flex-col overflow-hidden rounded-xl border border-hairline bg-white transition-colors hover:border-hairline-strong">
+    <div className="dashboard-project-card group">
       <button
         type="button"
         onClick={onOpen}
         disabled={renaming}
-        className="relative flex flex-1 items-center justify-center overflow-hidden bg-surface-2 disabled:cursor-default"
+        className="dashboard-project-image"
       >
-        {project.thumbnailUrl ? (
-          <img src={project.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <span className="font-display text-4xl font-semibold text-hairline-strong">
-            {project.name.trim().charAt(0).toUpperCase() || "P"}
-          </span>
-        )}
+        <img src={project.thumbnailUrl || fallbackImages[fallbackIndex]} alt="" />
       </button>
 
-      <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5">
+      <div className="dashboard-project-actions">
         <button
           type="button"
           onClick={(event) => {
@@ -104,7 +101,7 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
         <ProjectCardMenu onRename={() => setRenaming(true)} onDelete={onRequestDelete} />
       </div>
 
-      <div className="flex flex-col items-start gap-0.5 px-3.5 py-3 text-left">
+      <div className="dashboard-project-meta">
         {renaming ? (
           <input
             ref={inputRef}
@@ -123,14 +120,15 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
                 setRenaming(false);
               }
             }}
-            className="w-full rounded border border-blueprint bg-white px-1.5 py-0.5 text-sm font-medium text-primary outline-none"
+            className="dashboard-rename-input"
           />
         ) : (
-          <button type="button" onClick={onOpen} className="max-w-full truncate text-sm font-medium text-primary hover:underline">
+          <button type="button" onClick={onOpen}>
             {project.name}
           </button>
         )}
-        <span className="text-xs text-muted">Edited {formatRelativeTime(project.updatedAt)}</span>
+        <span>Edited {formatRelativeTime(project.updatedAt)}</span>
+        <div className="dashboard-project-tags"><i>Render</i><i>Exterior</i></div>
       </div>
     </div>
   );
