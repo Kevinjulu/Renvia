@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/react";
 import type { Project } from "@renvia/types";
 import { useApiClient } from "../lib/apiClient";
 import {
@@ -26,13 +27,22 @@ const VIEW_TITLE: Record<DashboardView, string> = {
 
 const RECENT_LIMIT = 7;
 
+function greetingFor(date: Date): string {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export function DashboardRoute() {
   const apiClient = useApiClient();
   const navigate = useNavigate();
+  const { user } = useUser();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [view, setView] = useState<DashboardView>("home");
+  const [search, setSearch] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -53,11 +63,15 @@ export function DashboardRoute() {
     [projects],
   );
 
+  const query = search.trim().toLowerCase();
+  const isSearching = query.length > 0;
+
   const visibleProjects = useMemo(() => {
+    if (isSearching) return sortedProjects.filter((project) => project.name.toLowerCase().includes(query));
     if (view === "favorites") return sortedProjects.filter((project) => favoriteIds.includes(project.id));
     if (view === "home") return sortedProjects.slice(0, RECENT_LIMIT);
     return sortedProjects;
-  }, [view, sortedProjects, favoriteIds]);
+  }, [isSearching, query, view, sortedProjects, favoriteIds]);
 
   const handleOpen = (project: Project) => {
     navigate(`/project/${project.id}`);
@@ -99,8 +113,13 @@ export function DashboardRoute() {
     }
   };
 
-  const heading = view === "home" ? "Recent projects" : VIEW_TITLE[view];
-  const showNewTile = view !== "favorites";
+  const isHome = view === "home" && !isSearching;
+  const heading = isSearching
+    ? `${visibleProjects.length} ${visibleProjects.length === 1 ? "result" : "results"} for “${search.trim()}”`
+    : view === "home"
+      ? "Recent projects"
+      : VIEW_TITLE[view];
+  const showNewTile = !isSearching && view !== "favorites";
 
   return (
     <div className="dashboard-shell">
