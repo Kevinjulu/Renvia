@@ -1,6 +1,8 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 const nav = [["Home", "/dashboard", "home"], ["Projects", "/dashboard", "folder"], ["Studio", "", "spark"], ["Templates", "/templates", "grid"], ["Assets", "/assets", "image"], ["AI Tools", "/ai-tools", "wand"]] as const;
+const COLLAPSE_AFTER_MS = 3 * 60 * 1000;
 
 function Icon({ name }: { name: string }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true } as const;
@@ -13,13 +15,34 @@ function Icon({ name }: { name: string }) {
 
 export function IconRail() {
   const location = useLocation();
-  return <aside className="studio-sidebar">
-    <div className="studio-brand"><span>R E N V I A</span><b>Studio</b></div>
+  const [isExpanded, setIsExpanded] = useState(false);
+  const collapseTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const scheduleCollapse = useCallback(() => {
+    clearTimeout(collapseTimer.current);
+    collapseTimer.current = setTimeout(() => setIsExpanded(false), COLLAPSE_AFTER_MS);
+  }, []);
+
+  const expand = useCallback(() => {
+    setIsExpanded(true);
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  useEffect(() => () => clearTimeout(collapseTimer.current), []);
+
+  return <aside
+    className={`studio-sidebar ${isExpanded ? "is-expanded" : "is-collapsed"}`}
+    aria-label="Studio navigation"
+    onClick={() => { if (!isExpanded) expand(); }}
+    onMouseMove={() => { if (isExpanded) scheduleCollapse(); }}
+    onKeyDown={() => { if (isExpanded) scheduleCollapse(); }}
+  >
+    <div className="studio-brand"><span>R E N V I A</span><b>Studio</b><button type="button" className="studio-sidebar-toggle" aria-label={isExpanded ? "Collapse navigation" : "Expand navigation"} aria-expanded={isExpanded} onClick={(event) => { event.stopPropagation(); isExpanded ? setIsExpanded(false) : expand(); }}>‹</button></div>
     <nav>{nav.map(([label, href, icon]) => {
       const active = label === "Studio" || Boolean(href && location.pathname === href);
       const content = <><Icon name={icon} /><span>{label}</span></>;
-      return href ? <Link key={label} className={active ? "active" : ""} to={href}>{content}</Link> : <button key={label} className="active" type="button">{content}</button>;
-    })}<i /><Link to="/team"><Icon name="folder" /><span>Team</span></Link><Link to="/settings"><Icon name="grid" /><span>Settings</span></Link></nav>
+      return href ? <Link key={label} className={active ? "active" : ""} to={href} data-label={label} aria-label={label}>{content}</Link> : <button key={label} className="active" type="button" data-label={label} aria-label={label}>{content}</button>;
+    })}<i /><Link to="/team" data-label="Team" aria-label="Team"><Icon name="folder" /><span>Team</span></Link><Link to="/settings" data-label="Settings" aria-label="Settings"><Icon name="grid" /><span>Settings</span></Link></nav>
     <div className="studio-upgrade"><strong><span>◆</span> Upgrade to Pro</strong><p>Faster renders, higher resolution and more team features.</p><button type="button">Upgrade <span>→</span></button></div>
     <div className="studio-profile"><span>KJ</span><p><strong>Kevin Julu</strong><small>Free plan</small></p><button type="button">⌄</button></div>
   </aside>;
