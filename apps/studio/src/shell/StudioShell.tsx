@@ -45,21 +45,33 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
   const currentNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null;
 
+  const projectName = project ? project.name : "Loading…";
+  const elevationNames = ["Front View", "Right View", "Back View", "Left View"];
+
   return (
-    <div className="flex h-screen w-full">
+    <div className="studio-shell-v2">
       <IconRail />
-      <ControlPanel
-        projectId={projectId}
-        projectName={project ? project.name : "Loading…"}
-        currentImageUrl={currentNode?.imageUrl ?? null}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <CanvasTopBar />
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <CanvasStage />
+      <main className="studio-main">
+        <CanvasTopBar projectName={projectName} />
+        <div className="studio-workbench">
+          <ControlPanel projectId={projectId} projectName={projectName} currentImageUrl={currentNode?.imageUrl ?? null} />
+          <section className="studio-canvas-column">
+            <div className="elevation-tabs">
+              {elevationNames.map((name, index) => <button key={name} type="button" className={index === 0 ? "active" : ""}>{name}</button>)}
+              <button type="button">＋ Add view</button>
+            </div>
+            <div className="studio-stage-wrap"><CanvasStage /></div>
+            <div className="elevation-filmstrip">
+              {elevationNames.map((name, index) => {
+                const node = nodes[index] ?? nodes[0];
+                return <button key={name} type="button" className={index === 0 ? "active" : ""} onClick={() => node && useCanvasStore.getState().selectNode(node.id)}><span>{node ? <img src={node.imageUrl} alt="" /> : <b>＋</b>}</span><small><i>{index + 1}</i>{name}</small></button>;
+              })}
+              <button type="button" className="add-view"><span>＋</span><small>Add view</small></button>
+            </div>
+          </section>
+          <RenderResultsPanel />
         </div>
-      </div>
-      <RenderResultsPanel />
+      </main>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
   const setStyle = useGenerationSettingsStore((state) => state.setStyle);
 
   return (
-    <div className="flex h-full w-[340px] shrink-0 flex-col gap-5 overflow-y-auto border-r border-hairline bg-white p-4">
+    <div className="studio-control-panel">
       {activeTab === "render" ? (
         <>
           <ProjectDropdown projectName={projectName} />

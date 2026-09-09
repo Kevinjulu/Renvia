@@ -9,9 +9,9 @@ export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZonePr
   const { uploadElevation, isUploading } = useElevationUpload();
 
   return (
-    <div>
+    <div className="building-views-panel">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-primary">Render from</p>
+        <div><p className="text-sm font-semibold text-primary">Building views</p><small>Upload up to 4 elevations for a unified render.</small></div>
         <button type="button" disabled title="Duplicate (coming soon)" className="text-faint">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <rect x="2" y="4" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.1" />
@@ -19,10 +19,11 @@ export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZonePr
           </svg>
         </button>
       </div>
-      <div className="mt-2">
+      <div className="mt-3">
         {currentImageUrl ? (
-          <div className="flex items-center gap-3 rounded-lg border border-hairline p-2">
-            <img src={currentImageUrl} alt="" className="h-12 w-12 rounded-md object-cover" />
+          <div className="view-upload-card active">
+            <b>1</b><img src={currentImageUrl} alt="" />
+            <div><strong>Front view</strong>
             <button
               type="button"
               onClick={() => document.getElementById("elevation-replace-input")?.click()}
@@ -30,6 +31,7 @@ export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZonePr
             >
               Replace image
             </button>
+            </div><span>✓</span>
             <input
               id="elevation-replace-input"
               type="file"
@@ -49,6 +51,7 @@ export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZonePr
           />
         )}
       </div>
+      {currentImageUrl && <div className="view-placeholders">{["Right view", "Back view", "Left view"].map((name,index)=><button type="button" key={name}><b>{index+2}</b><span>＋</span><p><strong>{name}</strong><small>Add elevation</small></p></button>)}</div>}
     </div>
   );
 }

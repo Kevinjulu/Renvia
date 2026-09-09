@@ -22,6 +22,12 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
 
   return (
     <div className="flex flex-1 flex-col">
+      <div className="edit-mode-cards">
+        <button type="button" className="active"><span>◫</span><p><strong>Element / texture</strong><small>Borrow a finish or material</small></p></button>
+        <button type="button"><span>▧</span><p><strong>Whole building</strong><small>Reference architectural style</small></p></button>
+        <button type="button"><span>✦</span><p><strong>Prompt edit</strong><small>Describe the transformation</small></p></button>
+      </div>
+      <div className="selection-mode"><span>Selection mode</span><button type="button" className="active">Auto select</button><button type="button">Manual</button></div>
       <div className="flex items-center gap-2">
         {ACTIONS.map((action) => (
           <button
