@@ -59,9 +59,13 @@ html {
 }
 
 body {
-  background: #ffffff;
+  background: #fdfdfc;
   color: #141414;
   font-family: var(--font-switzer), system-ui, sans-serif;
+}
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
