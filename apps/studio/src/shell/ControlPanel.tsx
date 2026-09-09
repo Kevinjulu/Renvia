@@ -32,8 +32,10 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
         <>
           <ProjectDropdown projectName={projectName} />
           <RenderFromUploadZone currentImageUrl={currentImageUrl} />
-          <StylePicker value={style} onChange={setStyle} />
-          <ResolutionPicker value={resolution} onChange={setResolution} />
+          <div className="studio-settings-row">
+            <StylePicker value={style} onChange={setStyle} />
+            <ResolutionPicker value={resolution} onChange={setResolution} />
+          </div>
         </>
       ) : (
         <EditModeHeader />
@@ -50,7 +52,7 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
         </div>
       </div>
 
-      <GenerateBar projectId={projectId} sourceImageUrl={currentImageUrl} prompt={prompt} />
+      <div className="studio-generate-bar"><GenerateBar projectId={projectId} sourceImageUrl={currentImageUrl} prompt={prompt} /></div>
     </div>
   );
 }
