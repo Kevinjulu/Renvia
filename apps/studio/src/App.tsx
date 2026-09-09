@@ -7,6 +7,7 @@ import { DashboardRoute } from "./routes/DashboardRoute";
 import { CanvasRoute } from "./routes/CanvasRoute";
 import { HelpArticleRoute } from "./routes/HelpArticleRoute";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
+import { DashboardSectionRoute } from "./routes/DashboardSectionRoute";
 
 export default function App() {
   return (
@@ -21,6 +22,14 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardRoute />} />
           <Route path="/project/:projectId" element={<CanvasRoute />} />
           <Route path="/help/:slug" element={<HelpArticleRoute />} />
+          <Route path="/explore" element={<DashboardSectionRoute section="explore" />} />
+          <Route path="/templates" element={<DashboardSectionRoute section="templates" />} />
+          <Route path="/assets" element={<DashboardSectionRoute section="assets" />} />
+          <Route path="/ai-tools" element={<DashboardSectionRoute section="ai-tools" />} />
+          <Route path="/team" element={<DashboardSectionRoute section="team" />} />
+          <Route path="/settings" element={<DashboardSectionRoute section="settings" />} />
+          <Route path="/billing" element={<DashboardSectionRoute section="billing" />} />
+          <Route path="/activity" element={<DashboardSectionRoute section="activity" />} />
         </Route>
       </Routes>
     </BrowserRouter>

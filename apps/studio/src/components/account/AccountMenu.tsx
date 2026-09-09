@@ -27,14 +27,9 @@ function CreditsPage() {
             Upgrading and buying extra credits will open our pricing page once it&apos;s live.
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className="mt-1 cursor-not-allowed rounded-lg bg-primary/40 px-3.5 py-2 text-sm font-medium text-white"
-        >
+        <a href="/billing" className="mt-1 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-white">
           View plans
-        </button>
+        </a>
       </div>
     </div>
   );

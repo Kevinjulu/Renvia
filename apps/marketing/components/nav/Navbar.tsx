@@ -6,10 +6,10 @@ import { LOGIN_URL, SIGNUP_URL } from "@/lib/config";
 import { Logo } from "@/components/brand/Logo";
 
 const NAV_LINKS = [
-  { label: "Product", href: "#features" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "Docs", href: "#" },
-  { label: "API", href: "#" },
+  { label: "Product", href: "/#features" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "How it works", href: "/#how-it-works" },
+  { label: "Journal", href: "/blog" },
 ];
 
 function ArrowIcon() {

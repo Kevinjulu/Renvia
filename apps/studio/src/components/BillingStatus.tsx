@@ -14,6 +14,7 @@ export function BillingStatus({ credits = 0 }: BillingStatusProps) {
       </div>
       <button
         type="button"
+        onClick={() => window.location.assign("/billing")}
         className="group flex items-center gap-1.5 rounded-full bg-primary py-1.5 pl-2.5 pr-3.5 text-sm font-medium text-white transition-all duration-150 hover:opacity-90 active:scale-[0.97]"
       >
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" className="text-glow transition-transform duration-150 group-hover:scale-110">

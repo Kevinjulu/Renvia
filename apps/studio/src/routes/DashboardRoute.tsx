@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useUser } from "@clerk/react";
 import type { Project } from "@renvia/types";
 import { useApiClient } from "../lib/apiClient";
@@ -37,11 +37,12 @@ function greetingFor(date: Date): string {
 export function DashboardRoute() {
   const apiClient = useApiClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useUser();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [view, setView] = useState<DashboardView>("home");
+  const [view, setView] = useState<DashboardView>(searchParams.get("view") === "all" ? "all" : "home");
   const [search, setSearch] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
@@ -125,10 +126,10 @@ export function DashboardRoute() {
     <div className="dashboard-shell">
       <DashboardSidebar view={view} onChangeView={setView} onCreate={() => void handleCreate()} />
       <div className="dashboard-workspace">
-        <DashboardTopBar />
+        <DashboardTopBar value={search} onChange={setSearch} onNotifications={() => navigate("/activity")} />
         <div className="dashboard-layout">
           <main className="dashboard-main">
-            {view === "home" && <><div className="dashboard-greeting"><p>Dashboard</p><h1>Good afternoon, Kevin <span>👋🏻</span></h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
+            {isHome && <><div className="dashboard-greeting"><p>Dashboard</p><h1>{greetingFor(new Date())}, {user?.firstName || "Kevin"} <span>👋🏻</span></h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
           <div className="dashboard-section-heading">
             <h2>{heading}</h2>
             {view === "home" && sortedProjects.length > RECENT_LIMIT && (
@@ -166,9 +167,9 @@ export function DashboardRoute() {
             </div>
           )}
 
-            {view === "home" && <HelpArticles />}
+            {isHome && <HelpArticles />}
           </main>
-          {view === "home" && <DashboardPanels onCreate={() => void handleCreate()} />}
+          {isHome && <DashboardPanels onCreate={() => void handleCreate()} />}
         </div>
       </div>
 

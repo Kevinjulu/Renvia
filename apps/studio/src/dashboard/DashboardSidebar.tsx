@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Logo } from "../components/brand/Logo";
 
 export type DashboardView = "home" | "all" | "favorites";
-interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; onCreate: () => void; }
+interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; onCreate: () => void; activeSection?: string; }
 
 const icons: Record<string, JSX.Element> = {
   home: <><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
@@ -17,18 +17,18 @@ const icons: Record<string, JSX.Element> = {
 function NavIcon({ name }: { name: string }) { return <svg viewBox="0 0 24 24" aria-hidden="true">{icons[name]}</svg>; }
 function NavItem({ name, label, active, onClick }: { name: string; label: string; active?: boolean; onClick?: () => void }) { return <button type="button" onClick={onClick} className={`dashboard-nav-item ${active ? "is-active" : ""}`}><NavIcon name={name}/><span>{label}</span></button>; }
 
-export function DashboardSidebar({ view, onChangeView, onCreate }: DashboardSidebarProps) {
+export function DashboardSidebar({ view, onChangeView, activeSection }: DashboardSidebarProps) {
   const navigate = useNavigate();
   return (
     <aside className="dashboard-sidebar">
       <Logo className="dashboard-logo" wordmarkClassName="text-[20px] text-white" />
       <nav className="dashboard-nav">
-        <NavItem name="home" label="Home" active={view === "home"} onClick={() => onChangeView("home")}/><NavItem name="projects" label="Projects" active={view === "all"} onClick={() => onChangeView("all")}/><NavItem name="explore" label="Explore"/><NavItem name="templates" label="Templates"/><NavItem name="assets" label="Assets"/><NavItem name="tools" label="AI Tools"/>
+        <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>
       </nav>
       <div className="dashboard-nav-divider" />
-      <nav className="dashboard-nav dashboard-nav-secondary"><NavItem name="team" label="Team"/><NavItem name="settings" label="Settings"/></nav>
-      <div className="dashboard-upgrade-card"><p className="dashboard-upgrade-title"><span>♛</span> Upgrade to Pro</p><p>Unlock more renders,<br/>higher resolution and<br/>team features.</p><button type="button" onClick={onCreate}>Upgrade <span>→</span></button></div>
-      <div className="dashboard-user"><span className="dashboard-user-avatar">KJ</span><span><strong>Kevin Julu</strong><small>Free Plan</small></span><button type="button" aria-label="Open account menu" onClick={() => navigate("/dashboard")}>⌃</button></div>
+      <nav className="dashboard-nav dashboard-nav-secondary"><NavItem name="team" label="Team" active={activeSection === "team"} onClick={() => navigate("/team")}/><NavItem name="settings" label="Settings" active={activeSection === "settings"} onClick={() => navigate("/settings")}/></nav>
+      <div className="dashboard-upgrade-card"><p className="dashboard-upgrade-title"><span>♛</span> Upgrade to Pro</p><p>Unlock more renders,<br/>higher resolution and<br/>team features.</p><button type="button" onClick={() => navigate("/billing")}>Upgrade <span>→</span></button></div>
+      <div className="dashboard-user"><span className="dashboard-user-avatar">KJ</span><span><strong>Kevin Julu</strong><small>Free Plan</small></span><button type="button" aria-label="Open account settings" onClick={() => navigate("/settings")}>⌃</button></div>
     </aside>
   );
 }

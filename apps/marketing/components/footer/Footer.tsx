@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { SIGNUP_URL } from "@/lib/config";
 
@@ -9,25 +10,25 @@ const FOOTER_LINKS = [
   {
     heading: "Product",
     links: [
-      { label: "Studio", href: "#features" },
-      { label: "Pricing", href: "#pricing" },
-      { label: "What's new", href: "#" },
+      { label: "Studio", href: SIGNUP_URL },
+      { label: "Pricing", href: "/pricing" },
+      { label: "What's new", href: "/blog" },
     ],
   },
   {
     heading: "Company",
     links: [
-      { label: "About", href: "#" },
-      { label: "Careers", href: "#" },
-      { label: "Contact", href: "#" },
+      { label: "About", href: "/#features" },
+      { label: "Our process", href: "/#how-it-works" },
+      { label: "Journal", href: "/blog" },
     ],
   },
   {
     heading: "Resources",
     links: [
-      { label: "Docs", href: "#" },
-      { label: "API", href: "#" },
-      { label: "Help center", href: "#" },
+      { label: "Rendering guide", href: "/blog/architectural-rendering-workflow" },
+      { label: "Prompt guide", href: "/blog/better-architectural-ai-prompts" },
+      { label: "Consistency guide", href: "/blog/consistent-four-elevation-renders" },
     ],
   },
 ];
@@ -126,6 +127,7 @@ function CTABanner() {
 }
 
 export function Footer() {
+  const [subscribed, setSubscribed] = useState(false);
   return (
     <footer className="border-t border-hairline px-6 py-16">
       <div className="mx-auto max-w-content">
@@ -139,18 +141,6 @@ export function Footer() {
             <p className="mt-3 max-w-[26ch] text-sm text-muted">
               AI-powered visualization for architects and designers.
             </p>
-            <div className="mt-4 flex gap-4">
-              {SOCIAL_LINKS.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  aria-label={link.label}
-                  className="text-muted transition-colors hover:text-primary"
-                >
-                  {link.icon}
-                </a>
-              ))}
-            </div>
           </div>
 
           {FOOTER_LINKS.map((group) => (
@@ -173,7 +163,7 @@ export function Footer() {
             <p className="mt-3 text-sm text-muted">Get tips, updates, and inspiration straight to your inbox.</p>
             <form
               className="mt-3 flex items-center gap-2 rounded-lg border border-hairline-strong px-3 py-2 transition-colors focus-within:border-primary/30"
-              onSubmit={(event) => event.preventDefault()}
+              onSubmit={(event) => { event.preventDefault(); setSubscribed(true); }}
             >
               <input
                 type="email"
@@ -185,6 +175,7 @@ export function Footer() {
                 <ArrowIcon />
               </button>
             </form>
+            {subscribed && <p className="mt-2 text-xs text-secondary" role="status">You’re on the list. Welcome to Renvia.</p>}
           </div>
         </div>
 
