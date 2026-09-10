@@ -86,10 +86,7 @@ export function CapabilityGrid() {
     <section id="features" className="border-t border-hairline px-6 py-20 sm:py-28">
       <div className="mx-auto max-w-content">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-medium uppercase tracking-wide text-secondary">
-            Built for architects and designers
-          </p>
-          <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
+          <h2 className="font-display text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
             Nothing about your design changes. Everything about how it looks does.
           </h2>
           <p className="mt-4 max-w-md mx-auto text-base leading-relaxed text-muted sm:text-lg">

@@ -47,8 +47,7 @@ export function Pricing() {
       <div className="mx-auto max-w-content">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-4 lg:gap-6">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-secondary">Pricing</p>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
+            <h2 className="font-display text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
               Simple pricing.
               <br />
               Built for creators.

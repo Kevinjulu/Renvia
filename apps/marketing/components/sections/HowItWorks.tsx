@@ -13,7 +13,7 @@ export function HowItWorks() {
     <section id="how-it-works" className="scroll-mt-16 overflow-hidden px-5 py-24 sm:px-8 sm:py-32">
       <div className="mx-auto max-w-[1240px]">
         <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end lg:gap-16">
-          <div><span className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[.16em] text-faint"><span className="h-1.5 w-1.5 rounded-full bg-blueprint" /> How it works</span><h2 className="mt-5 max-w-[560px] font-display text-4xl font-semibold leading-[.98] tracking-[-.05em] sm:text-[52px]">Your idea in.<br /><span className="text-[#aaa9a5]">A finished world out.</span></h2></div>
+          <div><h2 className="max-w-[560px] font-display text-4xl font-semibold leading-[.98] tracking-[-.05em] sm:text-[52px]">Your idea in.<br /><span className="text-[#aaa9a5]">A finished world out.</span></h2></div>
           <div className="flex flex-col gap-5 lg:items-end"><p className="max-w-[470px] text-sm leading-6 text-muted sm:text-[15px] sm:leading-7">Skip the rendering maze. Renvia turns the workflow into one clear, creative conversation—from first upload to client-ready visual.</p><a href={SIGNUP_URL} className="group inline-flex w-fit items-center gap-3 text-xs font-semibold text-primary">Start creating for free <span className="grid h-7 w-7 place-items-center rounded-full bg-primary text-white transition-transform group-hover:translate-x-1">→</span></a></div>
         </div>
 

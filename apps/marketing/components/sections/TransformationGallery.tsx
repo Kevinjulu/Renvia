@@ -14,8 +14,7 @@ export function TransformationGallery() {
       <div className="mx-auto max-w-[1240px]">
         <div className="flex flex-col justify-between gap-7 lg:flex-row lg:items-end">
           <div>
-            <span className="rounded-full border border-hairline bg-surface px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[.16em] text-faint">Real transformations</span>
-            <h2 className="mt-5 font-display text-4xl font-semibold leading-[.98] tracking-[-.05em] sm:text-5xl">Same structure.<br/>Different stories.</h2>
+            <h2 className="font-display text-4xl font-semibold leading-[.98] tracking-[-.05em] sm:text-5xl">Same structure.<br/>Different stories.</h2>
             <p className="mt-4 max-w-[330px] text-sm leading-6 text-muted">From modern minimalism to warm natural tones — see how a single design can take on entirely new lives.</p>
           </div>
           <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
