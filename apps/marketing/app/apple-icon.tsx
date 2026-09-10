@@ -12,6 +12,5 @@ const MARK = `data:image/svg+xml,${encodeURIComponent(
 )}`;
 
 export default function AppleIcon() {
-  // eslint-disable-next-line @next/next/no-img-element
   return new ImageResponse(<img src={MARK} width={180} height={180} alt="" />, size);
 }
