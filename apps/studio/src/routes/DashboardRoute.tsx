@@ -18,6 +18,7 @@ import { HelpArticles } from "../dashboard/HelpArticles";
 import { DashboardHero } from "../dashboard/DashboardHero";
 import { DashboardPanels } from "../dashboard/DashboardPanels";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ProjectGridSkeleton } from "../dashboard/ProjectGridSkeleton";
 
 const VIEW_TITLE: Record<DashboardView, string> = {
   home: "Home",
@@ -147,7 +148,7 @@ export function DashboardRoute() {
           </div>
 
           {isLoading ? (
-            <p className="dashboard-empty">Loading…</p>
+            <ProjectGridSkeleton />
           ) : view === "favorites" && visibleProjects.length === 0 ? (
             <p className="dashboard-empty">No favorites yet — star a project to pin it here.</p>
           ) : (

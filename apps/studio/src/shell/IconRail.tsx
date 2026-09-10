@@ -37,7 +37,7 @@ export function IconRail() {
     onMouseMove={() => { if (isExpanded) scheduleCollapse(); }}
     onKeyDown={() => { if (isExpanded) scheduleCollapse(); }}
   >
-    <div className="studio-brand"><span>R E N V I A</span><b>Studio</b><button type="button" className="studio-sidebar-toggle" aria-label={isExpanded ? "Collapse navigation" : "Expand navigation"} aria-expanded={isExpanded} onClick={(event) => { event.stopPropagation(); isExpanded ? setIsExpanded(false) : expand(); }}>‹</button></div>
+    <div className="studio-brand"><span>R E N V I A</span><b>Studio</b><button type="button" className="studio-sidebar-toggle" aria-label={isExpanded ? "Collapse navigation" : "Expand navigation"} aria-expanded={isExpanded} onClick={(event) => { event.stopPropagation(); if (isExpanded) setIsExpanded(false); else expand(); }}>‹</button></div>
     <nav>{nav.map(([label, href, icon]) => {
       const active = label === "Studio" || Boolean(href && location.pathname === href);
       const content = <><Icon name={icon} /><span>{label}</span></>;
