@@ -51,7 +51,7 @@ export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZonePr
           />
         )}
       </div>
-      {currentImageUrl && <div className="view-placeholders">{["Right view", "Back view", "Left view"].map((name,index)=><button type="button" key={name}><b>{index+2}</b><span>＋</span><p><strong>{name}</strong><small>Add elevation</small></p></button>)}</div>}
+      {currentImageUrl && <div className="view-placeholders">{["Right view", "Back view", "Left view"].map((name,index)=><button type="button" key={name} title={`Add ${name.toLowerCase()}`}><b>{index+2}</b><span>＋</span><p><strong>{name}</strong><small>Add view</small></p></button>)}</div>}
     </div>
   );
 }

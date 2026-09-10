@@ -20,7 +20,7 @@ export function GenerateBar({ projectId, sourceImageUrl, prompt }: GenerateBarPr
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canGenerate = Boolean(sourceImageUrl) && prompt.trim().length > 0 && !isSubmitting;
+  const canGenerate = Boolean(sourceImageUrl) && !isSubmitting;
 
   const handleGenerate = async () => {
     if (!sourceImageUrl) return;
@@ -43,6 +43,10 @@ export function GenerateBar({ projectId, sourceImageUrl, prompt }: GenerateBarPr
 
   return (
     <div>
+      <div className="studio-generation-summary">
+        <span>{resolution} · {style}</span>
+        <span>{count} {count === 1 ? "variation" : "variations"}</span>
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -53,7 +57,7 @@ export function GenerateBar({ projectId, sourceImageUrl, prompt }: GenerateBarPr
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
           </svg>
-          {isSubmitting ? "Queuing…" : "Generate"}
+          {isSubmitting ? "Queuing…" : `Generate ${count === 1 ? "render" : `${count} variations`}`}
         </button>
         <select
           value={count}

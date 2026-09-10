@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/react";
 import App from "./App";
 import { clerkAppearance } from "./lib/clerkAppearance";
 import "./styles/globals.css";
+import "./styles/render-panel.css";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 

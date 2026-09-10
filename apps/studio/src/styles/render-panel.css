@@ -1,0 +1,46 @@
+/* Render panel overrides intentionally load after globals.css. */
+.studio-advanced {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+  margin-top: 9px;
+  border: 1px solid #e7e9ed;
+  border-radius: 10px;
+  padding: 0;
+  background: #fff;
+}
+
+.studio-advanced-toggle {
+  display: flex !important;
+  grid-column: auto !important;
+  width: 100%;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 9px !important;
+  background: transparent !important;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-advanced-toggle > span { display: flex; flex-direction: column; }
+.studio-advanced-toggle > span strong { font-size: 9px; }
+.studio-advanced-toggle small { display: block !important; margin-top: 2px; color: #9298a2; font-size: 7px !important; }
+.studio-advanced-toggle svg { color: #7f8590; transition: transform .18s ease; }
+.studio-advanced.is-open .studio-advanced-toggle svg { transform: rotate(180deg); }
+.studio-advanced-content { border-top: 1px solid #eef0f3; padding: 2px 9px 8px; }
+.studio-advanced-content > label { display: flex; min-height: 40px; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f1f3; color: #3c4149; }
+.studio-advanced-content label > span { display: flex; flex-direction: column; }
+.studio-advanced-content label strong,
+.studio-reference-control strong { font-size: 8px; font-weight: 500; }
+.studio-advanced-content label small,
+.studio-reference-control small { display: block; margin-top: 2px; color: #989da6; font-size: 7px; }
+.studio-influence-control > div { display: flex; align-items: center; gap: 6px; }
+.studio-influence-control input { width: 74px !important; accent-color: #4668f4; }
+.studio-influence-control b { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 5px; background: #eef2ff; color: #3157ef; font-size: 8px; }
+.studio-preserve-control input { width: 27px !important; height: 15px !important; accent-color: #4668f4; }
+.studio-reference-control { display: flex; min-height: 43px; align-items: center; gap: 7px; }
+.studio-reference-control > p { display: flex; min-width: 0; flex: 1; flex-direction: column; margin: 0; }
+.studio-reference-control .flex.gap-3 { gap: 7px; }
