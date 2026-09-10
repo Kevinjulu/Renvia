@@ -89,6 +89,17 @@ button, a {
   animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+@keyframes how-scan {
+  0%, 12% { transform: translateY(0); opacity: 0; }
+  18% { opacity: 0.75; }
+  72% { opacity: 0.35; }
+  82%, 100% { transform: translateY(520px); opacity: 0; }
+}
+
+.how-scan {
+  animation: how-scan 7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
