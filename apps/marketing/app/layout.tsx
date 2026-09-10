@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
+import { BackToTop } from "@/components/nav/BackToTop";
 import "./globals.css";
 
 const plexMono = IBM_Plex_Mono({
@@ -55,7 +56,10 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <BackToTop />
+      </body>
     </html>
   );
 }
