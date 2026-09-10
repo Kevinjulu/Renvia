@@ -6,6 +6,7 @@ import { FormField } from "../components/auth/FormField";
 import { AuthButton } from "../components/auth/AuthButton";
 import { AuthAlert } from "../components/auth/AuthAlert";
 import { SocialButtons, AuthDivider, type SocialStrategy } from "../components/auth/SocialButtons";
+import { AUTH_ROUTES } from "../lib/authRoutes";
 
 export function LoginRoute() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
@@ -39,7 +40,11 @@ export function LoginRoute() {
   const globalError = errors.global?.[0];
 
   const handleSocial = async (strategy: SocialStrategy) => {
-    await signIn.sso({ strategy, redirectUrl: "/sso-callback", redirectCallbackUrl: "/sso-callback" });
+    await signIn.sso({
+      strategy,
+      redirectUrl: AUTH_ROUTES.afterAuth,
+      redirectCallbackUrl: AUTH_ROUTES.ssoCallback,
+    });
   };
 
   return (

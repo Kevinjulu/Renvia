@@ -12,6 +12,7 @@ import { BackLink } from "../components/auth/BackLink";
 import { StepProgress } from "../components/auth/StepProgress";
 import { PasswordStrength } from "../components/auth/PasswordStrength";
 import { TermsCheckbox } from "../components/auth/TermsCheckbox";
+import { AUTH_ROUTES } from "../lib/authRoutes";
 
 type Step = "details" | "verify";
 
@@ -63,7 +64,11 @@ export function SignupRoute() {
   const globalError = errors.global?.[0];
 
   const handleSocial = async (strategy: SocialStrategy) => {
-    await signUp.sso({ strategy, redirectUrl: "/sso-callback", redirectCallbackUrl: "/sso-callback" });
+    await signUp.sso({
+      strategy,
+      redirectUrl: AUTH_ROUTES.afterAuth,
+      redirectCallbackUrl: AUTH_ROUTES.ssoCallback,
+    });
   };
 
   return (

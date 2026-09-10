@@ -17,7 +17,7 @@ export default function App() {
         <Route path="/login" element={<LoginRoute />} />
         <Route path="/signup" element={<SignupRoute />} />
         <Route path="/forgot-password" element={<ForgotPasswordRoute />} />
-        <Route path="/sso-callback" element={<SsoCallbackRoute />} />
+        <Route path="/sso-callback/*" element={<SsoCallbackRoute />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardRoute />} />
           <Route path="/project/:projectId" element={<CanvasRoute />} />
