@@ -10,7 +10,7 @@ export function Hero() {
       <div className="mx-auto max-w-[1400px]">
         <div className="grid items-center gap-12 lg:min-h-[610px] lg:grid-cols-[0.82fr_1.18fr] lg:gap-16">
           <div className="animate-rise-in">
-            <h1 className="font-display text-[48px] font-semibold leading-[0.96] tracking-[-0.058em] text-primary sm:text-6xl lg:text-[72px] xl:text-[80px]">Change the finish,<span className="block text-[#b8b8b5]">not the floor plan.</span></h1>
+            <h1 className="font-display text-[48px] font-semibold leading-[0.96] tracking-[-0.058em] text-primary sm:text-6xl lg:text-[72px] xl:text-[80px]">Change the finish,<span className="block text-[#C86442]">not the floor plan.</span></h1>
             <p className="mt-6 max-w-[570px] text-[15px] leading-7 text-muted sm:text-base">Turn sketches, 3D models, or photos into beautiful, photorealistic renders — while keeping your exact geometry. Explore materials, lighting, and styles in seconds.</p>
             <div className="mt-7 flex flex-wrap gap-3">
               <a href={SIGNUP_URL} className="inline-flex h-12 items-center gap-3 rounded-lg bg-[#111315] px-6 text-sm font-medium text-white shadow-[0_8px_24px_-12px_rgba(0,0,0,.7)] transition hover:-translate-y-0.5 hover:bg-black">Start generating <span aria-hidden="true">→</span></a>
