@@ -175,11 +175,15 @@ function AdvancedSettings({
             />
           </label>
           <div className="studio-reference-control">
-            <span className="studio-reference-icon">▧</span>
-            <p>
-              <strong>Reference images</strong>
-              <small>Guide materials, lighting or surroundings</small>
-            </p>
+            <div className="studio-reference-heading">
+              <span className="studio-reference-icon" aria-hidden="true">
+                ▧
+              </span>
+              <p>
+                <strong>Reference images</strong>
+                <small>Guide materials, lighting or surroundings for the AI render</small>
+              </p>
+            </div>
             <ReferenceBar />
           </div>
         </div>
