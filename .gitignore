@@ -38,3 +38,4 @@ playwright/.cache/
 
 .vercel
 .env*
+tmp-studio-deploy.json
