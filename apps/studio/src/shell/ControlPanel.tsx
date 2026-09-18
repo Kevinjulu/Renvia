@@ -56,7 +56,7 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
       </div>
 
       <div className="studio-generate-bar">
-        <GenerateBar projectId={projectId} prompt={prompt} />
+        <GenerateBar projectId={projectId} />
       </div>
     </div>
   );

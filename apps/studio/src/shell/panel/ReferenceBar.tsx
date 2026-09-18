@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReferenceImage } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
+import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
 
 type Panel = "library" | "unsplash" | "more" | null;
@@ -16,6 +17,7 @@ function Spinner() {
 
 export function ReferenceBar() {
   const apiClient = useApiClient();
+  const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +51,24 @@ export function ReferenceBar() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [openPanel]);
 
+  const syncUrls = (next: ReferenceImage[]) => {
+    setReferenceImageUrls(next.map((item) => item.url));
+  };
+
   const attach = (reference: ReferenceImage) => {
-    setAttached((current) => (current.some((item) => item.id === reference.id) ? current : [...current, reference]));
+    setAttached((current) => {
+      const next = current.some((item) => item.id === reference.id) ? current : [...current, reference];
+      syncUrls(next);
+      return next;
+    });
   };
 
   const detach = (id: string) => {
-    setAttached((current) => current.filter((item) => item.id !== id));
+    setAttached((current) => {
+      const next = current.filter((item) => item.id !== id);
+      syncUrls(next);
+      return next;
+    });
   };
 
   const loadLibrary = async () => {

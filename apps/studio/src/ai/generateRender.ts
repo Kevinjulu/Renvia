@@ -9,7 +9,15 @@ export async function generateRender(
   instruction: string,
   view?: { id: string; label: string },
 ) {
-  const { resolution, style } = useGenerationSettingsStore.getState();
+  const {
+    resolution,
+    style,
+    styleInfluence,
+    preserveStructure,
+    referenceImageUrls,
+    atmospherePreset,
+  } = useGenerationSettingsStore.getState();
+
   return apiClient.createRender({
     projectId,
     sourceImageUrl,
@@ -18,5 +26,11 @@ export async function generateRender(
     style,
     viewKey: view?.id,
     viewLabel: view?.label,
+    generationSettings: {
+      styleInfluence,
+      preserveStructure,
+      referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+      atmospherePreset,
+    },
   });
 }

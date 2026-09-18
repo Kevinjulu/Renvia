@@ -1,7 +1,16 @@
-import { useState } from "react";
 import { ReferenceBar } from "./ReferenceBar";
+import {
+  useGenerationSettingsStore,
+  type EditAction,
+  type EditModeKind,
+  type SelectionMode,
+} from "../../canvas/hooks/useGenerationSettingsStore";
 
-type EditAction = "add" | "remove" | "change";
+const EDIT_MODES: { id: EditModeKind; icon: string; title: string; subtitle: string }[] = [
+  { id: "element", icon: "◫", title: "Element / texture", subtitle: "Borrow a finish or material" },
+  { id: "building", icon: "▧", title: "Whole building", subtitle: "Reference architectural style" },
+  { id: "prompt", icon: "✦", title: "Prompt edit", subtitle: "Describe the transformation" },
+];
 
 const ACTIONS: { id: EditAction; label: string; hasMenu?: boolean }[] = [
   { id: "add", label: "Add" },
@@ -9,62 +18,91 @@ const ACTIONS: { id: EditAction; label: string; hasMenu?: boolean }[] = [
   { id: "change", label: "Change", hasMenu: true },
 ];
 
+const SELECTION_MODES: { id: SelectionMode; label: string }[] = [
+  { id: "auto", label: "Auto select" },
+  { id: "manual", label: "Manual" },
+];
+
 interface EditTabBodyProps {
   currentImageUrl: string | null;
 }
 
 export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
-  const [activeAction, setActiveAction] = useState<EditAction | null>(null);
-  const [imageRemoved, setImageRemoved] = useState(false);
-  const [editPrompt, setEditPrompt] = useState("");
+  const editMode = useGenerationSettingsStore((state) => state.editMode);
+  const setEditMode = useGenerationSettingsStore((state) => state.setEditMode);
+  const editAction = useGenerationSettingsStore((state) => state.editAction);
+  const setEditAction = useGenerationSettingsStore((state) => state.setEditAction);
+  const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
+  const setSelectionMode = useGenerationSettingsStore((state) => state.setSelectionMode);
+  const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
+  const setEditPrompt = useGenerationSettingsStore((state) => state.setEditPrompt);
 
-  const showImageChip = currentImageUrl && !imageRemoved;
+  const showImageChip = Boolean(currentImageUrl);
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="edit-panel-body flex flex-1 flex-col">
       <div className="edit-mode-cards">
-        <button type="button" className="active"><span>◫</span><p><strong>Element / texture</strong><small>Borrow a finish or material</small></p></button>
-        <button type="button"><span>▧</span><p><strong>Whole building</strong><small>Reference architectural style</small></p></button>
-        <button type="button"><span>✦</span><p><strong>Prompt edit</strong><small>Describe the transformation</small></p></button>
-      </div>
-      <div className="selection-mode"><span>Selection mode</span><button type="button" className="active">Auto select</button><button type="button">Manual</button></div>
-      <div className="flex items-center gap-2">
-        {ACTIONS.map((action) => (
+        {EDIT_MODES.map((mode) => (
           <button
-            key={action.id}
+            key={mode.id}
             type="button"
-            onClick={() => setActiveAction((current) => (current === action.id ? null : action.id))}
-            aria-pressed={activeAction === action.id}
-            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-              activeAction === action.id
-                ? "border-blueprint bg-blueprint-soft text-blueprint"
-                : "border-hairline text-secondary hover:border-hairline-strong hover:text-primary"
-            }`}
+            className={editMode === mode.id ? "active" : ""}
+            onClick={() => setEditMode(mode.id)}
+            aria-pressed={editMode === mode.id}
           >
-            {action.label}
-            {action.hasMenu && (
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                <path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
+            <span>{mode.icon}</span>
+            <p>
+              <strong>{mode.title}</strong>
+              <small>{mode.subtitle}</small>
+            </p>
           </button>
         ))}
       </div>
 
+      <div className="selection-mode">
+        <span>Selection mode</span>
+        {SELECTION_MODES.map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            className={selectionMode === mode.id ? "active" : ""}
+            onClick={() => setSelectionMode(mode.id)}
+            aria-pressed={selectionMode === mode.id}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
+      {editMode !== "prompt" && (
+        <div className="flex items-center gap-2">
+          {ACTIONS.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              onClick={() => setEditAction(editAction === action.id ? null : action.id)}
+              aria-pressed={editAction === action.id}
+              className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                editAction === action.id
+                  ? "border-blueprint bg-blueprint-soft text-blueprint"
+                  : "border-hairline text-secondary hover:border-hairline-strong hover:text-primary"
+              }`}
+            >
+              {action.label}
+              {action.hasMenu && (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                  <path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="mt-3 flex flex-1 flex-col rounded-lg border border-hairline">
         {showImageChip && (
           <div className="relative w-fit p-2.5 pb-0">
-            <img src={currentImageUrl} alt="" className="h-20 w-20 rounded-md object-cover" />
-            <button
-              type="button"
-              onClick={() => setImageRemoved(true)}
-              aria-label="Remove image"
-              className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-secondary shadow-sm hover:text-primary"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                <path d="m2 2 6 6M8 2 2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-            </button>
+            <img src={currentImageUrl!} alt="" className="h-20 w-20 rounded-md object-cover" />
             <span className="absolute bottom-1 left-3 flex h-4 w-4 items-center justify-center rounded bg-primary/80 text-[10px] font-medium text-white">
               1
             </span>
@@ -74,7 +112,12 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
         <textarea
           value={editPrompt}
           onChange={(event) => setEditPrompt(event.target.value)}
-          placeholder="Describe your edits..."
+          maxLength={500}
+          placeholder={
+            editMode === "prompt"
+              ? "Describe the transformation you want…"
+              : "Describe your edits…"
+          }
           className="min-h-[100px] flex-1 resize-none rounded-lg p-3 text-sm text-primary placeholder:text-faint focus:outline-none"
         />
 
@@ -82,6 +125,10 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
           <ReferenceBar />
         </div>
       </div>
+
+      <p className="studio-ai-note">
+        Edit actions, selection mode, and apply-edit will call the AI edit pipeline when connected. Settings are saved locally for that handoff.
+      </p>
     </div>
   );
 }

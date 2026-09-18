@@ -21,6 +21,15 @@ const createRenderSchema = z.object({
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
   viewLabel: z.string().trim().min(1).max(80).optional(),
+  // Prep for fal connection — accepted and forwarded on the job event.
+  generationSettings: z
+    .object({
+      styleInfluence: z.number().int().min(1).max(4).optional(),
+      preserveStructure: z.boolean().optional(),
+      referenceImageUrls: z.array(z.string().url()).max(8).optional(),
+      atmospherePreset: z.string().trim().max(80).nullable().optional(),
+    })
+    .optional(),
 });
 
 renders.post("/", async (c) => {
@@ -34,12 +43,14 @@ renders.post("/", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  const preserveStructure = body.generationSettings?.preserveStructure ?? true;
+
   const [created] = await db
     .insert(schema.renders)
     .values({
       projectId: body.projectId,
       sourceImageUrl: body.sourceImageUrl,
-      prompt: buildRenderPrompt(body.prompt),
+      prompt: buildRenderPrompt(body.prompt, { preserveStructure }),
       resolution: body.resolution,
       style: body.style,
       viewKey: body.viewKey,
@@ -52,7 +63,14 @@ renders.post("/", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  await inngest.send({ name: "render/requested", data: { renderId: created.id } });
+  // generationSettings ride along for the future fal worker; ignored by stub today.
+  await inngest.send({
+    name: "render/requested",
+    data: {
+      renderId: created.id,
+      generationSettings: body.generationSettings ?? null,
+    },
+  });
 
   return c.json({ job: created }, 201);
 });

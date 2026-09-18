@@ -17,6 +17,14 @@ export interface RenderJob {
   updatedAt: string;
 }
 
+/** Optional generation knobs — accepted now, applied when fal/AI is connected. */
+export interface RenderGenerationSettings {
+  styleInfluence?: number;
+  preserveStructure?: boolean;
+  referenceImageUrls?: string[];
+  atmospherePreset?: string | null;
+}
+
 export interface CreateRenderRequest {
   projectId: string;
   sourceImageUrl: string;
@@ -25,6 +33,8 @@ export interface CreateRenderRequest {
   style: string;
   viewKey?: string;
   viewLabel?: string;
+  /** Prep for fal — stored on the job event; not required for queueing today. */
+  generationSettings?: RenderGenerationSettings;
 }
 
 export interface CreateRenderResponse {
