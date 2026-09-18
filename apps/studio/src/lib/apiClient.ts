@@ -16,6 +16,7 @@ import type {
   MeResponse,
   Project,
   ReferenceImage,
+  DeleteCanvasNodeResponse,
   UpdateCanvasNodeRequest,
   UpdateCanvasNodeResponse,
   UpdateProjectRequest,
@@ -74,6 +75,8 @@ export function useApiClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
+    deleteCanvasNode: (id: string) =>
+      request<DeleteCanvasNodeResponse>(getToken, `/canvas-nodes/${id}`, { method: "DELETE" }),
     listProjects: () => request<ListProjectsResponse>(getToken, "/projects"),
     getProject: (id: string) => request<Project>(getToken, `/projects/${id}`),
     createProject: (body: CreateProjectRequest) =>

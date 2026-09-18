@@ -39,6 +39,8 @@ export const renders = pgTable("renders", {
     prompt: text("prompt").notNull(),
     resolution: text("resolution").notNull().default("1K"),
     style: text("style").notNull().default("Photorealistic"),
+    viewKey: text("view_key"),
+    viewLabel: text("view_label"),
     falRequestId: text("fal_request_id"),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

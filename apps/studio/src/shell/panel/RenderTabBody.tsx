@@ -70,8 +70,8 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             <div className="studio-section-heading"><strong>Recent renders</strong><span>{recentJobs.length} latest</span></div>
             <div className="studio-recent-renders">
               {recentJobs.map((job) => (
-                <button key={job.id} type="button" onClick={() => setActiveJob(job.id)} title="Open render">
-                  <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" /><span>View</span>
+                <button key={job.id} type="button" onClick={() => setActiveJob(job.id)} title={job.viewLabel ?? "Open render"}>
+                  <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" /><span>{job.viewLabel ?? "View"}</span>
                 </button>
               ))}
             </div>
@@ -79,7 +79,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
         ) : (
           <div className="studio-ready-card">
             <span>✦</span>
-            <p><strong>Ready for a clean first render</strong><small>Add an atmosphere or generate directly. Structure preservation is already on.</small></p>
+            <p><strong>Ready for a clean first render</strong><small>Each uploaded view becomes its own render. Empty sides are skipped.</small></p>
           </div>
         )}
       </div>

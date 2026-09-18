@@ -7,6 +7,7 @@ export async function generateRender(
   projectId: string,
   sourceImageUrl: string,
   instruction: string,
+  view?: { id: string; label: string },
 ) {
   const { resolution, style } = useGenerationSettingsStore.getState();
   return apiClient.createRender({
@@ -15,5 +16,7 @@ export async function generateRender(
     prompt: buildMaterialEditPrompt(instruction),
     resolution,
     style,
+    viewKey: view?.id,
+    viewLabel: view?.label,
   });
 }

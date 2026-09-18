@@ -96,3 +96,24 @@ canvasNodes.patch("/:id", async (c) => {
 
   return c.json({ node: updated });
 });
+
+canvasNodes.delete("/:id", async (c) => {
+  const { clerkId, email } = c.get("auth");
+  const id = c.req.param("id");
+  const db = createDb(c.env.DATABASE_URL);
+
+  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const existing = await db
+    .select({ node: schema.canvasNodes })
+    .from(schema.canvasNodes)
+    .innerJoin(schema.projects, eq(schema.canvasNodes.projectId, schema.projects.id))
+    .where(and(eq(schema.canvasNodes.id, id), eq(schema.projects.ownerId, ownerId)))
+    .limit(1);
+
+  if (!existing[0]) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.id, id));
+  return c.json({ id });
+});

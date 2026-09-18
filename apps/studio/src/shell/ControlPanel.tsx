@@ -9,29 +9,32 @@ import { EditModeHeader } from "./panel/EditModeHeader";
 import { GenerateBar } from "./panel/GenerateBar";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
+import { nodeForView } from "../canvas/buildingViews";
 
 interface ControlPanelProps {
   projectId: string;
   projectName: string;
-  currentImageUrl: string | null;
 }
 
-export function ControlPanel({ projectId, projectName, currentImageUrl }: ControlPanelProps) {
+export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
   const activeTab = useCanvasStore((state) => state.activeTab);
   const setActiveTab = useCanvasStore((state) => state.setActiveTab);
+  const nodes = useCanvasStore((state) => state.nodes);
+  const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
   const setPrompt = useGenerationSettingsStore((state) => state.setPrompt);
   const resolution = useGenerationSettingsStore((state) => state.resolution);
   const setResolution = useGenerationSettingsStore((state) => state.setResolution);
   const style = useGenerationSettingsStore((state) => state.style);
   const setStyle = useGenerationSettingsStore((state) => state.setStyle);
+  const currentImageUrl = nodeForView(nodes, activeViewId)?.imageUrl ?? null;
 
   return (
     <div className="studio-control-panel">
       {activeTab === "render" ? (
         <>
           <ProjectDropdown projectName={projectName} />
-          <RenderFromUploadZone currentImageUrl={currentImageUrl} />
+          <RenderFromUploadZone />
           <div className="studio-settings-row">
             <StylePicker value={style} onChange={setStyle} />
             <ResolutionPicker value={resolution} onChange={setResolution} />
@@ -52,7 +55,9 @@ export function ControlPanel({ projectId, projectName, currentImageUrl }: Contro
         </div>
       </div>
 
-      <div className="studio-generate-bar"><GenerateBar projectId={projectId} sourceImageUrl={currentImageUrl} prompt={prompt} /></div>
+      <div className="studio-generate-bar">
+        <GenerateBar projectId={projectId} prompt={prompt} />
+      </div>
     </div>
   );
 }

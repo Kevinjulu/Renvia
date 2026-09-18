@@ -77,14 +77,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
       return (
         <>
           <P>
-            The Studio interface is built around four fixed image slots and three supporting panels. This is
+            The Studio interface is built around building-view slots and three supporting panels. This is
             where everything sits and what each one does.
           </P>
 
           <H2>The four elevation slots</H2>
           <P>
-            Insert one image per side: front, left, back, and right elevation. Each slot holds a single source
-            image, and all four stay visible at once so you can compare sides while you edit.
+            Front, right, back, and left are always available. Upload only the sides you have — Generate
+            renders each uploaded view and skips empty slots. You can add extra views such as a roof or
+            isometric if you need them.
           </P>
 
           <H2>Material space and the cluster</H2>
@@ -120,7 +121,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           </P>
 
           <H2>Rendering and exporting</H2>
-          <P>Click Render to generate the elevation. Finished renders can be downloaded and exported one at a time.</P>
+          <P>
+            Click Generate to render each uploaded view. If you only uploaded a front elevation, you get that
+            one render. Finished renders can be downloaded and exported one at a time.
+          </P>
         </>
       );
     },

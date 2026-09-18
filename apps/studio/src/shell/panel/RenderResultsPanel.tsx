@@ -5,6 +5,7 @@ import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSett
 import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/placeImageNode";
 import { useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
 import { useApiClient } from "../../lib/apiClient";
+import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 
 const PROGRESS_CEILING = 92;
 
@@ -32,6 +33,8 @@ export function RenderResultsPanel() {
   const apiClient = useApiClient();
 
   const nodes = useCanvasStore((state) => state.nodes);
+  const views = useCanvasStore((state) => state.views);
+  const selectView = useCanvasStore((state) => state.selectView);
   const jobs = useRenderJobsStore((state) => state.jobs);
   const activeJobId = useRenderJobsStore((state) => state.activeJobId);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
@@ -65,7 +68,10 @@ export function RenderResultsPanel() {
     return () => clearTimeout(timeout);
   }, [copied]);
 
-  if (nodes.length === 0 || dismissed) return null;
+  const filled = filledBuildingViews(views, nodes);
+  const previewUrl = nodeForView(nodes, filled[0]?.id ?? "")?.imageUrl ?? nodes[0]?.imageUrl ?? null;
+
+  if ((filled.length === 0 && jobs.length === 0) || dismissed) return null;
 
   const handleCopyPrompt = () => {
     if (!activeJob) return;
@@ -80,6 +86,7 @@ export function RenderResultsPanel() {
 
   const handleSetAsBase = async () => {
     if (!activeJob?.resultImageUrl) return;
+    if (activeJob.viewKey) selectView(activeJob.viewKey);
     setIsPromoting(true);
     try {
       const { kind, node } = await setImageAsBaseNode(activeJob.resultImageUrl);
@@ -107,7 +114,7 @@ export function RenderResultsPanel() {
               key={job.id}
               type="button"
               onClick={() => setActiveJob(job.id)}
-              title={job.prompt}
+              title={job.viewLabel ? `${job.viewLabel}: ${job.prompt}` : job.prompt}
               className={`relative aspect-square shrink-0 overflow-hidden rounded-lg border bg-white ${
                 job.id === activeJob?.id ? "border-blueprint" : "border-hairline hover:border-hairline-strong"
               }`}
@@ -127,6 +134,11 @@ export function RenderResultsPanel() {
                   Failed
                 </span>
               )}
+              {job.viewLabel && (
+                <span className="absolute bottom-0 inset-x-0 truncate bg-black/55 px-1 py-0.5 text-[8px] font-medium text-white">
+                  {job.viewLabel}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -135,7 +147,7 @@ export function RenderResultsPanel() {
       <div className="flex h-full w-[300px] flex-col gap-4 overflow-y-auto border-l border-hairline bg-white p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-primary">
-            {activeJob ? "Render" : "Reference image"}
+            {activeJob ? (activeJob.viewLabel ? `Render · ${activeJob.viewLabel}` : "Render") : "Uploaded views"}
           </p>
           <div className="flex items-center gap-3 text-faint">
             {activeJob && (
@@ -183,11 +195,15 @@ export function RenderResultsPanel() {
 
         {!activeJob ? (
           <>
-            <div className="overflow-hidden rounded-lg border border-hairline">
-              <img src={nodes[0]?.imageUrl} alt="Uploaded elevation" className="aspect-[4/3] w-full object-cover" />
-            </div>
+            {previewUrl && (
+              <div className="overflow-hidden rounded-lg border border-hairline">
+                <img src={previewUrl} alt="Uploaded elevation" className="aspect-[4/3] w-full object-cover" />
+              </div>
+            )}
             <p className="text-xs text-muted">
-              Add a prompt and hit Generate to render this elevation — progress will show up here.
+              {filled.length === 1
+                ? "1 view uploaded → 1 render. Generate to queue it here."
+                : `${filled.length} views uploaded → ${filled.length} renders. Empty sides are skipped.`}
             </p>
           </>
         ) : (
@@ -236,7 +252,7 @@ export function RenderResultsPanel() {
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-              {["Render", activeJob.style, activeJob.resolution].map((tag) => (
+              {[activeJob.viewLabel, "Render", activeJob.style, activeJob.resolution].filter(Boolean).map((tag) => (
                 <span key={tag} className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-secondary">
                   {tag}
                 </span>

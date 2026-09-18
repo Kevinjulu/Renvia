@@ -19,6 +19,8 @@ const createRenderSchema = z.object({
   prompt: z.string().trim().min(1).max(2000),
   resolution: z.string().trim().min(1).max(20),
   style: z.string().trim().min(1).max(50),
+  viewKey: z.string().trim().min(1).max(80).optional(),
+  viewLabel: z.string().trim().min(1).max(80).optional(),
 });
 
 renders.post("/", async (c) => {
@@ -40,6 +42,8 @@ renders.post("/", async (c) => {
       prompt: buildRenderPrompt(body.prompt),
       resolution: body.resolution,
       style: body.style,
+      viewKey: body.viewKey,
+      viewLabel: body.viewLabel,
       status: "pending",
     })
     .returning();

@@ -25,6 +25,7 @@ export function CanvasStage() {
   const { stagePosition, camera, handleWheel, handleDragEnd } = usePanZoom();
   const nodes = useCanvasStore((state) => state.nodes);
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId);
+  const activeViewId = useCanvasStore((state) => state.activeViewId);
   const selectNode = useCanvasStore((state) => state.selectNode);
   const updateNode = useCanvasStore((state) => state.updateNode);
   const activeTab = useCanvasStore((state) => state.activeTab);
@@ -35,7 +36,8 @@ export function CanvasStage() {
   const targetNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const commitSelection = useSelectionToolStore((state) => state.commitSelection);
 
-  const targetNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null;
+  const visibleNode = nodes.find((node) => node.elevationId === activeViewId && node.imageUrl) ?? null;
+  const targetNode = visibleNode;
   const isDrawing = activeTab === "edit" && activeTool !== null;
 
   const [draftRect, setDraftRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -176,8 +178,8 @@ export function CanvasStage() {
         backgroundSize: "24px 24px",
       }}
     >
-      {nodes.length === 0 && <CanvasEmptyState />}
-      {activeTab === "edit" && nodes.length > 0 && <EditToolbar />}
+      { !visibleNode && <CanvasEmptyState />}
+      {activeTab === "edit" && visibleNode && <EditToolbar />}
       <Stage
         width={size.width}
         height={size.height}
@@ -200,20 +202,20 @@ export function CanvasStage() {
         }}
       >
         <Layer>
-          {nodes.map((node) => (
+          {visibleNode && (
             <ImageNode
-              key={node.id}
-              x={node.x}
-              y={node.y}
-              width={node.width}
-              height={node.height}
-              imageUrl={node.imageUrl}
-              selected={selectedNodeId === node.id}
+              key={visibleNode.id}
+              x={visibleNode.x}
+              y={visibleNode.y}
+              width={visibleNode.width}
+              height={visibleNode.height}
+              imageUrl={visibleNode.imageUrl}
+              selected={selectedNodeId === visibleNode.id}
               draggable={!isDrawing}
-              onSelect={isDrawing ? undefined : () => selectNode(node.id)}
-              onDragEnd={(x, y) => handleNodeDragEnd(node.id, x, y)}
+              onSelect={isDrawing ? undefined : () => selectNode(visibleNode.id)}
+              onDragEnd={(x, y) => handleNodeDragEnd(visibleNode.id, x, y)}
             />
-          ))}
+          )}
           <SelectionOverlay
             targetOrigin={targetNode && targetNodeId === targetNode.id ? { x: targetNode.x, y: targetNode.y } : null}
             selection={selection}

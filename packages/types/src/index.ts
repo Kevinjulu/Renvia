@@ -9,6 +9,8 @@ export interface RenderJob {
   prompt: string;
   resolution: string;
   style: string;
+  viewKey: string | null;
+  viewLabel: string | null;
   falRequestId: string | null;
   errorMessage: string | null;
   createdAt: string;
@@ -21,6 +23,8 @@ export interface CreateRenderRequest {
   prompt: string;
   resolution: string;
   style: string;
+  viewKey?: string;
+  viewLabel?: string;
 }
 
 export interface CreateRenderResponse {
@@ -71,6 +75,10 @@ export interface UpdateCanvasNodeRequest {
 
 export interface UpdateCanvasNodeResponse {
   node: CanvasNodeRecord;
+}
+
+export interface DeleteCanvasNodeResponse {
+  id: string;
 }
 
 export interface MeResponse {

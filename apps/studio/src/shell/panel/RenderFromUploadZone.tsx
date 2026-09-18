@@ -1,57 +1,152 @@
-import { DropZone } from "./DropZone";
+import { AddViewMenu } from "./AddViewMenu";
 import { useElevationUpload } from "../../canvas/hooks/useElevationUpload";
+import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
+import { filledBuildingViews, isDefaultViewId, nodeForView } from "../../canvas/buildingViews";
+import type { BuildingView } from "../../canvas/buildingViews";
+import { focusViewNode } from "../../canvas/utils/placeImageNode";
 
-interface RenderFromUploadZoneProps {
-  currentImageUrl: string | null;
+function hiddenFileInput(id: string, onFile: (file: File) => void) {
+  return (
+    <input
+      id={id}
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      className="hidden"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (file) onFile(file);
+      }}
+    />
+  );
 }
 
-export function RenderFromUploadZone({ currentImageUrl }: RenderFromUploadZoneProps) {
-  const { uploadElevation, isUploading } = useElevationUpload();
+export function RenderFromUploadZone() {
+  const views = useCanvasStore((state) => state.views);
+  const nodes = useCanvasStore((state) => state.nodes);
+  const activeViewId = useCanvasStore((state) => state.activeViewId);
+  const selectView = useCanvasStore((state) => state.selectView);
+  const { uploadToView, clearViewImage, removeView, isUploading, uploadingViewId } = useElevationUpload();
+  const filledCount = filledBuildingViews(views, nodes).length;
+
+  const pickFile = (viewId: string) => {
+    document.getElementById(`elevation-input-${viewId}`)?.click();
+  };
 
   return (
     <div className="building-views-panel">
-      <div className="flex items-center justify-between">
-        <div><p className="text-sm font-semibold text-primary">Building views</p><small>Upload up to 4 elevations for a unified render.</small></div>
-        <button type="button" disabled title="Duplicate (coming soon)" className="text-faint">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <rect x="2" y="4" width="7" height="8" rx="1" stroke="currentColor" strokeWidth="1.1" />
-            <path d="M5 4V3a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.1" />
-          </svg>
-        </button>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-primary">Building views</p>
+          <small>
+            {filledCount === 0
+              ? "Upload a view to render. Empty sides are skipped."
+              : filledCount === 1
+                ? "1 view uploaded → 1 render. Empty sides are skipped."
+                : `${filledCount} views uploaded → ${filledCount} renders. Empty sides are skipped.`}
+          </small>
+        </div>
+        <AddViewMenu />
       </div>
-      <div className="mt-3">
-        {currentImageUrl ? (
-          <div className="view-upload-card active">
-            <b>1</b><img src={currentImageUrl} alt="" />
-            <div><strong>Front view</strong>
-            <button
-              type="button"
-              onClick={() => document.getElementById("elevation-replace-input")?.click()}
-              className="text-xs font-medium text-blueprint hover:underline"
-            >
-              Replace image
-            </button>
-            </div><span>✓</span>
-            <input
-              id="elevation-replace-input"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void uploadElevation(file);
-              }}
-            />
-          </div>
-        ) : (
-          <DropZone
-            title="Drop an image to start"
+
+      <div className="building-view-list">
+        {views.map((view, index) => (
+          <ViewSlot
+            key={view.id}
+            view={view}
+            index={index}
+            active={view.id === activeViewId}
+            imageUrl={nodeForView(nodes, view.id)?.imageUrl ?? null}
+            uploading={uploadingViewId === view.id}
             disabled={isUploading}
-            onFileSelected={(file) => void uploadElevation(file)}
+            onSelect={() => {
+              selectView(view.id);
+              focusViewNode(view.id);
+            }}
+            onUpload={(file) => void uploadToView(view, file)}
+            onPick={() => pickFile(view.id)}
+            onClear={() => void clearViewImage(view.id)}
+            onRemove={isDefaultViewId(view.id) ? undefined : () => void removeView(view.id)}
           />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ViewSlot({
+  view,
+  index,
+  active,
+  imageUrl,
+  uploading,
+  disabled,
+  onSelect,
+  onUpload,
+  onPick,
+  onClear,
+  onRemove,
+}: {
+  view: BuildingView;
+  index: number;
+  active: boolean;
+  imageUrl: string | null;
+  uploading: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  onUpload: (file: File) => void;
+  onPick: () => void;
+  onClear: () => void;
+  onRemove?: () => void;
+}) {
+  const inputId = `elevation-input-${view.id}`;
+
+  if (!imageUrl) {
+    return (
+      <div className={`view-slot-empty ${active ? "active" : ""}`}>
+        {hiddenFileInput(inputId, onUpload)}
+        <button type="button" onClick={() => { onSelect(); onPick(); }} disabled={disabled} title={`Add ${view.label.toLowerCase()}`}>
+          <b>{index + 1}</b>
+          <p>
+            <strong>{view.label}</strong>
+            <small>{uploading ? "Uploading…" : "Add view"}</small>
+          </p>
+        </button>
+        {onRemove && (
+          <button type="button" className="view-slot-remove" onClick={onRemove} aria-label={`Remove ${view.label}`}>
+            ×
+          </button>
         )}
       </div>
-      {currentImageUrl && <div className="view-placeholders">{["Right view", "Back view", "Left view"].map((name,index)=><button type="button" key={name} title={`Add ${name.toLowerCase()}`}><b>{index+2}</b><span>＋</span><p><strong>{name}</strong><small>Add view</small></p></button>)}</div>}
+    );
+  }
+
+  return (
+    <div className={`view-upload-card ${active ? "active" : ""}`}>
+      {hiddenFileInput(inputId, onUpload)}
+      <b>{index + 1}</b>
+      <button type="button" className="view-upload-thumb" onClick={onSelect}>
+        <img src={imageUrl} alt="" />
+      </button>
+      <div>
+        <button type="button" className="view-upload-title" onClick={onSelect}>
+          <strong>{view.label}</strong>
+        </button>
+        <span className="view-upload-actions">
+          <button type="button" onClick={onPick} disabled={disabled}>
+            {uploading ? "Uploading…" : "Replace"}
+          </button>
+          <button type="button" onClick={onClear} disabled={disabled}>
+            Clear
+          </button>
+          {onRemove && (
+            <button type="button" onClick={onRemove} disabled={disabled}>
+              Remove
+            </button>
+          )}
+        </span>
+      </div>
+      <span>✓</span>
     </div>
   );
 }
