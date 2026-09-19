@@ -9,14 +9,14 @@ import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/
 import { useLoad } from "../lib/useLoad";
 import { useAdmin } from "../lib/useAdmin";
 
-const REASON_LABELS: Record<CreditLedgerReason, string> = {
+// Partial so this stays valid as new ledger reasons land in @renvia/types before
+// they're wired here; unmapped reasons fall back to the raw reason at the call site.
+const REASON_LABELS: Partial<Record<CreditLedgerReason, string>> = {
   signup_bonus: "Signup bonus",
   initial_grant: "Initial grant",
   admin_grant: "Admin adjustment",
   render: "Render",
   render_refund: "Refund (failed render)",
-  segment: "Segmentation",
-  segment_refund: "Refund (segmentation)",
   purchase: "Purchase",
 };
 
@@ -125,7 +125,7 @@ export function UserDetailPage() {
                     {entry.amount > 0 ? "+" : ""}
                     {formatNumber(entry.amount)}
                   </td>
-                  <td className="px-5 py-2.5 text-secondary">{REASON_LABELS[entry.reason]}</td>
+                  <td className="px-5 py-2.5 text-secondary">{REASON_LABELS[entry.reason] ?? entry.reason}</td>
                   <td className="px-5 py-2.5 text-xs text-muted">
                     {entry.note}
                     {entry.actorEmail && <span className="block text-faint">by {entry.actorEmail}</span>}
