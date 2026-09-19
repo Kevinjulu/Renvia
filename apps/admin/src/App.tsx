@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { SignIn, useAuth, useClerk, UserButton } from "@clerk/react";
 import type { LucideIcon } from "lucide-react";
-import { ImageIcon, LayoutDashboard, Menu, Settings, ShieldCheck, Sparkles, Users, X } from "lucide-react";
+import { ImageIcon, LayoutDashboard, Menu, Settings, Users, X } from "lucide-react";
 import type { MeResponse } from "@renvia/types";
 import { useAdminApi } from "./lib/api";
 import { AdminContext } from "./lib/useAdmin";
@@ -126,14 +126,8 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
             <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Renvia Admin</p>
             <h2 className="truncate text-[15px] font-semibold text-primary">{active?.title ?? "Overview"}</h2>
           </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden items-center gap-1.5 rounded-full border border-hairline bg-canvas px-3 py-1.5 text-xs font-medium text-muted shadow-card sm:inline-flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              All systems operational
-            </span>
-            <div className="lg:hidden">
-              <UserButton />
-            </div>
+          <div className="ml-auto flex items-center gap-3 lg:hidden">
+            <UserButton />
           </div>
         </header>
 
@@ -148,7 +142,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {
   return (
     <aside
-      className={`ink-scroll fixed inset-y-0 left-0 z-40 flex w-[264px] flex-col overflow-y-auto bg-ink-radial px-4 py-5 transition-transform duration-300 lg:static lg:z-0 lg:translate-x-0 ${
+      className={`ink-scroll fixed left-0 top-0 z-40 flex h-screen w-[264px] shrink-0 flex-col overflow-y-auto bg-ink-radial px-4 py-5 transition-transform duration-300 lg:sticky lg:z-0 lg:translate-x-0 ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
@@ -184,27 +178,11 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
         ))}
       </nav>
 
-      <div className="mt-auto space-y-4 pt-6">
-        <div className="rounded-2xl border border-ink-700/70 bg-ink-800/50 p-4">
-          <div className="flex items-center gap-2 text-white">
-            <Sparkles size={15} className="text-glow" />
-            <span className="text-xs font-semibold">Admin workspace</span>
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-300">
-            Full control over users, credits and rendering spend.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-2xl border border-ink-700/70 bg-ink-850/60 px-3 py-2.5">
-          <UserButton
-            appearance={{ elements: { avatarBox: "h-8 w-8" } }}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-white">{me.email}</p>
-            <p className="flex items-center gap-1 text-[10px] text-ink-400">
-              <ShieldCheck size={11} className="text-emerald-400" /> Administrator
-            </p>
-          </div>
+      <div className="mt-auto flex items-center gap-3 border-t border-ink-700/70 pt-4">
+        <UserButton appearance={{ elements: { avatarBox: "h-8 w-8" } }} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-white">{me.email}</p>
+          <p className="text-[10px] text-ink-400">Signed in as admin</p>
         </div>
       </div>
     </aside>
@@ -212,21 +190,10 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
 }
 
 function Brand({ tone = "dark" }: { tone?: "dark" | "light" }) {
-  const wordmark = tone === "light" ? "text-white" : "text-primary";
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent-sheen text-white shadow-glow">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
-          <path d="M4 20 12 4l8 16M8 20l4-8 4 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <span className={`flex items-baseline gap-1.5 font-display text-[15px] font-bold uppercase tracking-[0.16em] ${wordmark}`}>
-        Renvia
-        <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-semibold tracking-normal ${tone === "light" ? "bg-ink-700 text-ink-200" : "bg-surface-muted text-muted"}`}>
-          ADMIN
-        </span>
-      </span>
-    </div>
+    <p className={`text-sm font-semibold tracking-tight ${tone === "light" ? "text-white" : "text-primary"}`}>
+      Renvia <span className={`font-normal ${tone === "light" ? "text-ink-300" : "text-muted"}`}>Admin</span>
+    </p>
   );
 }
 
