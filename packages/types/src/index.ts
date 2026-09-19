@@ -16,6 +16,8 @@ export interface RenderJob {
   model: string | null;
   /** Estimated engine cost in USD micros (1e-6 USD); 0 in mock mode. */
   costMicros: number;
+  /** Settings the render was generated with, for "use prompt and settings". */
+  settings: RenderGenerationSettings | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,19 +25,31 @@ export interface RenderJob {
 /** mock = free placeholder results; dev = cheapest real model; prod = production model. */
 export type RenderEngineMode = "mock" | "dev" | "prod";
 
+/** drawing = CAD/line elevation (geometry-locked model); photo = photo or 3D massing. */
+export type RenderSourceType = "drawing" | "photo";
+
+/** Which model family serves a render; references take precedence over the source type. */
+export type RenderRoute = RenderSourceType | "references";
+
+export function renderRouteFor(sourceType: RenderSourceType, referenceCount: number): RenderRoute {
+  return referenceCount > 0 ? "references" : sourceType;
+}
+
 export interface RenderBudgetResponse {
   mode: RenderEngineMode;
-  unitCostUsd: number;
+  /** Estimated cost of one image per route in the current mode. */
+  costByRouteUsd: Record<RenderRoute, number>;
   spentUsd: number;
   budgetUsd: number;
 }
 
-/** Optional generation knobs — accepted now, mapped onto model inputs in the engine. */
+/** Optional generation knobs, mapped onto model inputs by the API's model registry. */
 export interface RenderGenerationSettings {
+  sourceType?: RenderSourceType;
+  /** 1 (subtle) – 4 (maximum). */
   styleInfluence?: number;
   preserveStructure?: boolean;
   referenceImageUrls?: string[];
-  atmospherePreset?: string | null;
 }
 
 export interface CreateRenderRequest {

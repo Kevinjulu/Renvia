@@ -41,8 +41,7 @@ export function RenderResultsPanel() {
   const removeJob = useRenderJobsStore((state) => state.removeJob);
   const favoriteIds = useRenderJobsStore((state) => state.favoriteIds);
   const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
-  const setPrompt = useGenerationSettingsStore((state) => state.setPrompt);
-  const setResolution = useGenerationSettingsStore((state) => state.setResolution);
+  const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
 
   const [dismissed, setDismissed] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
@@ -80,8 +79,7 @@ export function RenderResultsPanel() {
 
   const handleUsePromptAndSettings = () => {
     if (!activeJob) return;
-    setPrompt(activeJob.prompt);
-    setResolution(activeJob.resolution);
+    applyRenderSettings(activeJob);
   };
 
   const handleSetAsBase = async () => {
@@ -114,7 +112,7 @@ export function RenderResultsPanel() {
               key={job.id}
               type="button"
               onClick={() => setActiveJob(job.id)}
-              title={job.viewLabel ? `${job.viewLabel}: ${job.prompt}` : job.prompt}
+              title={[job.viewLabel, job.prompt].filter(Boolean).join(": ") || "Render"}
               className={`relative aspect-square shrink-0 overflow-hidden rounded-lg border bg-white ${
                 job.id === activeJob?.id ? "border-blueprint" : "border-hairline hover:border-hairline-strong"
               }`}
@@ -237,22 +235,33 @@ export function RenderResultsPanel() {
             </div>
 
             <div>
-              <p className="line-clamp-4 text-sm text-secondary">{activeJob.prompt}</p>
-              <button
-                type="button"
-                onClick={handleCopyPrompt}
-                className="mt-1.5 flex items-center gap-1 text-xs font-medium text-blueprint hover:underline"
-              >
-                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <rect x="4.5" y="4.5" width="8" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.1" />
-                  <path d="M2.5 9.5V2.5a1 1 0 0 1 1-1h7" stroke="currentColor" strokeWidth="1.1" />
-                </svg>
-                {copied ? "Copied" : "Copy prompt"}
-              </button>
+              {activeJob.prompt ? (
+                <>
+                  <p className="line-clamp-4 text-sm text-secondary">{activeJob.prompt}</p>
+                  <button
+                    type="button"
+                    onClick={handleCopyPrompt}
+                    className="mt-1.5 flex items-center gap-1 text-xs font-medium text-blueprint hover:underline"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                      <rect x="4.5" y="4.5" width="8" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.1" />
+                      <path d="M2.5 9.5V2.5a1 1 0 0 1 1-1h7" stroke="currentColor" strokeWidth="1.1" />
+                    </svg>
+                    {copied ? "Copied" : "Copy prompt"}
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-muted">No prompt — rendered from style and settings.</p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-              {[activeJob.viewLabel, "Render", activeJob.style, activeJob.resolution].filter(Boolean).map((tag) => (
+              {[
+                activeJob.viewLabel,
+                activeJob.settings?.sourceType === "drawing" ? "From drawing" : "From photo",
+                activeJob.style,
+                activeJob.resolution,
+              ].filter(Boolean).map((tag) => (
                 <span key={tag} className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-secondary">
                   {tag}
                 </span>
@@ -260,11 +269,24 @@ export function RenderResultsPanel() {
             </div>
 
             <div>
-              <p className="text-xs font-medium text-muted">Reference image</p>
+              <p className="text-xs font-medium text-muted">Source</p>
               <div className="mt-1.5 h-14 w-14 overflow-hidden rounded-md border border-hairline">
                 <img src={activeJob.sourceImageUrl} alt="" className="h-full w-full object-cover" />
               </div>
             </div>
+
+            {(activeJob.settings?.referenceImageUrls?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted">References</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {activeJob.settings!.referenceImageUrls!.map((url) => (
+                    <div key={url} className="h-14 w-14 overflow-hidden rounded-md border border-hairline">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-auto flex flex-col gap-2 pt-2">
               <button

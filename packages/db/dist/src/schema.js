@@ -47,6 +47,7 @@ export const renders = pgTable("renders", {
     // (1e-6 USD) — summed to enforce the fal spending cap.
     model: text("model"),
     costMicros: integer("cost_micros").notNull().default(0),
+    settings: jsonb("settings").$type(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

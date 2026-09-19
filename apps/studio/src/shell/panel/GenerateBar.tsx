@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CreateRenderResponse, RenderBudgetResponse } from "@renvia/types";
+import { renderRouteFor, type CreateRenderResponse, type RenderBudgetResponse } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
@@ -25,10 +25,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const resolution = useGenerationSettingsStore((state) => state.resolution);
   const style = useGenerationSettingsStore((state) => state.style);
+  const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
-  const atmospherePreset = useGenerationSettingsStore((state) => state.atmospherePreset);
   const addJob = useRenderJobsStore((state) => state.addJob);
   const [count, setCount] = useState(2);
   const [status, setStatus] = useState<string | null>(null);
@@ -48,7 +48,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const filled = filledBuildingViews(views, nodes);
   const isEdit = activeTab === "edit";
   const imageCount = filled.length * count;
-  const estimateUsd = budget ? imageCount * budget.unitCostUsd : 0;
+  const route = renderRouteFor(sourceType, referenceImageUrls.length);
+  const estimateUsd = budget ? imageCount * budget.costByRouteUsd[route] : 0;
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
   const canGenerate = !isEdit && filled.length > 0 && !isSubmitting && !isOverBudget;
@@ -64,10 +65,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   })();
 
   const generationSettings = {
+    sourceType,
     styleInfluence,
     preserveStructure,
     referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
-    atmospherePreset,
   };
 
   const handleGenerate = async () => {
@@ -82,7 +83,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           apiClient.createRender({
             projectId,
             sourceImageUrl: node.imageUrl,
-            prompt: prompt.trim() || "Photorealistic architectural visualization matching this elevation",
+            prompt: prompt.trim(),
             resolution,
             style,
             viewKey: view.id,

@@ -1,3 +1,4 @@
+import type { RenderSourceType } from "@renvia/types";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { ReferenceBar } from "./ReferenceBar";
@@ -7,6 +8,11 @@ interface RenderTabBodyProps {
   onPromptChange: (value: string) => void;
 }
 
+const SOURCE_TYPES: { id: RenderSourceType; label: string; hint: string }[] = [
+  { id: "photo", label: "Photo / 3D", hint: "A photo or 3D massing render of the building" },
+  { id: "drawing", label: "Drawing", hint: "A CAD or line elevation — its lines are followed exactly" },
+];
+
 const PRESETS = [
   { label: "Golden hour", prompt: "Warm golden-hour light, long soft shadows and a calm premium atmosphere" },
   { label: "Soft daylight", prompt: "Soft overcast daylight, balanced exposure and natural architectural materials" },
@@ -14,6 +20,8 @@ const PRESETS = [
 ];
 
 export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
+  const sourceType = useGenerationSettingsStore((state) => state.sourceType);
+  const setSourceType = useGenerationSettingsStore((state) => state.setSourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const setStyleInfluence = useGenerationSettingsStore((state) => state.setStyleInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
@@ -56,6 +64,23 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
       </section>
 
       <div className="render-controls">
+        <div className="studio-source-control">
+          <strong>Source</strong>
+          <div role="group" aria-label="Source image type">
+            {SOURCE_TYPES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                title={option.hint}
+                aria-pressed={sourceType === option.id}
+                className={sourceType === option.id ? "is-active" : ""}
+                onClick={() => setSourceType(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="studio-influence-control">
           <strong>Style influence</strong>
           <div>

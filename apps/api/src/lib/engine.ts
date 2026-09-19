@@ -1,41 +1,14 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
-import type { RenderBudgetResponse, RenderEngineMode } from "@renvia/types";
+import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
+import { fitToOneMegapixel, readImageSize, type ImageSize } from "./imageSize.js";
+import { costByRouteUsd, modelById } from "./models.js";
+import { buildEnginePrompt } from "./prompts.js";
 import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
 
 type RenderRow = typeof schema.renders.$inferSelect;
-
-interface ModeConfig {
-  model: string;
-  /** Per-image cost in USD micros, from fal's pricing API (rounded up for compute-second models). */
-  costMicros: number;
-  buildInput: (imageUrl: string, prompt: string) => Record<string, unknown>;
-}
-
-const MODES: Record<RenderEngineMode, ModeConfig> = {
-  mock: { model: "mock", costMicros: 0, buildInput: () => ({}) },
-  // $0.00125/compute-second, ~1–2s per 4-step image — only for exercising the pipeline.
-  dev: {
-    model: "fal-ai/fast-lightning-sdxl/image-to-image",
-    costMicros: 3_000,
-    buildInput: (imageUrl, prompt) => ({
-      image_url: imageUrl,
-      prompt,
-      strength: 0.6,
-      num_inference_steps: "4",
-      preserve_aspect_ratio: true,
-      format: "jpeg",
-    }),
-  },
-  // $0.04/image.
-  prod: {
-    model: "fal-ai/flux-pro/kontext",
-    costMicros: 40_000,
-    buildInput: (imageUrl, prompt) => ({ image_url: imageUrl, prompt, output_format: "jpeg" }),
-  },
-};
 
 /** How long a mock render stays "processing" so the studio's progress UI is exercised. */
 const MOCK_DURATION_MS = 4_000;
@@ -49,14 +22,6 @@ const MICROS_PER_USD = 1_000_000;
 export function engineMode(env: Env): RenderEngineMode {
   const mode = env.FAL_MODE?.trim();
   return mode === "dev" || mode === "prod" ? mode : "mock";
-}
-
-export function modeConfig(env: Env): ModeConfig {
-  return MODES[engineMode(env)];
-}
-
-function modeForModel(model: string | null): ModeConfig | undefined {
-  return Object.values(MODES).find((mode) => mode.model === model);
 }
 
 function falClient(env: Env): FalClient {
@@ -83,15 +48,14 @@ async function spentMicros(db: Database): Promise<number> {
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {
   return {
     mode: engineMode(env),
-    unitCostUsd: modeConfig(env).costMicros / MICROS_PER_USD,
+    costByRouteUsd: costByRouteUsd(engineMode(env)),
     spentUsd: (await spentMicros(db)) / MICROS_PER_USD,
     budgetUsd: budgetMicros(env) / MICROS_PER_USD,
   };
 }
 
-/** True when one more render at the current mode's price would exceed FAL_BUDGET_USD. */
-export async function wouldExceedBudget(env: Env, db: Database): Promise<boolean> {
-  const { costMicros } = modeConfig(env);
+/** True when one more render costing `costMicros` would exceed FAL_BUDGET_USD. */
+export async function wouldExceedBudget(env: Env, db: Database, costMicros: number): Promise<boolean> {
   if (costMicros === 0) return false;
   return (await spentMicros(db)) + costMicros > budgetMicros(env);
 }
@@ -140,14 +104,20 @@ function errorMessageOf(error: unknown): string {
  * avoids fetching arbitrary client-supplied URLs server-side. Anything else is handed
  * to fal as-is.
  */
-async function falReachableImageUrl(env: Env, fal: FalClient, url: string, origin: string): Promise<string> {
+async function falReachableImage(
+  env: Env,
+  fal: FalClient,
+  url: string,
+  origin: string,
+): Promise<{ url: string; size: ImageSize | null }> {
   const key = ownUploadKey(url, origin);
-  if (!key) return url;
+  if (!key) return { url, size: null };
 
   const object = await getObject(env, key);
-  if (!object) throw new Error("Source image not found");
-  const blob = await new Response(object.body).blob();
-  return fal.storage.upload(new Blob([blob], { type: object.contentType }));
+  if (!object) throw new Error("Image not found");
+  const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
+  const uploadedUrl = await fal.storage.upload(new Blob([bytes], { type: object.contentType }));
+  return { url: uploadedUrl, size: readImageSize(bytes) };
 }
 
 function webhookUrlFor(origin: string): string | undefined {
@@ -159,16 +129,30 @@ function webhookUrlFor(origin: string): string | undefined {
 
 /** Hands a freshly inserted pending render to the engine. `origin` is the API's public origin. */
 export async function submitRender(env: Env, db: Database, render: RenderRow, origin: string): Promise<RenderRow> {
-  const mode = modeForModel(render.model);
-  if (!mode || mode.model === "mock") {
+  const model = modelById(render.model);
+  if (!model || model.id === "mock") {
     return updateRender(db, render.id, { status: "processing" });
   }
 
   try {
     const fal = falClient(env);
-    const imageUrl = await falReachableImageUrl(env, fal, render.sourceImageUrl, origin);
-    const { request_id } = await fal.queue.submit(mode.model, {
-      input: mode.buildInput(imageUrl, render.prompt),
+    const settings = render.settings ?? {};
+    const influence = settings.styleInfluence ?? 2;
+    const preserveStructure = settings.preserveStructure ?? true;
+    const [source, ...references] = await Promise.all(
+      [render.sourceImageUrl, ...(settings.referenceImageUrls ?? [])].map((url) => falReachableImage(env, fal, url, origin)),
+    );
+    const route = renderRouteFor(settings.sourceType ?? "photo", references.length);
+
+    const { request_id } = await fal.queue.submit(model.id, {
+      input: model.buildInput({
+        imageUrl: source!.url,
+        referenceUrls: references.map((reference) => reference.url),
+        prompt: buildEnginePrompt({ prompt: render.prompt, style: render.style, route, preserveStructure, influence }),
+        influence,
+        preserveStructure,
+        outputSize: source!.size ? fitToOneMegapixel(source!.size) : null,
+      }),
       webhookUrl: webhookUrlFor(origin),
     });
     return updateRender(db, render.id, { status: "processing", falRequestId: request_id });

@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, integer, jsonb, uuid } from "drizzle-orm/pg-core";
+import type { RenderGenerationSettings } from "@renvia/types";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -51,6 +52,7 @@ export const renders = pgTable("renders", {
   // (1e-6 USD) — summed to enforce the fal spending cap.
   model: text("model"),
   costMicros: integer("cost_micros").notNull().default(0),
+  settings: jsonb("settings").$type<RenderGenerationSettings>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

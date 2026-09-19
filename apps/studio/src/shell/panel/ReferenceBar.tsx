@@ -6,6 +6,9 @@ import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../
 
 type Panel = "library" | "unsplash" | "more" | null;
 
+/** Matches the API's per-render reference limit. */
+const MAX_REFERENCES = 8;
+
 function Spinner({ size = 16 }: { size?: number }) {
   return (
     <svg className="animate-spin" width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -53,11 +56,13 @@ function ReferenceModal({
 
 export function ReferenceBar() {
   const apiClient = useApiClient();
+  // The store is the source of truth, so the Render and Edit tabs share one attachment
+  // list and restoring a previous render's settings shows its references here.
+  const attachedUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [openPanel, setOpenPanel] = useState<Panel>(null);
-  const [attached, setAttached] = useState<ReferenceImage[]>([]);
 
   const [library, setLibrary] = useState<ReferenceImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -84,24 +89,14 @@ export function ReferenceBar() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [openPanel]);
 
-  const syncUrls = (next: ReferenceImage[]) => {
-    setReferenceImageUrls(next.map((item) => item.url));
-  };
-
   const attach = (reference: ReferenceImage) => {
-    setAttached((current) => {
-      const next = current.some((item) => item.id === reference.id) ? current : [...current, reference];
-      syncUrls(next);
-      return next;
-    });
+    const current = useGenerationSettingsStore.getState().referenceImageUrls;
+    if (current.includes(reference.url) || current.length >= MAX_REFERENCES) return;
+    setReferenceImageUrls([...current, reference.url]);
   };
 
-  const detach = (id: string) => {
-    setAttached((current) => {
-      const next = current.filter((item) => item.id !== id);
-      syncUrls(next);
-      return next;
-    });
+  const detach = (url: string) => {
+    setReferenceImageUrls(useGenerationSettingsStore.getState().referenceImageUrls.filter((item) => item !== url));
   };
 
   const loadLibrary = async () => {
@@ -191,12 +186,12 @@ export function ReferenceBar() {
   return (
     <>
       <div className="reference-bar">
-        {attached.length > 0 && (
+        {attachedUrls.length > 0 && (
           <div className="reference-attached">
-            {attached.map((reference) => (
-              <div key={reference.id} className="reference-attached-thumb">
-                <img src={reference.url} alt="" />
-                <button type="button" onClick={() => detach(reference.id)} aria-label="Remove reference">
+            {attachedUrls.map((url) => (
+              <div key={url} className="reference-attached-thumb">
+                <img src={url} alt="" />
+                <button type="button" onClick={() => detach(url)} aria-label="Remove reference">
                   <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                     <path d="m2 2 6 6M8 2 2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>

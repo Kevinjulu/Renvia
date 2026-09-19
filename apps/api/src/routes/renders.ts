@@ -6,8 +6,9 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { buildRenderPrompt } from "../lib/prompts.js";
-import { getBudget, modeConfig, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import { renderRouteFor } from "@renvia/types";
+import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import { modelFor } from "../lib/models.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -16,18 +17,18 @@ renders.use("*", requireAuth);
 const createRenderSchema = z.object({
   projectId: z.string().uuid(),
   sourceImageUrl: z.string().url(),
-  prompt: z.string().trim().min(1).max(2000),
+  // Optional — the engine composes the full model prompt from style and settings.
+  prompt: z.string().trim().max(2000),
   resolution: z.string().trim().min(1).max(20),
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
   viewLabel: z.string().trim().min(1).max(80).optional(),
-  // Accepted now; mapped onto model inputs once the fal engine is connected.
   generationSettings: z
     .object({
+      sourceType: z.enum(["drawing", "photo"]).optional(),
       styleInfluence: z.number().int().min(1).max(4).optional(),
       preserveStructure: z.boolean().optional(),
       referenceImageUrls: z.array(z.string().url()).max(8).optional(),
-      atmospherePreset: z.string().trim().max(80).nullable().optional(),
     })
     .optional(),
 });
@@ -43,26 +44,27 @@ renders.post("/", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  if (await wouldExceedBudget(c.env, db)) {
+  const settings = body.generationSettings ?? {};
+  const route = renderRouteFor(settings.sourceType ?? "photo", settings.referenceImageUrls?.length ?? 0);
+  const model = modelFor(engineMode(c.env), route);
+  if (await wouldExceedBudget(c.env, db, model.costMicros)) {
     return c.json({ error: "Render budget exhausted" }, 402);
   }
-
-  const preserveStructure = body.generationSettings?.preserveStructure ?? true;
-  const { model, costMicros } = modeConfig(c.env);
 
   const [created] = await db
     .insert(schema.renders)
     .values({
       projectId: body.projectId,
       sourceImageUrl: body.sourceImageUrl,
-      prompt: buildRenderPrompt(body.prompt, { preserveStructure }),
+      prompt: body.prompt,
       resolution: body.resolution,
       style: body.style,
       viewKey: body.viewKey,
       viewLabel: body.viewLabel,
       status: "pending",
-      model,
-      costMicros,
+      model: model.id,
+      costMicros: model.costMicros,
+      settings,
     })
     .returning();
 

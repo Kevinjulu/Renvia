@@ -284,8 +284,42 @@
   cursor: pointer;
 }
 
-.render-controls > label + label {
+.render-controls > label + label,
+.render-controls > .studio-source-control + label {
   border-top: 1px solid #f0f1f3;
+}
+
+.studio-source-control {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-source-control > div {
+  display: flex;
+  gap: 2px;
+  border-radius: 8px;
+  padding: 3px;
+  background: #f2f3f5;
+}
+
+.studio-source-control button {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: #4b5563;
+  font-size: 12px !important;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.studio-source-control button.is-active {
+  background: #fff;
+  color: #3157ef;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 .render-controls strong {

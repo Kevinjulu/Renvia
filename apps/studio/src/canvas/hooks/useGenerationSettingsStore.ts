@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { RenderGenerationSettings, RenderSourceType } from "@renvia/types";
 
 export type EditModeKind = "element" | "building" | "prompt";
 export type EditAction = "add" | "remove" | "change";
@@ -11,9 +12,11 @@ interface GenerationSettingsState {
   editPrompt: string;
   resolution: string;
   style: string;
+  sourceType: RenderSourceType;
   styleInfluence: number;
   preserveStructure: boolean;
   referenceImageUrls: string[];
+  /** UI-only: which quick-atmosphere chip filled the prompt. */
   atmospherePreset: string | null;
   editMode: EditModeKind;
   editAction: EditAction | null;
@@ -22,6 +25,7 @@ interface GenerationSettingsState {
   setEditPrompt: (prompt: string) => void;
   setResolution: (resolution: string) => void;
   setStyle: (style: string) => void;
+  setSourceType: (sourceType: RenderSourceType) => void;
   setStyleInfluence: (value: number) => void;
   setPreserveStructure: (value: boolean) => void;
   setReferenceImageUrls: (urls: string[]) => void;
@@ -29,6 +33,13 @@ interface GenerationSettingsState {
   setEditMode: (mode: EditModeKind) => void;
   setEditAction: (action: EditAction | null) => void;
   setSelectionMode: (mode: SelectionMode) => void;
+  /** Restores a previous render's prompt, style and generation settings. */
+  applyRenderSettings: (render: {
+    prompt: string;
+    style: string;
+    resolution: string;
+    settings: RenderGenerationSettings | null;
+  }) => void;
 }
 
 export const useGenerationSettingsStore = create<GenerationSettingsState>((set) => ({
@@ -36,6 +47,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   editPrompt: "",
   resolution: "1K",
   style: "Photorealistic",
+  sourceType: "photo",
   styleInfluence: 2,
   preserveStructure: true,
   referenceImageUrls: [],
@@ -47,6 +59,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setEditPrompt: (editPrompt) => set({ editPrompt }),
   setResolution: (resolution) => set({ resolution }),
   setStyle: (style) => set({ style }),
+  setSourceType: (sourceType) => set({ sourceType }),
   setStyleInfluence: (styleInfluence) => set({ styleInfluence }),
   setPreserveStructure: (preserveStructure) => set({ preserveStructure }),
   setReferenceImageUrls: (referenceImageUrls) => set({ referenceImageUrls }),
@@ -54,4 +67,15 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setEditMode: (editMode) => set({ editMode }),
   setEditAction: (editAction) => set({ editAction }),
   setSelectionMode: (selectionMode) => set({ selectionMode }),
+  applyRenderSettings: ({ prompt, style, resolution, settings }) =>
+    set((state) => ({
+      prompt,
+      style,
+      resolution,
+      atmospherePreset: null,
+      sourceType: settings?.sourceType ?? state.sourceType,
+      styleInfluence: settings?.styleInfluence ?? state.styleInfluence,
+      preserveStructure: settings?.preserveStructure ?? state.preserveStructure,
+      referenceImageUrls: settings?.referenceImageUrls ?? [],
+    })),
 }));
