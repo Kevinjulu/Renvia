@@ -8,6 +8,7 @@ import { useSelectionToolStore } from "./hooks/useSelectionToolStore";
 import { ImageNode } from "./shapes/ImageNode";
 import { SelectionOverlay } from "./shapes/SelectionOverlay";
 import { CanvasEmptyState } from "./CanvasEmptyState";
+import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { EditToolbar } from "./EditToolbar";
 import { useApiClient } from "../lib/apiClient";
 
@@ -37,6 +38,8 @@ export function CanvasStage() {
   const commitSelection = useSelectionToolStore((state) => state.commitSelection);
 
   const visibleNode = nodes.find((node) => node.elevationId === activeViewId && node.imageUrl) ?? null;
+  // A render open full-size covers the canvas, so the upload prompt must not show through it.
+  const isPreviewingRender = useRenderJobsStore((state) => state.previewJobId !== null);
   const targetNode = visibleNode;
   const isDrawing = activeTab === "edit" && activeTool !== null;
 
@@ -178,7 +181,7 @@ export function CanvasStage() {
         backgroundSize: "24px 24px",
       }}
     >
-      { !visibleNode && <CanvasEmptyState />}
+      {!visibleNode && !isPreviewingRender && <CanvasEmptyState />}
       {activeTab === "edit" && visibleNode && <EditToolbar />}
       <Stage
         width={size.width}
