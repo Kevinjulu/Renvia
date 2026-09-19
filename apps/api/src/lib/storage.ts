@@ -11,12 +11,41 @@ export function extensionForContentType(contentType: string): string | null {
   return EXTENSION_BY_CONTENT_TYPE[contentType] ?? null;
 }
 
-export function objectKeyFor(clerkId: string, contentType: string): string {
+function requireExtension(contentType: string): string {
   const extension = extensionForContentType(contentType);
   if (!extension) {
     throw new Error(`Unsupported content type: ${contentType}`);
   }
-  return `elevations/${clerkId}/${crypto.randomUUID()}.${extension}`;
+  return extension;
+}
+
+export function objectKeyFor(clerkId: string, contentType: string): string {
+  return `elevations/${clerkId}/${crypto.randomUUID()}.${requireExtension(contentType)}`;
+}
+
+/** Deterministic per render, so a result stored twice by racing refreshes overwrites itself. */
+export function renderResultKeyFor(renderId: string, contentType: string): string {
+  return `renders/${renderId}.${requireExtension(contentType)}`;
+}
+
+// The whole app is mounted under "/api" for Vercel's api/ directory convention
+// (see apps/api/api/[...route].ts), so served objects live under this prefix.
+const UPLOADS_PATH = "/api/uploads/";
+
+export function publicUploadUrl(origin: string, key: string): string {
+  return `${origin}${UPLOADS_PATH}${key}`;
+}
+
+/** The storage key if `url` points at one of our own served uploads, else null. */
+export function ownUploadKey(url: string, origin: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== origin || !parsed.pathname.startsWith(UPLOADS_PATH)) return null;
+  return decodeURIComponent(parsed.pathname.slice(UPLOADS_PATH.length)) || null;
 }
 
 function createStorageClient(env: Env): S3Client {

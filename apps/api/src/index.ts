@@ -18,7 +18,6 @@ export interface Env {
   FAL_MODE?: string;
   /** Hard cap on total estimated fal spend, in USD. Unset means no paid renders. */
   FAL_BUDGET_USD?: string;
-  REPLICATE_API_TOKEN: string;
   NEON_STORAGE_ACCESS_KEY_ID: string;
   NEON_STORAGE_SECRET_ACCESS_KEY: string;
   NEON_STORAGE_ENDPOINT: string;

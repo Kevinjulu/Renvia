@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getObject, objectKeyFor, putObject } from "../lib/storage.js";
+import { getObject, objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
 
 export const uploads = new Hono<AppContext>();
 
@@ -21,11 +21,7 @@ uploads.post("/", requireAuth, async (c) => {
 
   await putObject(c.env, key, bytes, contentType);
 
-  const origin = new URL(c.req.url).origin;
-  // Hardcoded "/api" because the whole app is mounted under that prefix for
-  // Vercel's api/ directory convention (see apps/api/api/[...route].ts) —
-  // this is the one place an absolute externally-reachable URL is built by hand.
-  const response: UploadImageResponse = { publicUrl: `${origin}/api/uploads/${key}` };
+  const response: UploadImageResponse = { publicUrl: publicUploadUrl(new URL(c.req.url).origin, key) };
   return c.json(response, 201);
 });
 

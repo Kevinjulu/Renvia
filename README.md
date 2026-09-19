@@ -31,7 +31,7 @@ contracts through `packages/*` via the pnpm workspace protocol.
 | Database | Postgres (Neon) via Drizzle ORM |
 | File storage | Cloudflare R2 |
 | Async jobs | fal queue (submit + webhook / status poll) |
-| AI orchestration | Vercel AI SDK — `@ai-sdk/fal` (primary), `@ai-sdk/replicate` (fallback/custom models) |
+| AI rendering | fal.ai via `@fal-ai/client` (queue submit, storage, webhooks) — see `apps/api/src/lib/engine.ts` |
 
 ## Getting started
 
@@ -66,7 +66,6 @@ Copy `.env.example` to `.env` at the repo root and fill in:
   (cheapest model) or `prod`. Anything else falls back to `mock`.
 - `FAL_BUDGET_USD` — hard cap on total estimated fal spend; `POST /renders`
   returns 402 once reached. Unset blocks all paid renders.
-- `REPLICATE_API_TOKEN` — fallback/custom-model provider.
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` —
   Cloudflare R2 for uploaded source images and generated renders.
 
@@ -94,10 +93,10 @@ Schema lives in [packages/db/src/schema.ts](packages/db/src/schema.ts):
 - `packages/db`'s client uses `drizzle-orm/neon-http` (not `node-postgres`),
   since `apps/api` runs on Cloudflare Workers, which can't hold raw TCP
   connections — this driver works from both Node and Workers.
-- Route handlers in `apps/api` (`renders`, `uploads`, `webhooks/fal`,
-  `jobs/generateRender`) are structurally wired (typed, mounted, auth-gated)
-  but return placeholder data — no DB writes or real AI calls yet, per the
-  scaffolding-only brief.
+- Renders flow through `apps/api/src/lib/engine.ts`: `POST /renders` submits
+  to the fal queue, and jobs complete via the `/webhooks/fal` callback (public
+  deployments) or on the next `GET /renders/:id` poll (local dev, and as a
+  fallback). Results are copied into our storage, since fal's URLs expire.
 - Protected `apps/api` routes (`/renders`, `/uploads`) return a 500 in local
   dev until `CLERK_SECRET_KEY` is set — `@hono/clerk-auth` throws on a
   missing key rather than degrading to "unauthenticated". `/health` doesn't
@@ -106,7 +105,7 @@ Schema lives in [packages/db/src/schema.ts](packages/db/src/schema.ts):
 ## Environment-specific fixes baked into `pnpm-workspace.yaml`
 
 Verifying this scaffold (`pnpm install`, typecheck, `pnpm dev`, `pnpm build`,
-all green) surfaced three non-obvious issues, fixed at the root rather than
+all green) surfaced two non-obvious issues, fixed at the root rather than
 worked around:
 
 - **`turbo` pinned to `2.3.3`** (exact, not `^`). Turbo `2.10.12`'s
@@ -121,7 +120,3 @@ worked around:
   Studio's build, breaking every JSX component from those libraries. This
   makes pnpm resolve `@types/react` per-consumer, the same way it already
   does for `react` itself.
-- **`zod` pinned to `^3.25.0`** as an explicit `apps/api` dependency.
-  `inngest` needs `zod@^3.25.0` (for its `zod/v3` compat subpath), but
-  without an explicit edge pnpm deduped it against the older `zod@3.22.3`
-  pulled in by the `@ai-sdk/*` packages, crashing Wrangler's bundler.

@@ -8,7 +8,7 @@ binding = "RENVIA_BUCKET"
 bucket_name = "renvia-uploads"
 
 # Secrets (DATABASE_URL, CLERK_SECRET_KEY, CLERK_PUBLISHABLE_KEY, FAL_KEY,
-# REPLICATE_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) are set via `wrangler secret put <NAME>`, not committed here.
+# R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) are set via `wrangler secret put <NAME>`, not committed here.
 [vars]
 R2_ACCOUNT_ID = ""
 R2_BUCKET_NAME = "renvia-uploads"

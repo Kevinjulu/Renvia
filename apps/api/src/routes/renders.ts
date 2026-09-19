@@ -70,7 +70,7 @@ renders.post("/", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  const job = await submitRender(c.env, db, created);
+  const job = await submitRender(c.env, db, created, new URL(c.req.url).origin);
   return c.json({ job }, 201);
 });
 
@@ -99,7 +99,8 @@ renders.get("/", async (c) => {
     .where(eq(schema.renders.projectId, projectId))
     .orderBy(desc(schema.renders.createdAt));
 
-  return c.json({ jobs: await Promise.all(jobs.map((job) => refreshRender(db, job))) });
+  const origin = new URL(c.req.url).origin;
+  return c.json({ jobs: await Promise.all(jobs.map((job) => refreshRender(c.env, db, job, origin))) });
 });
 
 renders.get("/:id", async (c) => {
@@ -119,5 +120,5 @@ renders.get("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json({ job: await refreshRender(db, row[0].render) });
+  return c.json({ job: await refreshRender(c.env, db, row[0].render, new URL(c.req.url).origin) });
 });

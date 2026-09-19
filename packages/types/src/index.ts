@@ -30,7 +30,7 @@ export interface RenderBudgetResponse {
   budgetUsd: number;
 }
 
-/** Optional generation knobs — accepted now, applied when fal/AI is connected. */
+/** Optional generation knobs — accepted now, mapped onto model inputs in the engine. */
 export interface RenderGenerationSettings {
   styleInfluence?: number;
   preserveStructure?: boolean;
@@ -46,7 +46,6 @@ export interface CreateRenderRequest {
   style: string;
   viewKey?: string;
   viewLabel?: string;
-  /** Prep for fal — stored on the job event; not required for queueing today. */
   generationSettings?: RenderGenerationSettings;
 }
 
