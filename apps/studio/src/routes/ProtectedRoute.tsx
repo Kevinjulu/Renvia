@@ -3,6 +3,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { useApiClient } from "../lib/apiClient";
 import { AppLoader } from "../components/loading/AppLoader";
+import { refreshAccount } from "../lib/useAccountStore";
 
 export function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -14,7 +15,7 @@ export function ProtectedRoute() {
       return;
     }
     setSynced(false);
-    apiClient.getMe().finally(() => setSynced(true));
+    refreshAccount(apiClient.getMe).finally(() => setSynced(true));
     // apiClient is a new object each render; only re-sync when sign-in state actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);

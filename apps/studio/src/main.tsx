@@ -6,6 +6,7 @@ import { clerkAppearance } from "./lib/clerkAppearance";
 import { AUTH_ROUTES } from "./lib/authRoutes";
 import "./styles/globals.css";
 import "./styles/render-panel.css";
+import "./styles/account.css";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 

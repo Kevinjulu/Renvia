@@ -1,5 +1,8 @@
 import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/react";
 import { Logo } from "../components/brand/Logo";
+import { Avatar } from "../components/account/Avatar";
+import { planLabel, useAccountStore } from "../lib/useAccountStore";
 
 export type DashboardView = "home" | "all" | "favorites";
 interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; onCreate: () => void; activeSection?: string; }
@@ -19,6 +22,9 @@ function NavItem({ name, label, active, onClick }: { name: string; label: string
 
 export function DashboardSidebar({ view, onChangeView, activeSection }: DashboardSidebarProps) {
   const navigate = useNavigate();
+  const { user } = useUser();
+  const me = useAccountStore((state) => state.me);
+  const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your account";
   return (
     <aside className="dashboard-sidebar">
       <Logo className="dashboard-logo" wordmarkClassName="text-[20px] text-white" />
@@ -28,7 +34,7 @@ export function DashboardSidebar({ view, onChangeView, activeSection }: Dashboar
       <div className="dashboard-nav-divider" />
       <nav className="dashboard-nav dashboard-nav-secondary"><NavItem name="team" label="Team" active={activeSection === "team"} onClick={() => navigate("/team")}/><NavItem name="settings" label="Settings" active={activeSection === "settings"} onClick={() => navigate("/settings")}/></nav>
       <div className="dashboard-upgrade-card"><p className="dashboard-upgrade-title"><span>♛</span> Upgrade to Pro</p><p>Unlock more renders,<br/>higher resolution and<br/>team features.</p><button type="button" onClick={() => navigate("/billing")}>Upgrade <span>→</span></button></div>
-      <div className="dashboard-user"><span className="dashboard-user-avatar">KJ</span><span><strong>Kevin Julu</strong><small>Free Plan</small></span><button type="button" aria-label="Open account settings" onClick={() => navigate("/settings")}>⌃</button></div>
+      <div className="dashboard-user"><Avatar name={name} imageUrl={user?.hasImage ? user.imageUrl : null} size={34} className="dashboard-user-avatar" /><span><strong>{name}</strong><small>{planLabel(me)}</small></span><button type="button" aria-label="Open account settings" onClick={() => navigate("/settings")}>⌃</button></div>
     </aside>
   );
 }
