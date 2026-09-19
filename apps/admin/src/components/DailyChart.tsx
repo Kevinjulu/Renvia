@@ -53,6 +53,12 @@ export function DailyChart({ days }: { days: Day[] }) {
   return (
     <div ref={containerRef} className="relative">
       <svg width={width} height={HEIGHT} role="img" aria-label="Renders per day, last 14 days" className="block">
+        <defs>
+          <linearGradient id="bar-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4F86F5" />
+            <stop offset="100%" stopColor="#2F6FED" />
+          </linearGradient>
+        </defs>
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(tick)} y2={y(tick)} stroke={GRID} strokeWidth={1} />
@@ -71,8 +77,9 @@ export function DailyChart({ days }: { days: Day[] }) {
               {barHeight > 0 && (
                 <path
                   d={barPath(x, y(day.renders), barWidth, barHeight)}
-                  fill={ACCENT}
-                  opacity={active === null || isActive ? 1 : 0.35}
+                  fill="url(#bar-fill)"
+                  className="transition-opacity duration-150"
+                  opacity={active === null || isActive ? 1 : 0.3}
                 />
               )}
               {/* Label every other day (plus the last) so 14 dates never collide. */}

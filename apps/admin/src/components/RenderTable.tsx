@@ -16,7 +16,7 @@ export function RenderTable({ renders, showUser = true }: { renders: AdminRender
               target="_blank"
               rel="noreferrer"
               title={render.resultImageUrl ? "Open result" : "Open source (no result)"}
-              className="block h-12 w-16 overflow-hidden rounded-md border border-hairline bg-surface-muted"
+              className="block h-12 w-16 overflow-hidden rounded-lg border border-hairline bg-surface-muted ring-1 ring-transparent transition hover:ring-blueprint/30"
             >
               <img
                 src={render.resultImageUrl ?? render.sourceImageUrl}

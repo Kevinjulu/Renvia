@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Coins, Cpu } from "lucide-react";
 import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode } from "@renvia/types";
 import { Button, Card, ErrorNote, PageHeader, Pill, Skeleton } from "../components/ui";
 import { useAdminApi } from "../lib/api";
@@ -91,7 +92,7 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" description={`Last changed ${formatDateTime(data.updatedAt)}.`} />
       <form onSubmit={(event) => void submit(event)} className="grid gap-6 lg:grid-cols-2">
-        <Card title="Credits">
+        <Card title="Credits" icon={Coins}>
           <div className="space-y-5">
             <Field label="Signup bonus" hint="Credits every new account gets once (1 credit = 1 image).">
               <input
@@ -117,7 +118,7 @@ export function SettingsPage() {
           </div>
         </Card>
 
-        <Card title="Rendering" actions={<Pill tone={data.effectiveMode === "prod" ? "amber" : "neutral"}>Now: {data.effectiveMode}</Pill>}>
+        <Card title="Rendering" icon={Cpu} actions={<Pill tone={data.effectiveMode === "prod" ? "amber" : "neutral"}>Now: {data.effectiveMode}</Pill>}>
           <div className="space-y-5">
             <fieldset>
               <legend className="text-sm font-medium text-primary">Render mode</legend>
@@ -125,8 +126,8 @@ export function SettingsPage() {
                 {MODES.map((mode) => (
                   <label
                     key={mode.label}
-                    className={`flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 ${
-                      draft.falMode === mode.value ? "border-blueprint bg-blueprint-soft/40" : "border-hairline"
+                    className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-2.5 transition ${
+                      draft.falMode === mode.value ? "border-blueprint bg-blueprint-soft/50 ring-1 ring-blueprint/20" : "border-hairline hover:border-hairline-strong hover:bg-surface"
                     }`}
                   >
                     <input
@@ -180,7 +181,7 @@ export function SettingsPage() {
   );
 }
 
-const INPUT = "mt-1 w-full rounded-lg border border-hairline px-3 py-2 text-sm tabular-nums outline-none focus:border-blueprint";
+const INPUT = "mt-1 w-full rounded-xl border border-hairline bg-surface px-3 py-2 text-sm tabular-nums outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15";
 
 function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
   return (

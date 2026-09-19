@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChevronLeft, Clock, Coins, DollarSign, History, ImageIcon, SlidersHorizontal } from "lucide-react";
 import type { CreditLedgerReason } from "@renvia/types";
 import { RenderTable } from "../components/RenderTable";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
@@ -14,6 +15,8 @@ const REASON_LABELS: Record<CreditLedgerReason, string> = {
   admin_grant: "Admin adjustment",
   render: "Render",
   render_refund: "Refund (failed render)",
+  segment: "Segmentation",
+  segment_refund: "Refund (segmentation)",
   purchase: "Purchase",
 };
 
@@ -62,8 +65,8 @@ export function UserDetailPage() {
 
   return (
     <>
-      <Link to="/users" className="mb-3 inline-block text-sm text-muted hover:text-primary">
-        ← All users
+      <Link to="/users" className="mb-3 inline-flex items-center gap-1 text-sm text-muted transition hover:text-primary">
+        <ChevronLeft size={15} /> All users
       </Link>
       <PageHeader
         title={user.email}
@@ -96,19 +99,21 @@ export function UserDetailPage() {
         <StatCard
           label="Credits"
           value={user.role === "admin" ? "Unlimited" : formatNumber(user.creditBalance)}
+          icon={Coins}
+          accent="amber"
           detail={user.role === "admin" ? "Admins aren't charged" : undefined}
         />
-        <StatCard label="Renders" value={formatNumber(user.renderCount)} />
-        <StatCard label="Spend" value={formatUsd(user.spentUsd)} />
-        <StatCard label="Last render" value={<span className="text-lg">{formatRelative(user.lastRenderAt)}</span>} />
+        <StatCard label="Renders" value={formatNumber(user.renderCount)} icon={ImageIcon} accent="blue" />
+        <StatCard label="Spend" value={formatUsd(user.spentUsd)} icon={DollarSign} accent="emerald" />
+        <StatCard label="Last render" value={<span className="text-lg">{formatRelative(user.lastRenderAt)}</span>} icon={Clock} accent="neutral" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <Card title="Adjust credits">
+        <Card title="Adjust credits" icon={SlidersHorizontal}>
           <AdjustCreditsForm userId={user.id} balance={user.creditBalance} onDone={reload} />
         </Card>
 
-        <Card title="Credit history" className="lg:col-span-2">
+        <Card title="Credit history" icon={History} className="lg:col-span-2">
           {ledger.length === 0 ? (
             <EmptyState>No credit activity yet.</EmptyState>
           ) : (
@@ -132,8 +137,8 @@ export function UserDetailPage() {
         </Card>
       </div>
 
-      <Card title="Recent renders" className="mt-6">
-        {renders.length === 0 ? <EmptyState>No renders yet.</EmptyState> : <RenderTable renders={renders} showUser={false} />}
+      <Card title="Recent renders" icon={ImageIcon} className="mt-6">
+        {renders.length === 0 ? <EmptyState icon={ImageIcon}>No renders yet.</EmptyState> : <RenderTable renders={renders} showUser={false} />}
       </Card>
     </>
   );
@@ -176,15 +181,15 @@ function AdjustCreditsForm({ userId, balance, onDone }: { userId: string; balanc
 
   return (
     <form onSubmit={(event) => void submit(event)} className="space-y-3">
-      <div className="flex gap-1 rounded-lg bg-surface-muted p-1" role="group" aria-label="Grant or remove">
+      <div className="flex gap-1 rounded-xl bg-surface-muted p-1" role="group" aria-label="Grant or remove">
         {(["grant", "remove"] as const).map((option) => (
           <button
             key={option}
             type="button"
             aria-pressed={direction === option}
             onClick={() => setDirection(option)}
-            className={`flex-1 rounded-md py-1.5 text-sm font-medium capitalize ${
-              direction === option ? "bg-canvas text-primary shadow-sm" : "text-muted hover:text-primary"
+            className={`flex-1 rounded-lg py-1.5 text-sm font-medium capitalize transition ${
+              direction === option ? "bg-canvas text-primary shadow-card" : "text-muted hover:text-primary"
             }`}
           >
             {option}
@@ -200,7 +205,7 @@ function AdjustCreditsForm({ userId, balance, onDone }: { userId: string; balanc
           step={1}
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
-          className="mt-1 w-full rounded-lg border border-hairline px-3 py-2 tabular-nums outline-none focus:border-blueprint"
+          className="mt-1 w-full rounded-xl border border-hairline bg-surface px-3 py-2 tabular-nums outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
         />
       </label>
       <label className="block text-sm">
@@ -211,7 +216,7 @@ function AdjustCreditsForm({ userId, balance, onDone }: { userId: string; balanc
           maxLength={200}
           onChange={(event) => setNote(event.target.value)}
           placeholder="e.g. Client demo allowance"
-          className="mt-1 w-full rounded-lg border border-hairline px-3 py-2 outline-none focus:border-blueprint"
+          className="mt-1 w-full rounded-xl border border-hairline bg-surface px-3 py-2 outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
         />
         <span className="mt-1 block text-xs text-faint">Shown in the user's credit history.</span>
       </label>

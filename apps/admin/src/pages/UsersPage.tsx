@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Search } from "lucide-react";
 import { Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Table } from "../components/ui";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
@@ -31,29 +32,35 @@ export function UsersPage() {
       <PageHeader title="Users" description="Everyone who has signed in to the studio." />
       <Card
         actions={
-          <input
-            type="search"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Search by email…"
-            aria-label="Search users by email"
-            className="w-64 rounded-lg border border-hairline px-3 py-1.5 text-sm outline-none focus:border-blueprint"
-          />
+          <div className="relative">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+            <input
+              type="search"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Search by email…"
+              aria-label="Search users by email"
+              className="w-64 rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
+            />
+          </div>
         }
         title={data ? `${formatNumber(data.total)} ${data.total === 1 ? "user" : "users"}` : "Users"}
       >
         {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
         {data && data.users.length === 0 ? (
-          <EmptyState>{search ? `No users match “${search}”.` : "No users yet."}</EmptyState>
+          <EmptyState icon={Search}>{search ? `No users match “${search}”.` : "No users yet."}</EmptyState>
         ) : (
           data && (
             <div className={loading ? "opacity-60 transition-opacity" : ""}>
-              <Table head={["Email", "Credits", "Renders", "Spend", "Last render", "Status"]}>
+              <Table head={["User", "Credits", "Renders", "Spend", "Last render", "Status"]}>
                 {data.users.map((user) => (
-                  <tr key={user.id} className="hover:bg-surface">
+                  <tr key={user.id} className="transition hover:bg-surface">
                     <td className="px-5 py-3">
-                      <Link to={`/users/${user.id}`} className="font-medium text-primary hover:text-blueprint">
-                        {user.email}
+                      <Link to={`/users/${user.id}`} className="group flex items-center gap-3">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-sheen text-xs font-semibold uppercase text-white">
+                          {user.email.charAt(0)}
+                        </span>
+                        <span className="truncate font-medium text-primary group-hover:text-blueprint">{user.email}</span>
                       </Link>
                     </td>
                     <td className="px-5 py-3 tabular-nums">{user.role === "admin" ? <span className="text-faint">∞</span> : formatNumber(user.creditBalance)}</td>
@@ -63,7 +70,7 @@ export function UsersPage() {
                     <td className="px-5 py-3">
                       <div className="flex gap-1.5">
                         {user.role === "admin" && <Pill tone="blue">Admin</Pill>}
-                        {user.disabled ? <Pill tone="red">Disabled</Pill> : <Pill>Active</Pill>}
+                        {user.disabled ? <Pill tone="red">Disabled</Pill> : <Pill tone="emerald">Active</Pill>}
                       </div>
                     </td>
                   </tr>

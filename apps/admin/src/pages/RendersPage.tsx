@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { ImageIcon } from "lucide-react";
 import type { RenderStatus } from "@renvia/types";
 import { RenderTable } from "../components/RenderTable";
 import { Card, EmptyState, ErrorNote, PageHeader, Pagination } from "../components/ui";
@@ -30,17 +31,18 @@ export function RendersPage() {
     <>
       <PageHeader title="Renders" description="Every render and edit, newest first — including failures and their errors." />
       <Card
+        icon={ImageIcon}
         title={data ? `${formatNumber(data.total)} ${data.total === 1 ? "render" : "renders"}` : "Renders"}
         actions={
-          <div className="flex gap-1 rounded-lg bg-surface-muted p-1" role="group" aria-label="Filter by status">
+          <div className="flex gap-1 rounded-xl bg-surface-muted p-1" role="group" aria-label="Filter by status">
             {STATUSES.map((option) => (
               <button
                 key={option.label}
                 type="button"
                 aria-pressed={status === option.value}
                 onClick={() => setParams(option.value ? { status: option.value } : {})}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                  status === option.value ? "bg-canvas text-primary shadow-sm" : "text-muted hover:text-primary"
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  status === option.value ? "bg-canvas text-primary shadow-card" : "text-muted hover:text-primary"
                 }`}
               >
                 {option.label}
@@ -51,7 +53,7 @@ export function RendersPage() {
       >
         {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
         {data && data.renders.length === 0 ? (
-          <EmptyState>No renders{status ? ` with status “${status}”` : ""}.</EmptyState>
+          <EmptyState icon={ImageIcon}>No renders{status ? ` with status “${status}”` : ""}.</EmptyState>
         ) : (
           data && (
             <div className={loading ? "opacity-60 transition-opacity" : ""}>

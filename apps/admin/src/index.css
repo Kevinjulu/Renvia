@@ -1,13 +1,64 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-surface text-primary antialiased;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface text-primary;
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+  }
+
+  h1, h2, h3, h4 {
+    font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Refined scrollbars for the app chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d4d0c8 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: #d4d0c8;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #b8b3a8;
+  }
+
+  /* Dark scrollbar inside the sidebar. */
+  .ink-scroll {
+    scrollbar-color: #333844 transparent;
+  }
+  .ink-scroll::-webkit-scrollbar-thumb {
+    background-color: #333844;
+  }
+}
+
+@layer components {
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-muted;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
 }
