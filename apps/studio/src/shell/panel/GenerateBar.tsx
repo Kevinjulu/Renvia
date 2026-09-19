@@ -138,11 +138,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         )}
       </div>
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
-      {!isEdit && (
-        <p className="studio-ai-note">
-          Style influence, references, and atmosphere ride along on each job for the fal connection. Queueing works today; AI image generation still uses the stub worker.
-        </p>
-      )}
     </div>
   );
 }
