@@ -38,6 +38,8 @@ export function RenderResultsPanel() {
   const jobs = useRenderJobsStore((state) => state.jobs);
   const activeJobId = useRenderJobsStore((state) => state.activeJobId);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
+  const previewJobId = useRenderJobsStore((state) => state.previewJobId);
+  const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
   const removeJob = useRenderJobsStore((state) => state.removeJob);
   const favoriteIds = useRenderJobsStore((state) => state.favoriteIds);
   const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
@@ -111,7 +113,7 @@ export function RenderResultsPanel() {
             <button
               key={job.id}
               type="button"
-              onClick={() => setActiveJob(job.id)}
+              onClick={() => (job.status === "succeeded" && job.resultImageUrl ? setPreviewJob(job.id) : setActiveJob(job.id))}
               title={[job.viewLabel, job.prompt].filter(Boolean).join(": ") || "Render"}
               className={`relative aspect-square shrink-0 overflow-hidden rounded-lg border bg-white ${
                 job.id === activeJob?.id ? "border-blueprint" : "border-hairline hover:border-hairline-strong"
@@ -208,7 +210,7 @@ export function RenderResultsPanel() {
           </>
         ) : (
           <>
-            <div className="relative overflow-hidden rounded-lg border border-hairline bg-surface-muted">
+            <div className="group relative overflow-hidden rounded-lg border border-hairline bg-surface-muted">
               <img
                 src={activeJob.resultImageUrl ?? activeJob.sourceImageUrl}
                 alt=""
@@ -216,6 +218,21 @@ export function RenderResultsPanel() {
                   activeJob.status !== "succeeded" ? "opacity-40 blur-[1px]" : ""
                 }`}
               />
+              {activeJob.status === "succeeded" && activeJob.resultImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewJob(previewJobId === activeJob.id ? null : activeJob.id)}
+                  aria-label={previewJobId === activeJob.id ? "Back to canvas" : "View full size on canvas"}
+                  className="absolute inset-0 flex items-end justify-end bg-black/0 p-2 transition-colors hover:bg-black/10 focus-visible:bg-black/10 focus-visible:outline-none"
+                >
+                  <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-primary opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    {previewJobId === activeJob.id ? "Showing on canvas" : "View full size"}
+                  </span>
+                </button>
+              )}
               {(activeJob.status === "pending" || activeJob.status === "processing") && (
                 <div className="absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/60 to-transparent p-3">
                   <p className="text-xs font-medium text-white">Generating render…</p>

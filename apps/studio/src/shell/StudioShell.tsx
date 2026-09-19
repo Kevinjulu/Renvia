@@ -6,6 +6,7 @@ import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { canvasNodeFromRecord, focusViewNode, nodeToPersistedData } from "../canvas/utils/placeImageNode";
 import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 import { CanvasStage } from "../canvas/CanvasStage";
+import { RenderPreview } from "../canvas/RenderPreview";
 import { IconRail } from "./IconRail";
 import { ControlPanel } from "./ControlPanel";
 import { CanvasTopBar } from "./CanvasTopBar";
@@ -97,6 +98,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             </div>
             <div className="studio-stage-wrap" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front View"}`}>
               <CanvasStage />
+              <RenderPreview />
             </div>
             <div className="elevation-filmstrip" style={{ gridTemplateColumns: `repeat(${views.length + 1}, minmax(88px, 1fr))` }}>
               {views.map((view, index) => {
