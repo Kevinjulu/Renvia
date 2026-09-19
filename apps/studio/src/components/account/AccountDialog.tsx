@@ -5,7 +5,7 @@ import type { CreditLedgerEntry, CreditLedgerReason } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
 import { formatRelativeTime } from "../../lib/relativeTime";
 import { MIN_PASSWORD_LENGTH } from "../../lib/finishAuth";
-import { FREE_CREDIT_ALLOWANCE, planLabel, useAccountStore } from "../../lib/useAccountStore";
+import { creditsLeftPercent, loadCreditHistory, planLabel, useAccountStore } from "../../lib/useAccountStore";
 import { PasswordStrength } from "../auth/PasswordStrength";
 import { Avatar } from "./Avatar";
 
@@ -322,20 +322,16 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
   const me = useAccountStore((state) => state.me);
   const isAdmin = me?.role === "admin";
   const credits = me?.creditBalance ?? 0;
-  const used = Math.max(0, FREE_CREDIT_ALLOWANCE - credits);
-  const percent = Math.min(100, Math.round((credits / FREE_CREDIT_ALLOWANCE) * 100));
+  const granted = useAccountStore((state) => state.granted);
+  const used = granted === null ? null : Math.max(0, granted - credits);
+  const percent = creditsLeftPercent(credits, granted);
   const apiClient = useApiClient();
-  const setMe = useAccountStore((state) => state.setMe);
   const [entries, setEntries] = useState<CreditLedgerEntry[] | null>(null);
   const [historyFailed, setHistoryFailed] = useState(false);
 
   useEffect(() => {
-    apiClient
-      .getMyCredits()
-      .then((result) => {
-        setEntries(result.entries);
-        if (me && me.creditBalance !== result.creditBalance) setMe({ ...me, creditBalance: result.creditBalance });
-      })
+    loadCreditHistory(apiClient.getMyCredits)
+      .then(setEntries)
       .catch(() => {
         setHistoryFailed(true);
         setEntries([]);
@@ -373,14 +369,18 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                 <b>{credits}</b>
                 <small>credits left</small>
               </div>
-              <div>
-                <b>{used}</b>
-                <small>used of {FREE_CREDIT_ALLOWANCE} free</small>
+              {used !== null && (
+                <div>
+                  <b>{used}</b>
+                  <small>used of {granted} received</small>
+                </div>
+              )}
+            </div>
+            {percent !== null && (
+              <div className="account-credits-meter is-large" aria-hidden="true">
+                <span style={{ width: `${percent}%` }} />
               </div>
-            </div>
-            <div className="account-credits-meter is-large" aria-hidden="true">
-              <span style={{ width: `${percent}%` }} />
-            </div>
+            )}
             <button type="button" className="account-button" onClick={() => onNavigate("/billing")}>
               Buy more credits
             </button>

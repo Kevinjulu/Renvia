@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, ty
 import { useNavigate } from "react-router-dom";
 import { useClerk, useUser } from "@clerk/react";
 import { AUTH_ROUTES } from "../../lib/authRoutes";
-import { FREE_CREDIT_ALLOWANCE, planLabel, useAccountStore } from "../../lib/useAccountStore";
+import { creditsLeftPercent, planLabel, useAccountStore } from "../../lib/useAccountStore";
 import { Avatar } from "./Avatar";
 import { AccountDialog, type AccountTab } from "./AccountDialog";
 
@@ -38,6 +38,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const me = useAccountStore((state) => state.me);
+  const granted = useAccountStore((state) => state.granted);
   const navigate = useNavigate();
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -69,7 +70,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
   const imageUrl = user.hasImage ? user.imageUrl : null;
   const isAdmin = me?.role === "admin";
   const credits = me?.creditBalance ?? 0;
-  const creditPercent = Math.min(100, Math.round((credits / FREE_CREDIT_ALLOWANCE) * 100));
+  const creditPercent = creditsLeftPercent(credits, granted);
   const isLow = !isAdmin && me !== null && credits <= 5;
 
   const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -160,9 +161,11 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
             </div>
             {!isAdmin && (
               <>
-                <div className="account-credits-meter" aria-hidden="true">
-                  <span style={{ width: `${creditPercent}%` }} />
-                </div>
+                {creditPercent !== null && (
+                  <div className="account-credits-meter" aria-hidden="true">
+                    <span style={{ width: `${creditPercent}%` }} />
+                  </div>
+                )}
                 <div className="account-credits-row">
                   <small>{isLow ? "Running low — top up to keep rendering." : "1 credit = 1 rendered image"}</small>
                   <button type="button" role="menuitem" className="account-credits-cta" onClick={() => go("/billing")}>
