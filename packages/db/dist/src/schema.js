@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, integer, jsonb, uuid, boolean, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
 export const users = pgTable("users", {
     id: uuid("id").primaryKey().defaultRandom(),
     clerkId: text("clerk_id").notNull().unique(),
@@ -88,5 +88,25 @@ export const creditLedger = pgTable("credit_ledger", {
     // One debit and at most one refund per render, so a refund can never be applied twice.
     uniqueIndex("credit_ledger_render_reason_unique").on(table.renderId, table.reason),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
+]);
+/**
+ * Operator settings editable from the admin app without a redeploy. Exactly one row
+ * (id = 1). Null engine fields fall back to the FAL_MODE / FAL_BUDGET_USD env vars.
+ */
+export const appSettings = pgTable("app_settings", {
+    id: integer("id").primaryKey().default(1),
+    signupBonusCredits: integer("signup_bonus_credits").notNull().default(25),
+    /** Max renders per non-admin user per UTC day; null = unlimited. */
+    dailyRenderLimit: integer("daily_render_limit"),
+    falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
+    falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+}, (table) => [
+    check("app_settings_single_row", sql `${table.id} = 1`),
+    check("app_settings_signup_bonus_range", sql `${table.signupBonusCredits} BETWEEN 0 AND 1000`),
+    check("app_settings_daily_limit_range", sql `${table.dailyRenderLimit} IS NULL OR ${table.dailyRenderLimit} BETWEEN 1 AND 10000`),
+    check("app_settings_fal_mode_values", sql `${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
+    check("app_settings_budget_range", sql `${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
 ]);
 //# sourceMappingURL=schema.js.map

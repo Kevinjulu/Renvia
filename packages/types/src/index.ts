@@ -219,3 +219,105 @@ export interface ListReferenceImagesResponse {
 export interface DeleteReferenceImageResponse {
   id: string;
 }
+
+// ── Admin API (/api/admin/*, admins only) ────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  clerkId: string;
+  email: string;
+  role: UserRole;
+  creditBalance: number;
+  disabled: boolean;
+  createdAt: string;
+  /** Renders and edits that didn't fail. */
+  renderCount: number;
+  /** Estimated fal spend for this user's non-failed renders. */
+  spentUsd: number;
+  lastRenderAt: string | null;
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[];
+  total: number;
+}
+
+export interface AdminLedgerEntry extends CreditLedgerEntry {
+  /** Admin who made a manual adjustment, if any. */
+  actorEmail: string | null;
+}
+
+export interface AdminRender {
+  id: string;
+  kind: "render" | "edit";
+  status: RenderStatus;
+  model: string | null;
+  costUsd: number;
+  creditsCharged: number;
+  prompt: string;
+  style: string;
+  viewLabel: string | null;
+  sourceImageUrl: string;
+  resultImageUrl: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  projectName: string;
+  userId: string;
+  userEmail: string;
+}
+
+export interface AdminRendersResponse {
+  renders: AdminRender[];
+  total: number;
+}
+
+export interface AdminUserDetailResponse {
+  user: AdminUser;
+  ledger: AdminLedgerEntry[];
+  renders: AdminRender[];
+}
+
+export interface AdminGrantCreditsRequest {
+  /** Positive to grant, negative to remove; a removal can't take the balance below 0. */
+  amount: number;
+  note: string;
+}
+
+export interface AdminUpdateUserRequest {
+  disabled?: boolean;
+  role?: UserRole;
+}
+
+export interface AdminOverviewResponse {
+  users: { total: number; newLast7Days: number; disabled: number };
+  renders: { total: number; today: number; byStatus: Record<RenderStatus, number>; failureRate: number };
+  spend: {
+    mode: RenderEngineMode;
+    spentUsd: number;
+    budgetUsd: number;
+    byModel: { model: string; renders: number; spentUsd: number }[];
+  };
+  /** Credits currently held by users, and all-time granted/spent. */
+  credits: { outstanding: number; granted: number; spent: number };
+  /** Last 14 UTC days, oldest first. */
+  daily: { date: string; renders: number; spentUsd: number }[];
+  topUsers: { id: string; email: string; renders: number; spentUsd: number }[];
+}
+
+export interface AdminSettings {
+  signupBonusCredits: number;
+  /** Max renders per non-admin user per UTC day; null = unlimited. */
+  dailyRenderLimit: number | null;
+  /** Null = use the FAL_MODE env var. */
+  falMode: RenderEngineMode | null;
+  /** Null = use the FAL_BUDGET_USD env var. */
+  falBudgetUsd: number | null;
+  /** What's actually in force after env fallbacks. */
+  effectiveMode: RenderEngineMode;
+  effectiveBudgetUsd: number;
+  updatedAt: string;
+}
+
+export type AdminUpdateSettingsRequest = Partial<
+  Pick<AdminSettings, "signupBonusCredits" | "dailyRenderLimit" | "falMode" | "falBudgetUsd">
+>;

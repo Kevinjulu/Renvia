@@ -6,6 +6,7 @@ import type { Env } from "../index.js";
 import { compositeMaskedEdit } from "./composite.js";
 import { refundIfFailed } from "./credits.js";
 import { modelById, pricingFor } from "./models.js";
+import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
 import { buildEditPrompt, buildEnginePrompt } from "./prompts.js";
 import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
 
@@ -19,20 +20,15 @@ const FAL_TIMEOUT_MS = 10 * 60_000;
 
 const MICROS_PER_USD = 1_000_000;
 
-/** Defaults to mock: a missing or mistyped FAL_MODE must never spend credit. */
-export function engineMode(env: Env): RenderEngineMode {
-  const mode = env.FAL_MODE?.trim();
-  return mode === "dev" || mode === "prod" ? mode : "mock";
+/** Current render mode: the admin setting, else FAL_MODE, else mock (never spends by accident). */
+export async function engineMode(env: Env, db: Database): Promise<RenderEngineMode> {
+  return effectiveEngineMode(env, await getSettings(db));
 }
 
 function falClient(env: Env): FalClient {
   return createFalClient({ credentials: env.FAL_KEY });
 }
 
-function budgetMicros(env: Env): number {
-  const usd = Number(env.FAL_BUDGET_USD);
-  return Number.isFinite(usd) && usd > 0 ? Math.round(usd * MICROS_PER_USD) : 0;
-}
 
 /**
  * Spend is global, not per user — it tracks the single fal account's credit.
@@ -47,18 +43,21 @@ async function spentMicros(db: Database): Promise<number> {
 }
 
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {
+  const settings = await getSettings(db);
+  const mode = effectiveEngineMode(env, settings);
   return {
-    mode: engineMode(env),
-    pricing: pricingFor(engineMode(env)),
+    mode,
+    pricing: pricingFor(mode),
     spentUsd: (await spentMicros(db)) / MICROS_PER_USD,
-    budgetUsd: budgetMicros(env) / MICROS_PER_USD,
+    budgetUsd: effectiveBudgetUsd(env, settings),
   };
 }
 
 /** True when one more render costing `costMicros` would exceed FAL_BUDGET_USD. */
 export async function wouldExceedBudget(env: Env, db: Database, costMicros: number): Promise<boolean> {
   if (costMicros === 0) return false;
-  return (await spentMicros(db)) + costMicros > budgetMicros(env);
+  const budgetMicros = Math.round(effectiveBudgetUsd(env, await getSettings(db)) * MICROS_PER_USD);
+  return (await spentMicros(db)) + costMicros > budgetMicros;
 }
 
 async function updateRender(db: Database, id: string, patch: Partial<RenderRow>): Promise<RenderRow> {

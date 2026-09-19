@@ -4,9 +4,6 @@ import { schema, type Database } from "@renvia/db";
 type RenderRow = typeof schema.renders.$inferSelect;
 type RenderInsert = typeof schema.renders.$inferInsert;
 
-/** Granted once when a user's account row is first created. */
-export const SIGNUP_BONUS_CREDITS = 25;
-
 /** Postgres error for the users_credit_balance_non_negative check constraint. */
 const CHECK_VIOLATION = "23514";
 

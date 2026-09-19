@@ -31,6 +31,7 @@ function refusalMessage(code: string | null): string | null {
   if (code === "insufficient_credits") return "You're out of credits.";
   if (code === "budget_exhausted") return "Rendering is paused — the demo budget is used up.";
   if (code === "account_disabled") return "Your account is disabled. Contact support.";
+  if (code === "daily_limit_reached") return "You've reached today's render limit. Try again tomorrow.";
   return null;
 }
 

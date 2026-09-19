@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
@@ -8,7 +8,8 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { CREDITS_PER_IMAGE, renderRouteFor } from "@renvia/types";
-import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import { getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { modelFor } from "../lib/models.js";
 import { ownUploadKey } from "../lib/storage.js";
 
@@ -64,13 +65,34 @@ renders.post("/", async (c) => {
     return c.json({ error: "Selection edits need an uploaded source image" }, 400);
   }
 
-  const model = modelFor(engineMode(c.env), renderRouteFor(settings));
+  const appSettings = await getSettings(db);
+  const isAdmin = user.role === "admin";
+
+  if (!isAdmin && appSettings.dailyRenderLimit !== null) {
+    // Failed renders were refunded, so they don't count toward the day's allowance.
+    const [today] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.renders)
+      .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
+      .where(
+        and(
+          eq(schema.projects.ownerId, user.id),
+          ne(schema.renders.status, "failed"),
+          gte(schema.renders.createdAt, sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`),
+        ),
+      );
+    if ((today?.count ?? 0) >= appSettings.dailyRenderLimit) {
+      return c.json({ error: "Daily render limit reached", code: "daily_limit_reached" }, 429);
+    }
+  }
+
+  const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(settings));
   if (await wouldExceedBudget(c.env, db, model.costMicros)) {
     return c.json({ error: "Render budget exhausted", code: "budget_exhausted" }, 402);
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
-  const credits = user.role === "admin" ? 0 : CREDITS_PER_IMAGE;
+  const credits = isAdmin ? 0 : CREDITS_PER_IMAGE;
   let created;
   try {
     created = await createChargedRender(db, user.id, credits, {

@@ -8,6 +8,7 @@ import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
+import { admin } from "./routes/admin.js";
 import { allowedOrigins } from "./lib/origins.js";
 
 export interface Env {
@@ -68,6 +69,7 @@ app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);
 app.route("/references", references);
+app.route("/admin", admin);
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

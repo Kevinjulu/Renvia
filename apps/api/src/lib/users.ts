@@ -2,7 +2,7 @@ import { createClerkClient } from "@clerk/backend";
 import { eq, getTableColumns, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
-import { SIGNUP_BONUS_CREDITS } from "./credits.js";
+import { getSettings } from "./settings.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 
@@ -19,18 +19,21 @@ async function fetchClerkEmail(env: Env, clerkId: string): Promise<string> {
  * A brand-new row starts with the signup bonus, recorded in the ledger.
  */
 export async function syncUser(env: Env, db: Database, clerkId: string): Promise<UserRow> {
-  const email = await fetchClerkEmail(env, clerkId);
+  // Read the bonus before inserting so a brand-new row is created *with* its credits —
+  // granting afterwards could leave a user at 0 forever if that second step failed,
+  // since on retry they're no longer "new".
+  const [email, { signupBonusCredits }] = await Promise.all([fetchClerkEmail(env, clerkId), getSettings(db)]);
   const [result] = await db
     .insert(schema.users)
-    .values({ clerkId, email, creditBalance: SIGNUP_BONUS_CREDITS })
+    .values({ clerkId, email, creditBalance: signupBonusCredits })
     .onConflictDoUpdate({ target: schema.users.clerkId, set: { email, updatedAt: sql`now()` } })
     // xmax is 0 only for a freshly inserted row, not one the conflict clause updated.
     .returning({ ...getTableColumns(schema.users), inserted: sql<boolean>`(xmax = 0)` });
   if (!result) throw new Error("Failed to sync user");
 
   const { inserted, ...user } = result;
-  if (inserted) {
-    await db.insert(schema.creditLedger).values({ userId: user.id, amount: SIGNUP_BONUS_CREDITS, reason: "signup_bonus" });
+  if (inserted && signupBonusCredits > 0) {
+    await db.insert(schema.creditLedger).values({ userId: user.id, amount: signupBonusCredits, reason: "signup_bonus" });
   }
   return user;
 }
