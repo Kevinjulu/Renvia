@@ -156,3 +156,7 @@ worked around:
   Studio's build, breaking every JSX component from those libraries. This
   makes pnpm resolve `@types/react` per-consumer, the same way it already
   does for `react` itself.
+  `next` gets the same edge (plus `@types/react-dom`): its own `.d.ts` files
+  import `react`, and without it they resolved to the hoisted React 18 types
+  and broke Marketing's typecheck/build once a second React 18 app (admin)
+  was added.

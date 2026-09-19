@@ -44,3 +44,14 @@ packageExtensions:
     peerDependenciesMeta:
       "@types/react":
         optional: true
+  # Next's own .d.ts files import "react"; without a peer edge pnpm resolved them to the
+  # hoisted @types/react@18 (studio + admin), clashing with marketing's React 19 types.
+  next:
+    peerDependencies:
+      "@types/react": "*"
+      "@types/react-dom": "*"
+    peerDependenciesMeta:
+      "@types/react":
+        optional: true
+      "@types/react-dom":
+        optional: true
