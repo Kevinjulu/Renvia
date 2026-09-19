@@ -58,9 +58,12 @@ Verify the scaffold:
 Copy `.env.example` to `.env` at the repo root and fill in:
 
 - `DATABASE_URL` — Neon Postgres connection string.
-- `CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` — from the Clerk dashboard.
-  Studio reads `CLERK_PUBLISHABLE_KEY` client-side (Vite's `envPrefix` is
-  widened in `apps/studio/vite.config.ts` to expose it without a `VITE_` prefix).
+- `CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` — from the Clerk dashboard, for
+  the API. The studio instead reads `VITE_CLERK_PUBLISHABLE_KEY` (plus
+  `VITE_API_BASE_URL`, `VITE_UNSPLASH_ACCESS_KEY`) from `apps/studio/.env.local`.
+  Only `VITE_`-prefixed vars reach the browser — never widen Vite's `envPrefix`
+  or give the studio server secrets: Clerk's SDK makes Vite inline every var
+  matching the prefix into the public bundle.
 - `FAL_KEY` — primary AI image provider (fal.ai).
 - `FAL_MODE` — `mock` (default: free placeholder results, no fal calls), `dev`
   (cheapest model) or `prod`. Anything else falls back to `mock`.
