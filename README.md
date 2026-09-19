@@ -30,7 +30,7 @@ contracts through `packages/*` via the pnpm workspace protocol.
 | API | Hono on Cloudflare Workers |
 | Database | Postgres (Neon) via Drizzle ORM |
 | File storage | Cloudflare R2 |
-| Async jobs | Inngest |
+| Async jobs | fal queue (submit + webhook / status poll) |
 | AI orchestration | Vercel AI SDK — `@ai-sdk/fal` (primary), `@ai-sdk/replicate` (fallback/custom models) |
 
 ## Getting started
@@ -62,10 +62,13 @@ Copy `.env.example` to `.env` at the repo root and fill in:
   Studio reads `CLERK_PUBLISHABLE_KEY` client-side (Vite's `envPrefix` is
   widened in `apps/studio/vite.config.ts` to expose it without a `VITE_` prefix).
 - `FAL_KEY` — primary AI image provider (fal.ai).
+- `FAL_MODE` — `mock` (default: free placeholder results, no fal calls), `dev`
+  (cheapest model) or `prod`. Anything else falls back to `mock`.
+- `FAL_BUDGET_USD` — hard cap on total estimated fal spend; `POST /renders`
+  returns 402 once reached. Unset blocks all paid renders.
 - `REPLICATE_API_TOKEN` — fallback/custom-model provider.
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` —
   Cloudflare R2 for uploaded source images and generated renders.
-- `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` — async render job queue.
 
 `apps/api` runs on Cloudflare Workers, so in production these are set as
 Worker secrets (`wrangler secret put <NAME>`) rather than read from a `.env`

@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { buildRenderPrompt } from "../lib/prompts.js";
-import { inngest } from "../lib/inngest.js";
+import { getBudget, modeConfig, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -21,7 +21,7 @@ const createRenderSchema = z.object({
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
   viewLabel: z.string().trim().min(1).max(80).optional(),
-  // Prep for fal connection — accepted and forwarded on the job event.
+  // Accepted now; mapped onto model inputs once the fal engine is connected.
   generationSettings: z
     .object({
       styleInfluence: z.number().int().min(1).max(4).optional(),
@@ -43,7 +43,12 @@ renders.post("/", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  if (await wouldExceedBudget(c.env, db)) {
+    return c.json({ error: "Render budget exhausted" }, 402);
+  }
+
   const preserveStructure = body.generationSettings?.preserveStructure ?? true;
+  const { model, costMicros } = modeConfig(c.env);
 
   const [created] = await db
     .insert(schema.renders)
@@ -56,6 +61,8 @@ renders.post("/", async (c) => {
       viewKey: body.viewKey,
       viewLabel: body.viewLabel,
       status: "pending",
+      model,
+      costMicros,
     })
     .returning();
 
@@ -63,16 +70,13 @@ renders.post("/", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  // generationSettings ride along for the future fal worker; ignored by stub today.
-  await inngest.send({
-    name: "render/requested",
-    data: {
-      renderId: created.id,
-      generationSettings: body.generationSettings ?? null,
-    },
-  });
+  const job = await submitRender(c.env, db, created);
+  return c.json({ job }, 201);
+});
 
-  return c.json({ job: created }, 201);
+renders.get("/budget", async (c) => {
+  const db = createDb(c.env.DATABASE_URL);
+  return c.json(await getBudget(c.env, db));
 });
 
 renders.get("/", async (c) => {
@@ -95,7 +99,7 @@ renders.get("/", async (c) => {
     .where(eq(schema.renders.projectId, projectId))
     .orderBy(desc(schema.renders.createdAt));
 
-  return c.json({ jobs });
+  return c.json({ jobs: await Promise.all(jobs.map((job) => refreshRender(db, job))) });
 });
 
 renders.get("/:id", async (c) => {
@@ -115,5 +119,5 @@ renders.get("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json({ job: row[0].render });
+  return c.json({ job: await refreshRender(db, row[0].render) });
 });

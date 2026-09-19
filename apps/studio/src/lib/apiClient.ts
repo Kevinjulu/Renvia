@@ -16,6 +16,7 @@ import type {
   MeResponse,
   Project,
   ReferenceImage,
+  RenderBudgetResponse,
   DeleteCanvasNodeResponse,
   UpdateCanvasNodeRequest,
   UpdateCanvasNodeResponse,
@@ -27,6 +28,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787
 
 type GetToken = () => Promise<string | null>;
 
+export class ApiError extends Error {
+  constructor(readonly status: number) {
+    super(`API request failed: ${status}`);
+  }
+}
+
 async function request<T>(getToken: GetToken, path: string, init?: RequestInit): Promise<T> {
   const token = await getToken();
   const headers = new Headers(init?.headers);
@@ -36,7 +43,7 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
 
   const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new ApiError(response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -52,6 +59,7 @@ export function useApiClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
+    getRenderBudget: () => request<RenderBudgetResponse>(getToken, "/renders/budget"),
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
     listRenders: (projectId: string) =>
       request<ListRendersResponse>(getToken, `/renders?projectId=${projectId}`),

@@ -13,8 +13,21 @@ export interface RenderJob {
   viewLabel: string | null;
   falRequestId: string | null;
   errorMessage: string | null;
+  model: string | null;
+  /** Estimated engine cost in USD micros (1e-6 USD); 0 in mock mode. */
+  costMicros: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** mock = free placeholder results; dev = cheapest real model; prod = production model. */
+export type RenderEngineMode = "mock" | "dev" | "prod";
+
+export interface RenderBudgetResponse {
+  mode: RenderEngineMode;
+  unitCostUsd: number;
+  spentUsd: number;
+  budgetUsd: number;
 }
 
 /** Optional generation knobs — accepted now, applied when fal/AI is connected. */

@@ -8,21 +8,22 @@ import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
-import { createInngestHandler } from "./jobs/generateRender.js";
 
 export interface Env {
   DATABASE_URL: string;
   CLERK_SECRET_KEY: string;
   CLERK_PUBLISHABLE_KEY: string;
   FAL_KEY: string;
+  /** "mock" (default, free) | "dev" (cheapest model) | "prod". */
+  FAL_MODE?: string;
+  /** Hard cap on total estimated fal spend, in USD. Unset means no paid renders. */
+  FAL_BUDGET_USD?: string;
   REPLICATE_API_TOKEN: string;
   NEON_STORAGE_ACCESS_KEY_ID: string;
   NEON_STORAGE_SECRET_ACCESS_KEY: string;
   NEON_STORAGE_ENDPOINT: string;
   NEON_STORAGE_BUCKET: string;
   NEON_STORAGE_REGION: string;
-  INNGEST_EVENT_KEY: string;
-  INNGEST_SIGNING_KEY: string;
   ALLOWED_ORIGINS: string;
 }
 
@@ -69,7 +70,6 @@ app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);
 app.route("/references", references);
-app.on(["GET", "POST", "PUT"], "/inngest", (c) => createInngestHandler(c.env)(c));
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

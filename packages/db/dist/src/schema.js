@@ -43,6 +43,10 @@ export const renders = pgTable("renders", {
     viewLabel: text("view_label"),
     falRequestId: text("fal_request_id"),
     errorMessage: text("error_message"),
+    // Engine model id ("mock" in mock mode) and its estimated cost in USD micros
+    // (1e-6 USD) — summed to enforce the fal spending cap.
+    model: text("model"),
+    costMicros: integer("cost_micros").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
