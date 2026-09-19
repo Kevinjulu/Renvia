@@ -1,9 +1,5 @@
-import { useState } from "react";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
-import {
-  STYLE_INFLUENCE_LABELS,
-  useGenerationSettingsStore,
-} from "../../canvas/hooks/useGenerationSettingsStore";
+import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { ReferenceBar } from "./ReferenceBar";
 
 interface RenderTabBodyProps {
@@ -28,7 +24,6 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const jobs = useRenderJobsStore((state) => state.jobs);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
   const recentJobs = jobs.filter((job) => job.resultImageUrl).slice(0, 3);
-  const influenceLabel = STYLE_INFLUENCE_LABELS[Math.max(0, Math.min(3, styleInfluence - 1))] ?? "Balanced";
 
   return (
     <div className="render-panel-body flex flex-1 flex-col">
@@ -48,6 +43,41 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
         placeholder="Example: A modern house with wood cladding by the Swedish coast, surrounded by pine trees"
         className="studio-prompt-input resize-none rounded-lg border border-hairline p-3 text-primary placeholder:text-faint focus:border-blueprint focus:outline-none"
       />
+
+      <section className="reference-panel">
+        <div className="studio-section-heading">
+          <strong>Reference images</strong>
+          <span>Guides the AI</span>
+        </div>
+        <p className="reference-panel-hint">
+          The AI blends these with your uploaded elevation to match materials, lighting and surroundings.
+        </p>
+        <ReferenceBar />
+      </section>
+
+      <div className="render-controls">
+        <label className="studio-influence-control">
+          <strong>Style influence</strong>
+          <div>
+            <input
+              type="range"
+              min="1"
+              max="4"
+              value={styleInfluence}
+              onChange={(event) => setStyleInfluence(Number(event.target.value))}
+            />
+            <b>{styleInfluence}</b>
+          </div>
+        </label>
+        <label className="studio-preserve-control">
+          <strong>Preserve structure</strong>
+          <input
+            type="checkbox"
+            checked={preserveStructure}
+            onChange={(event) => setPreserveStructure(event.target.checked)}
+          />
+        </label>
+      </div>
 
       <div className="studio-preset-section">
         <div className="studio-section-heading">
@@ -71,120 +101,24 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
         </div>
       </div>
 
-      <AdvancedSettings
-        styleInfluence={styleInfluence}
-        influenceLabel={influenceLabel}
-        onStyleInfluence={setStyleInfluence}
-        preserveStructure={preserveStructure}
-        onPreserveStructure={setPreserveStructure}
-      />
-
-      <div className="studio-context-card">
-        {recentJobs.length > 0 ? (
-          <>
-            <div className="studio-section-heading">
-              <strong>Recent renders</strong>
-              <span>{recentJobs.length} latest</span>
-            </div>
-            <div className="studio-recent-renders">
-              {recentJobs.map((job) => (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => setActiveJob(job.id)}
-                  title={job.viewLabel ?? "Open render"}
-                >
-                  <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />
-                  <span>{job.viewLabel ?? "View"}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="studio-ready-card">
-            <span>✦</span>
-            <p>
-              <strong>Ready for a clean first render</strong>
-              <small>Each uploaded view becomes its own render. Empty sides are skipped.</small>
-            </p>
+      {recentJobs.length > 0 && (
+        <div className="studio-context-card">
+          <div className="studio-section-heading">
+            <strong>Recent renders</strong>
+            <span>{recentJobs.length} latest</span>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AdvancedSettings({
-  styleInfluence,
-  influenceLabel,
-  onStyleInfluence,
-  preserveStructure,
-  onPreserveStructure,
-}: {
-  styleInfluence: number;
-  influenceLabel: string;
-  onStyleInfluence: (value: number) => void;
-  preserveStructure: boolean;
-  onPreserveStructure: (value: boolean) => void;
-}) {
-  const [open, setOpen] = useState(true);
-
-  return (
-    <div className={`studio-advanced ${open ? "is-open" : ""}`}>
-      <button
-        className="studio-advanced-toggle"
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-      >
-        <span>
-          <strong>Advanced settings</strong>
-          <small>Control how closely the render follows your view</small>
-        </span>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <path d="m4 5.5 3 3 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open && (
-        <div className="studio-advanced-content">
-          <label className="studio-influence-control">
-            <span>
-              <strong>Style influence</strong>
-              <small>{influenceLabel} — used when AI render is connected</small>
-            </span>
-            <div>
-              <input
-                type="range"
-                min="1"
-                max="4"
-                value={styleInfluence}
-                onChange={(event) => onStyleInfluence(Number(event.target.value))}
-              />
-              <b>{styleInfluence}</b>
-            </div>
-          </label>
-          <label className="studio-preserve-control">
-            <span>
-              <strong>Preserve structure</strong>
-              <small>Keep openings and camera angle intact</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={preserveStructure}
-              onChange={(event) => onPreserveStructure(event.target.checked)}
-            />
-          </label>
-          <div className="studio-reference-control">
-            <div className="studio-reference-heading">
-              <span className="studio-reference-icon" aria-hidden="true">
-                ▧
-              </span>
-              <p>
-                <strong>Reference images</strong>
-                <small>Guide materials, lighting or surroundings for the AI render</small>
-              </p>
-            </div>
-            <ReferenceBar />
+          <div className="studio-recent-renders">
+            {recentJobs.map((job) => (
+              <button
+                key={job.id}
+                type="button"
+                onClick={() => setActiveJob(job.id)}
+                title={job.viewLabel ?? "Open render"}
+              >
+                <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />
+                <span>{job.viewLabel ?? "View"}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

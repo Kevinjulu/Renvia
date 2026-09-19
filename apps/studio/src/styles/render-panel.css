@@ -124,6 +124,52 @@
   cursor: pointer;
 }
 
+/* Prominent reference-images card (moved above the fold; key AI input) */
+.reference-panel {
+  margin-top: 12px;
+  border: 1px solid #d7e0fb;
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, #fbfcff, #f2f6ff);
+}
+
+.reference-panel-hint {
+  margin: 5px 0 11px;
+  color: #5b6472;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Compact influence + preserve controls (no verbose "Advanced" header) */
+.render-controls {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  border: 1px solid #e7e9ed;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.render-controls > label {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.render-controls > label + label {
+  border-top: 1px solid #f0f1f3;
+}
+
+.render-controls strong {
+  font-size: 13px !important;
+  font-weight: 600;
+  color: #1f2329;
+}
+
 .studio-reference-control {
   display: flex;
   flex-direction: column;

@@ -30,7 +30,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filled = filledBuildingViews(views, nodes);
-  const jobCount = filled.length * count;
   const isEdit = activeTab === "edit";
   const canGenerate = !isEdit && filled.length > 0 && !isSubmitting;
 
@@ -92,21 +91,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   return (
     <div>
-      <div className="studio-generation-summary">
-        <span>
-          {resolution} · {style}
-          {!isEdit && ` · influence ${styleInfluence}`}
-        </span>
-        <span>
-          {isEdit
-            ? editPrompt.trim()
-              ? "Edit ready when AI connects"
-              : "Describe an edit to apply"
-            : filled.length === 0
-              ? "Upload a view to generate"
-              : `${filled.length} ${viewWord}${count > 1 ? ` × ${count} variations` : ""} · ${jobCount} ${jobCount === 1 ? "job" : "jobs"}`}
-        </span>
-      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
