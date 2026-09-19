@@ -4,4 +4,6 @@ export function renderRouteFor(settings) {
         return hasReferences ? "edit-references" : "edit";
     return hasReferences ? "references" : (settings.sourceType ?? "photo");
 }
+/** Every model currently costs ~$0.04 per image, so credits map 1:1 to images. */
+export const CREDITS_PER_IMAGE = 1;
 //# sourceMappingURL=index.js.map

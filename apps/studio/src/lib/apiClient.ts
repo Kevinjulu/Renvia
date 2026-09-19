@@ -13,6 +13,7 @@ import type {
   ListProjectsResponse,
   ListReferenceImagesResponse,
   ListRendersResponse,
+  MeCreditsResponse,
   MeResponse,
   Project,
   ReferenceImage,
@@ -29,8 +30,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787
 type GetToken = () => Promise<string | null>;
 
 export class ApiError extends Error {
-  constructor(readonly status: number) {
-    super(`API request failed: ${status}`);
+  constructor(
+    readonly status: number,
+    /** Machine-readable reason from the response body, e.g. "insufficient_credits". */
+    readonly code: string | null = null,
+  ) {
+    super(`API request failed: ${status}${code ? ` (${code})` : ""}`);
   }
 }
 
@@ -43,7 +48,8 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
 
   const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
   if (!response.ok) {
-    throw new ApiError(response.status);
+    const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+    throw new ApiError(response.status, typeof body?.code === "string" ? body.code : null);
   }
   return response.json() as Promise<T>;
 }
@@ -53,6 +59,7 @@ export function useApiClient() {
 
   return {
     getMe: () => request<MeResponse>(getToken, "/me"),
+    getMyCredits: () => request<MeCreditsResponse>(getToken, "/me/credits"),
     createRender: (body: CreateRenderRequest) =>
       request<CreateRenderResponse>(getToken, "/renders", {
         method: "POST",

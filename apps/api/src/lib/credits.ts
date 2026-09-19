@@ -7,9 +7,6 @@ type RenderInsert = typeof schema.renders.$inferInsert;
 /** Granted once when a user's account row is first created. */
 export const SIGNUP_BONUS_CREDITS = 25;
 
-/** Every model currently costs ~$0.04 per image, so credits map 1:1 to images. */
-export const CREDITS_PER_IMAGE = 1;
-
 /** Postgres error for the users_credit_balance_non_negative check constraint. */
 const CHECK_VIOLATION = "23514";
 

@@ -5,9 +5,9 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
-import { createChargedRender, CREDITS_PER_IMAGE, InsufficientCreditsError } from "../lib/credits.js";
+import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { renderRouteFor } from "@renvia/types";
+import { CREDITS_PER_IMAGE, renderRouteFor } from "@renvia/types";
 import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 import { modelFor } from "../lib/models.js";
 import { ownUploadKey } from "../lib/storage.js";
@@ -97,8 +97,14 @@ renders.post("/", async (c) => {
   return c.json({ job }, 201);
 });
 
+// Global fal spend is operator information, not something normal users should see.
 renders.get("/budget", async (c) => {
+  const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  if (user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
   return c.json(await getBudget(c.env, db));
 });
 

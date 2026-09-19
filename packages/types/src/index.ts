@@ -138,6 +138,27 @@ export interface DeleteCanvasNodeResponse {
 
 export type UserRole = "user" | "admin";
 
+/** Every model currently costs ~$0.04 per image, so credits map 1:1 to images. */
+export const CREDITS_PER_IMAGE = 1;
+
+export type CreditLedgerReason = "signup_bonus" | "initial_grant" | "admin_grant" | "render" | "render_refund" | "purchase";
+
+export interface CreditLedgerEntry {
+  id: string;
+  /** Positive for grants and refunds, negative for spending. */
+  amount: number;
+  reason: CreditLedgerReason;
+  renderId: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface MeCreditsResponse {
+  creditBalance: number;
+  /** Most recent first. */
+  entries: CreditLedgerEntry[];
+}
+
 export interface MeResponse {
   id: string;
   clerkId: string;
