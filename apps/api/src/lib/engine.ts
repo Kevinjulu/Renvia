@@ -3,7 +3,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
-import { compositeMaskedEdit } from "./composite.js";
+import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./composite.js";
 import { refundIfFailed } from "./credits.js";
 import { modelById, pricingFor } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
@@ -122,6 +122,22 @@ async function falReachableImageUrl(env: Env, fal: FalClient, url: string, origi
   return fal.storage.upload(new Blob([upload.bytes], { type: upload.contentType }));
 }
 
+interface MaskedEditInputs {
+  source: Uint8Array<ArrayBuffer>;
+  mask: Uint8Array<ArrayBuffer>;
+  /** Region sent to the model, or null when it edits the whole image. */
+  crop: CropRect | null;
+}
+
+/** Source, mask and crop of a selection edit; null for renders and whole-image edits. */
+async function maskedEditInputs(env: Env, render: RenderRow, origin: string): Promise<MaskedEditInputs | null> {
+  const maskUrl = render.settings?.edit?.maskImageUrl;
+  if (!maskUrl) return null;
+  const [source, mask] = await Promise.all([readOwnUpload(env, render.sourceImageUrl, origin), readOwnUpload(env, maskUrl, origin)]);
+  if (!source || !mask) throw new Error("Edit source or mask isn't one of our uploads");
+  return { source: source.bytes, mask: mask.bytes, crop: await editCropFor(source.bytes, mask.bytes) };
+}
+
 function webhookUrlFor(origin: string): string | undefined {
   const { protocol, hostname } = new URL(origin);
   // fal can't call back into a local dev server; polling covers that case.
@@ -141,9 +157,15 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const settings = render.settings ?? {};
     const influence = settings.styleInfluence ?? 2;
     const preserveStructure = settings.preserveStructure ?? true;
-    const [sourceUrl, ...referenceUrls] = await Promise.all(
-      [render.sourceImageUrl, ...(settings.referenceImageUrls ?? [])].map((url) => falReachableImageUrl(env, fal, url, origin)),
-    );
+    // A selection edit sends the model a close-up of the selected area (see editCropFor).
+    const masked = await maskedEditInputs(env, render, origin);
+    const sourceUrlPromise = masked?.crop
+      ? cropSource(masked.source, masked.crop).then((bytes) => fal.storage.upload(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" })))
+      : falReachableImageUrl(env, fal, render.sourceImageUrl, origin);
+    const [sourceUrl, ...referenceUrls] = await Promise.all([
+      sourceUrlPromise,
+      ...(settings.referenceImageUrls ?? []).map((url) => falReachableImageUrl(env, fal, url, origin)),
+    ]);
 
     const route = renderRouteFor(settings);
     const prompt = settings.edit
@@ -179,15 +201,11 @@ async function storeFalResult(env: Env, render: RenderRow, imageUrl: string, ori
   let bytes = new Uint8Array(await response.arrayBuffer());
   let contentType = response.headers.get("Content-Type")?.split(";")[0]?.trim() ?? "image/jpeg";
 
-  // Selection edits keep only the masked area of the model's output.
-  const maskUrl = render.settings?.edit?.maskImageUrl;
-  if (maskUrl) {
-    const [source, mask] = await Promise.all([
-      readOwnUpload(env, render.sourceImageUrl, origin),
-      readOwnUpload(env, maskUrl, origin),
-    ]);
-    if (!source || !mask) throw new Error("Edit source or mask isn't one of our uploads");
-    bytes = new Uint8Array(await compositeMaskedEdit(source.bytes, bytes, mask.bytes));
+  // Selection edits keep only the masked area of the model's output. The crop is recomputed
+  // from the same source and mask, so it matches the region the model was given.
+  const masked = await maskedEditInputs(env, render, origin);
+  if (masked) {
+    bytes = new Uint8Array(await compositeMaskedEdit(masked.source, bytes, masked.mask, masked.crop));
     contentType = "image/jpeg";
   }
 
