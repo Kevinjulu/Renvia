@@ -4,7 +4,8 @@ import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getOrCreateUserId } from "../lib/users.js";
+import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
+import { createChargedRender, CREDITS_PER_IMAGE, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
 import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
@@ -46,8 +47,11 @@ renders.post("/", async (c) => {
   const body = createRenderSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
-  const project = await findOwnedProject(db, body.projectId, ownerId);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  if (user.disabled) {
+    return c.json({ error: "Account disabled", code: "account_disabled" }, 403);
+  }
+  const project = await findOwnedProject(db, body.projectId, user.id);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
   }
@@ -62,12 +66,14 @@ renders.post("/", async (c) => {
 
   const model = modelFor(engineMode(c.env), renderRouteFor(settings));
   if (await wouldExceedBudget(c.env, db, model.costMicros)) {
-    return c.json({ error: "Render budget exhausted" }, 402);
+    return c.json({ error: "Render budget exhausted", code: "budget_exhausted" }, 402);
   }
 
-  const [created] = await db
-    .insert(schema.renders)
-    .values({
+  // Admins aren't charged; their renders still count toward the global fal budget.
+  const credits = user.role === "admin" ? 0 : CREDITS_PER_IMAGE;
+  let created;
+  try {
+    created = await createChargedRender(db, user.id, credits, {
       projectId: body.projectId,
       sourceImageUrl: body.sourceImageUrl,
       prompt: body.prompt,
@@ -79,11 +85,12 @@ renders.post("/", async (c) => {
       model: model.id,
       costMicros: model.costMicros,
       settings,
-    })
-    .returning();
-
-  if (!created) {
-    return c.json({ error: "Internal error" }, 500);
+    });
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return c.json({ error: "Not enough credits", code: "insufficient_credits" }, 402);
+    }
+    throw error;
   }
 
   const job = await submitRender(c.env, db, created, origin);

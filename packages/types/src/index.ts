@@ -18,6 +18,8 @@ export interface RenderJob {
   costMicros: number;
   /** Settings the render was generated with, for "use prompt and settings". */
   settings: RenderGenerationSettings | null;
+  /** Credits debited for this render (refunded if it failed); 0 for admins. */
+  creditsCharged: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,10 +136,16 @@ export interface DeleteCanvasNodeResponse {
   id: string;
 }
 
+export type UserRole = "user" | "admin";
+
 export interface MeResponse {
   id: string;
   clerkId: string;
   email: string;
+  role: UserRole;
+  /** Spendable credits; 1 credit = 1 image. Admins aren't charged. */
+  creditBalance: number;
+  disabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

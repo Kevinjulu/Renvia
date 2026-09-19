@@ -4,6 +4,7 @@ import { schema, type Database } from "@renvia/db";
 import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
 import { compositeMaskedEdit } from "./composite.js";
+import { refundIfFailed } from "./credits.js";
 import { modelById, pricingFor } from "./models.js";
 import { buildEditPrompt, buildEnginePrompt } from "./prompts.js";
 import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
@@ -84,6 +85,7 @@ async function finishRender(db: Database, render: RenderRow, patch: Partial<Rend
   return current ?? render;
 }
 
+/** Every use is wrapped in refundIfFailed, which returns the user's credits for it. */
 function failurePatch(message: string): Partial<RenderRow> {
   // Unbilled by fal, so it must stop counting against the budget.
   return { status: "failed", costMicros: 0, errorMessage: message };
@@ -168,7 +170,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     return updateRender(db, render.id, { status: "processing", falRequestId: request_id });
   } catch (error) {
     console.error("fal submit failed", error);
-    return updateRender(db, render.id, failurePatch(errorMessageOf(error)));
+    return refundIfFailed(db, await updateRender(db, render.id, failurePatch(errorMessageOf(error))));
   }
 }
 
@@ -203,7 +205,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
   const status = await fal.queue.status(render.model, { requestId: render.falRequestId });
   if (status.status !== "COMPLETED") {
     if (Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return finishRender(db, render, failurePatch("Render timed out"));
+      return refundIfFailed(db, await finishRender(db, render, failurePatch("Render timed out")));
     }
     return render;
   }
@@ -211,7 +213,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
   try {
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
     const imageUrl = (data as { images?: { url?: string }[] }).images?.[0]?.url;
-    if (!imageUrl) return finishRender(db, render, failurePatch("Render returned no image"));
+    if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatch("Render returned no image")));
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
     return finishRender(db, render, { status: "succeeded", resultImageUrl });
@@ -219,7 +221,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     // A completed request whose result call errors is a model-side failure (bad input,
     // safety filter, …); storage/network hiccups are left processing and retried.
     if (error instanceof ApiError) {
-      return finishRender(db, render, failurePatch(errorMessageOf(error)));
+      return refundIfFailed(db, await finishRender(db, render, failurePatch(errorMessageOf(error))));
     }
     throw error;
   }
@@ -234,7 +236,7 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
     // submitRender moves every render out of pending within the create request, so
     // an old pending row means that request died before handing it to the engine.
     if (Date.now() - render.createdAt.getTime() < FAL_TIMEOUT_MS) return render;
-    return updateRender(db, render.id, failurePatch("Render was never submitted"));
+    return refundIfFailed(db, await updateRender(db, render.id, failurePatch("Render was never submitted")));
   }
   if (render.status !== "processing") return render;
 
