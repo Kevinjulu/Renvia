@@ -130,7 +130,7 @@ export function DashboardRoute() {
         <DashboardTopBar value={search} onChange={setSearch} onNotifications={() => navigate("/activity")} />
         <div className="dashboard-layout">
           <main className="dashboard-main">
-            {isHome && <><div className="dashboard-greeting"><p>Dashboard</p><h1>{greetingFor(new Date())}, {user?.firstName || "Kevin"} <span>👋🏻</span></h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
+            {isHome && <><div className="dashboard-greeting"><p>Dashboard</p><h1>{greetingFor(new Date())}, {user?.firstName || "Kevin"}</h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
           <div className="dashboard-section-heading">
             <h2>{heading}</h2>
             {view === "home" && sortedProjects.length > RECENT_LIMIT && (
