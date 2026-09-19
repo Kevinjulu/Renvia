@@ -69,6 +69,31 @@ export const referenceImages = pgTable("reference_images", {
         .default("upload"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+/**
+ * Automatic selections (SAM 3 on fal) made while editing a render. Each is charged like an
+ * image and its fal cost counts toward the global spending cap alongside renders.
+ */
+export const segmentations = pgTable("segmentations", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+        .notNull()
+        .references(() => users.id),
+    imageUrl: text("image_url").notNull(),
+    /** What to select, e.g. "windows"; null for a click selection. */
+    prompt: text("prompt"),
+    /** Clicked point in image pixels, for click selections. */
+    point: jsonb("point").$type(),
+    status: text("status", { enum: ["pending", "succeeded", "failed"] })
+        .notNull()
+        .default("pending"),
+    /** Number of objects the selection found. */
+    objectCount: integer("object_count"),
+    model: text("model").notNull(),
+    costMicros: integer("cost_micros").notNull().default(0),
+    creditsCharged: integer("credits_charged").notNull().default(0),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("segmentations_user_created_idx").on(table.userId, table.createdAt)]);
 export const creditLedger = pgTable("credit_ledger", {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -77,9 +102,10 @@ export const creditLedger = pgTable("credit_ledger", {
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-        enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "purchase"],
+        enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase"],
     }).notNull(),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
+    segmentationId: uuid("segmentation_id").references(() => segmentations.id, { onDelete: "set null" }),
     note: text("note"),
     /** Admin who made a manual adjustment. */
     actorId: uuid("actor_id").references(() => users.id),
@@ -87,6 +113,8 @@ export const creditLedger = pgTable("credit_ledger", {
 }, (table) => [
     // One debit and at most one refund per render, so a refund can never be applied twice.
     uniqueIndex("credit_ledger_render_reason_unique").on(table.renderId, table.reason),
+    // Same guarantee for automatic selections.
+    uniqueIndex("credit_ledger_segmentation_reason_unique").on(table.segmentationId, table.reason),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
 ]);
 /**
@@ -109,4 +137,21 @@ export const appSettings = pgTable("app_settings", {
     check("app_settings_fal_mode_values", sql `${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
     check("app_settings_budget_range", sql `${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
 ]);
+/**
+ * Operator actions from the admin app (credit adjustments, role changes, settings).
+ * Written at the same time as the mutation so the Audit tab has a durable trail.
+ */
+export const adminEvents = pgTable("admin_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorId: uuid("actor_id")
+        .notNull()
+        .references(() => users.id),
+    /** e.g. credits.adjust, user.update, settings.update */
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    summary: text("summary").notNull(),
+    detail: jsonb("detail").$type(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("admin_events_created_idx").on(table.createdAt)]);
 //# sourceMappingURL=schema.js.map

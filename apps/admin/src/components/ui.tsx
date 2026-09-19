@@ -113,7 +113,7 @@ const STATUS_STYLES: Record<RenderStatus, { dot: string; text: string; bg: strin
   pending: { dot: "bg-faint", text: "text-muted", bg: "bg-surface-muted ring-hairline-strong" },
 };
 
-export function StatusBadge({ status }: { status: RenderStatus }) {
+export function StatusBadge({ status }: { status: RenderStatus | "pending" | "succeeded" | "failed" }) {
   const s = STATUS_STYLES[status];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${s.bg} ${s.text}`}>

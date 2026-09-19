@@ -141,7 +141,18 @@ export type UserRole = "user" | "admin";
 /** Every model currently costs ~$0.04 per image, so credits map 1:1 to images. */
 export const CREDITS_PER_IMAGE = 1;
 
-export type CreditLedgerReason = "signup_bonus" | "initial_grant" | "admin_grant" | "render" | "render_refund" | "purchase";
+/** Credits for one automatic selection (click or text) while editing a render. */
+export const CREDITS_PER_SELECTION = 1;
+
+export type CreditLedgerReason =
+  | "signup_bonus"
+  | "initial_grant"
+  | "admin_grant"
+  | "render"
+  | "render_refund"
+  | "segment"
+  | "segment_refund"
+  | "purchase";
 
 export interface CreditLedgerEntry {
   id: string;
@@ -149,8 +160,24 @@ export interface CreditLedgerEntry {
   amount: number;
   reason: CreditLedgerReason;
   renderId: string | null;
+  segmentationId?: string | null;
   note: string | null;
   createdAt: string;
+}
+
+/** Automatic selection on an image: text ("windows") and/or a clicked point, in image pixels. */
+export interface CreateSegmentationRequest {
+  imageUrl: string;
+  prompt?: string;
+  point?: { x: number; y: number };
+}
+
+export interface CreateSegmentationResponse {
+  /** White-on-black PNG data URL at the image's natural size; white is selected. */
+  maskDataUrl: string;
+  /** Objects found; 0 means nothing matched and the credit was refunded. */
+  objectCount: number;
+  creditsCharged: number;
 }
 
 export interface MeCreditsResponse {
@@ -321,3 +348,81 @@ export interface AdminSettings {
 export type AdminUpdateSettingsRequest = Partial<
   Pick<AdminSettings, "signupBonusCredits" | "dailyRenderLimit" | "falMode" | "falBudgetUsd">
 >;
+
+export interface AdminProject {
+  id: string;
+  name: string;
+  thumbnailUrl: string | null;
+  ownerId: string;
+  ownerEmail: string;
+  renderCount: number;
+  spentUsd: number;
+  lastRenderAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminProjectsResponse {
+  projects: AdminProject[];
+  total: number;
+}
+
+export interface AdminCreditEntry {
+  id: string;
+  userId: string;
+  userEmail: string;
+  amount: number;
+  reason: CreditLedgerReason;
+  renderId: string | null;
+  segmentationId: string | null;
+  note: string | null;
+  actorEmail: string | null;
+  createdAt: string;
+}
+
+export interface AdminCreditsResponse {
+  entries: AdminCreditEntry[];
+  total: number;
+}
+
+export type SegmentationStatus = "pending" | "succeeded" | "failed";
+
+export interface AdminSegmentation {
+  id: string;
+  userId: string;
+  userEmail: string;
+  imageUrl: string;
+  prompt: string | null;
+  point: { x: number; y: number } | null;
+  status: SegmentationStatus;
+  objectCount: number | null;
+  model: string;
+  costUsd: number;
+  creditsCharged: number;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface AdminSegmentationsResponse {
+  segmentations: AdminSegmentation[];
+  total: number;
+}
+
+export type AdminAuditAction = "credits.adjust" | "user.update" | "settings.update";
+
+export interface AdminAuditEvent {
+  id: string;
+  actorId: string;
+  actorEmail: string;
+  action: AdminAuditAction;
+  targetType: string;
+  targetId: string | null;
+  summary: string;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AdminAuditResponse {
+  events: AdminAuditEvent[];
+  total: number;
+}

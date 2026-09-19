@@ -1,17 +1,23 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminAuditResponse,
+  AdminCreditsResponse,
   AdminGrantCreditsRequest,
   AdminOverviewResponse,
+  AdminProjectsResponse,
   AdminRendersResponse,
+  AdminSegmentationsResponse,
   AdminSettings,
   AdminUpdateSettingsRequest,
   AdminUpdateUserRequest,
   AdminUser,
   AdminUserDetailResponse,
   AdminUsersResponse,
+  CreditLedgerReason,
   MeResponse,
   RenderStatus,
+  SegmentationStatus,
 } from "@renvia/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
@@ -72,6 +78,14 @@ export function useAdminApi() {
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
       listRenders: (params: { status?: RenderStatus; userId?: string; limit?: number; offset?: number }) =>
         request<AdminRendersResponse>(getToken, `/admin/renders${query(params)}`),
+      listProjects: (params: { search?: string; limit?: number; offset?: number }) =>
+        request<AdminProjectsResponse>(getToken, `/admin/projects${query(params)}`),
+      listCredits: (params: { reason?: CreditLedgerReason; userId?: string; limit?: number; offset?: number }) =>
+        request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
+      listSegmentations: (params: { status?: SegmentationStatus; userId?: string; limit?: number; offset?: number }) =>
+        request<AdminSegmentationsResponse>(getToken, `/admin/segmentations${query(params)}`),
+      listAudit: (params: { action?: string; limit?: number; offset?: number }) =>
+        request<AdminAuditResponse>(getToken, `/admin/audit${query(params)}`),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

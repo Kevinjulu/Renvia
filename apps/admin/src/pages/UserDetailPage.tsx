@@ -1,24 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChevronLeft, Clock, Coins, DollarSign, History, ImageIcon, SlidersHorizontal } from "lucide-react";
-import type { CreditLedgerReason } from "@renvia/types";
 import { RenderTable } from "../components/RenderTable";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
 import { ApiError, useAdminApi } from "../lib/api";
+import { formatCreditReason } from "../lib/labels";
 import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { useLoad } from "../lib/useLoad";
 import { useAdmin } from "../lib/useAdmin";
-
-// Partial so this stays valid as new ledger reasons land in @renvia/types before
-// they're wired here; unmapped reasons fall back to the raw reason at the call site.
-const REASON_LABELS: Partial<Record<CreditLedgerReason, string>> = {
-  signup_bonus: "Signup bonus",
-  initial_grant: "Initial grant",
-  admin_grant: "Admin adjustment",
-  render: "Render",
-  render_refund: "Refund (failed render)",
-  purchase: "Purchase",
-};
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
@@ -125,7 +114,7 @@ export function UserDetailPage() {
                     {entry.amount > 0 ? "+" : ""}
                     {formatNumber(entry.amount)}
                   </td>
-                  <td className="px-5 py-2.5 text-secondary">{REASON_LABELS[entry.reason] ?? entry.reason}</td>
+                  <td className="px-5 py-2.5 text-secondary">{formatCreditReason(entry.reason)}</td>
                   <td className="px-5 py-2.5 text-xs text-muted">
                     {entry.note}
                     {entry.actorEmail && <span className="block text-faint">by {entry.actorEmail}</span>}

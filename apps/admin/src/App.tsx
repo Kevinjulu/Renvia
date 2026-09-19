@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { SignIn, useAuth, useClerk, UserButton } from "@clerk/react";
 import type { LucideIcon } from "lucide-react";
-import { ImageIcon, LayoutDashboard, Menu, Settings, Users, X } from "lucide-react";
+import { FolderKanban, ImageIcon, LayoutDashboard, Menu, Scan, ScrollText, Settings, Users, Wallet, X } from "lucide-react";
 import type { MeResponse } from "@renvia/types";
 import { useAdminApi } from "./lib/api";
 import { AdminContext } from "./lib/useAdmin";
@@ -11,6 +11,10 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { UsersPage } from "./pages/UsersPage";
 import { UserDetailPage } from "./pages/UserDetailPage";
 import { RendersPage } from "./pages/RendersPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { CreditsPage } from "./pages/CreditsPage";
+import { SegmentationsPage } from "./pages/SegmentationsPage";
+import { AuditPage } from "./pages/AuditPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export default function App() {
@@ -76,7 +80,11 @@ function AdminGate() {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/users/:id" element={<UserDetailPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/renders" element={<RendersPage />} />
+          <Route path="/segmentations" element={<SegmentationsPage />} />
+          <Route path="/credits" element={<CreditsPage />} />
+          <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -96,7 +104,11 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true, title: "Overview" },
   { to: "/users", label: "Users", icon: Users, end: false, title: "Users" },
+  { to: "/projects", label: "Projects", icon: FolderKanban, end: false, title: "Projects" },
   { to: "/renders", label: "Renders", icon: ImageIcon, end: false, title: "Renders" },
+  { to: "/segmentations", label: "Segmentations", icon: Scan, end: false, title: "Segmentations" },
+  { to: "/credits", label: "Credits", icon: Wallet, end: false, title: "Credits" },
+  { to: "/audit", label: "Audit", icon: ScrollText, end: false, title: "Audit" },
   { to: "/settings", label: "Settings", icon: Settings, end: false, title: "Settings" },
 ];
 
