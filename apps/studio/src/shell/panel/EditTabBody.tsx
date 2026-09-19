@@ -1,4 +1,5 @@
 import { ReferenceBar } from "./ReferenceBar";
+import { hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
   useGenerationSettingsStore,
   type EditAction,
@@ -37,6 +38,8 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const setEditPrompt = useGenerationSettingsStore((state) => state.setEditPrompt);
 
+  const isEditingRender = useRenderEditStore((state) => state.targetJobId !== null);
+  const renderAreaSelected = useRenderEditStore((state) => hasSelection(state.strokes));
   const showImageChip = Boolean(currentImageUrl);
 
   return (
@@ -123,13 +126,20 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
 
         <div className="px-3 pb-3">
           <ReferenceBar />
+          {isEditingRender && renderAreaSelected && (
+            <p className="mt-1.5 text-[11px] text-muted">References only change the area you painted.</p>
+          )}
         </div>
       </div>
 
       <p className="studio-ai-note">
-        {selectionMode === "manual"
-          ? "Draw a rectangle or polygon on the image — only that area is regenerated."
-          : "The AI finds what to change from your description. Draw a selection to limit the edit to one area."}
+        {isEditingRender
+          ? renderAreaSelected
+            ? "Only the painted area of the render is regenerated — everything else stays exactly as it is."
+            : "Paint over part of the render to change just that area, or apply to edit the whole render."
+          : selectionMode === "manual"
+            ? "Draw a rectangle or polygon on the image — only that area is regenerated."
+            : "The AI finds what to change from your description. Draw a selection to limit the edit to one area."}
       </p>
     </div>
   );

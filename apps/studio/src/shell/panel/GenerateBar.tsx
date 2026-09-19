@@ -12,6 +12,7 @@ import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSett
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
+import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 import { buildSelectionMask } from "../../canvas/utils/buildSelectionMask";
@@ -63,6 +64,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const selection = useSelectionToolStore((state) => state.selection);
   const selectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const addJob = useRenderJobsStore((state) => state.addJob);
+  const jobs = useRenderJobsStore((state) => state.jobs);
+  const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
+  const renderStrokes = useRenderEditStore((state) => state.strokes);
   const failedJobCount = useRenderJobsStore((state) => state.jobs.filter((job) => job.status === "failed").length);
   const me = useAccountStore((state) => state.me);
   const isAdmin = me?.role === "admin";
@@ -100,6 +104,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editView = views.find((view) => view.id === activeViewId);
   // A selection only applies to the image it was drawn on.
   const editSelection = selection && editNode && selectionNodeId === editNode.id ? selection : null;
+  // A render open in the viewer's edit mode takes over from the canvas image as the edit target.
+  const editRender = jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null;
+  const hasEditSelection = editRender ? hasSelection(renderStrokes) : Boolean(editSelection);
 
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
@@ -113,7 +120,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const creditBalance = me?.creditBalance ?? 0;
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
-  const hasTarget = isEdit ? Boolean(editNode) : filled.length > 0;
+  const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
   const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled;
 
   const viewWord = filled.length === 1 ? "view" : "views";
@@ -175,14 +182,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   };
 
   const handleEditApply = async () => {
-    if (!editNode) return;
+    const sourceImageUrl = editRender?.resultImageUrl ?? editNode?.imageUrl;
+    if (!sourceImageUrl) return;
     const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
     if (!editPrompt.trim() && referenceImageUrls.length === 0) {
       setStatus("Describe an edit or attach a reference first.");
       return;
     }
-    if (selectionMode === "manual" && !editSelection) {
-      setStatus("Draw a selection on the image first, or switch to Auto select.");
+    if (selectionMode === "manual" && !hasEditSelection) {
+      setStatus(editRender ? "Paint over the area to change first, or switch to Auto select." : "Draw a selection on the image first, or switch to Auto select.");
       return;
     }
 
@@ -190,21 +198,27 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     setStatus(null);
     try {
       const edit: RenderEditSettings = { mode: editMode, action };
-      if (editSelection) {
-        const naturalSize = await loadImageSize(editNode.imageUrl);
-        const mask = await buildSelectionMask(editSelection, editNode, naturalSize);
+      const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
+      const mask = !naturalSize
+        ? null
+        : editRender
+          ? await buildStrokeMask(renderStrokes, naturalSize)
+          : editSelection && editNode
+            ? await buildSelectionMask(editSelection, editNode, naturalSize)
+            : null;
+      if (mask) {
         const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }));
         edit.maskImageUrl = publicUrl;
       }
 
       const { job } = await apiClient.createRender({
         projectId,
-        sourceImageUrl: editNode.imageUrl,
+        sourceImageUrl,
         prompt: editPrompt.trim(),
         resolution,
         style,
-        viewKey: editView?.id,
-        viewLabel: editView?.label,
+        viewKey: editRender ? (editRender.viewKey ?? undefined) : editView?.id,
+        viewLabel: editRender ? (editRender.viewLabel ?? undefined) : editView?.label,
         generationSettings: {
           styleInfluence,
           preserveStructure,
@@ -213,6 +227,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         },
       });
       addJob(job);
+      if (editRender) useRenderEditStore.getState().setAwaitingJob(job.id);
     } catch (error) {
       const refusal = refusalMessage(errorCode(error));
       setStatus(refusal ? `${refusal} The edit wasn't applied.` : "Couldn't apply the edit. Try again in a moment.");
@@ -222,7 +237,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     }
   };
 
-  const scope = isEdit ? (editSelection ? "Selected area" : "1 edit") : plural(imageCount, "image");
+  const scope = isEdit ? (hasEditSelection ? "Selected area" : "1 edit") : plural(imageCount, "image");
   const costLine = (() => {
     if (!hasTarget || !me) return null;
     if (isAdmin) {

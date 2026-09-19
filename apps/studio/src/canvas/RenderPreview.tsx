@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRenderJobsStore, type PreviewMode } from "./hooks/useRenderJobsStore";
 import { useCanvasStore } from "./hooks/useCanvasStore";
-
-type Mode = "render" | "compare" | "source";
+import { useFittedBox, type Size } from "./hooks/useFittedBox";
+import { hasSelection, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
+import { RenderEditSurface } from "./RenderEditSurface";
 
 function downloadImage(url: string) {
   const link = document.createElement("a");
@@ -18,28 +19,11 @@ function downloadImage(url: string) {
 /** Before/after slider — the source is stretched over the render's box so the two line up. */
 function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: string }) {
   const [split, setSplit] = useState(50);
-  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
-  const [area, setArea] = useState<{ width: number; height: number } | null>(null);
+  const [natural, setNatural] = useState<Size | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const box = useFittedBox(areaRef, natural);
   const dragging = useRef(false);
-
-  useEffect(() => {
-    const element = areaRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setArea({ width: entry.contentRect.width, height: entry.contentRect.height });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  // Largest box with the render's aspect ratio that fits the stage (never upscaled).
-  const box = (() => {
-    if (!natural || !area) return null;
-    const scale = Math.min(area.width / natural.width, area.height / natural.height, 1);
-    return { width: Math.round(natural.width * scale), height: Math.round(natural.height * scale) };
-  })();
 
   const moveTo = (clientX: number) => {
     const rect = boxRef.current?.getBoundingClientRect();
@@ -104,18 +88,79 @@ function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: s
   );
 }
 
-/** Full-size view of a finished render, shown over the canvas when a render is clicked in the results panel. */
+const EDIT_TOOLS: { id: RenderEditTool; label: string; key: string; icon: ReactNode }[] = [
+  { id: "brush", label: "Brush", key: "B", icon: <><path d="M13.5 2.5 6 10" /><path d="M6 10c-1.7 0-3 1.3-3 3v.5h.5c1.7 0 3-1.3 3-3Z" /></> },
+  { id: "eraser", label: "Eraser", key: "E", icon: <><path d="m9.5 3 3.5 3.5-6 6H4L2.5 11Z" /><path d="M7 13.5h6.5" /></> },
+  { id: "rectangle", label: "Rectangle", key: "R", icon: <rect x="2.5" y="3.5" width="11" height="9" rx="1" strokeDasharray="2.2 1.8" /> },
+  { id: "polygon", label: "Polygon", key: "P", icon: <path d="M4.5 2.5 13 5l-2 8.5-8.5-3Z" /> },
+];
+
+function EditToolbar({ onDone }: { onDone: () => void }) {
+  const tool = useRenderEditStore((state) => state.tool);
+  const setTool = useRenderEditStore((state) => state.setTool);
+  const brushSize = useRenderEditStore((state) => state.brushSize);
+  const setBrushSize = useRenderEditStore((state) => state.setBrushSize);
+  const strokes = useRenderEditStore((state) => state.strokes);
+  const undo = useRenderEditStore((state) => state.undo);
+  const clearStrokes = useRenderEditStore((state) => state.clearStrokes);
+
+  return (
+    <div className="render-edit-toolbar">
+      <div className="render-edit-tools" role="toolbar" aria-label="Selection tools">
+        {EDIT_TOOLS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={tool === item.id ? "is-active" : ""}
+            aria-pressed={tool === item.id}
+            title={`${item.label} (${item.key})`}
+            onClick={() => setTool(item.id)}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">{item.icon}</svg>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+      {(tool === "brush" || tool === "eraser") && (
+        <label className="render-edit-size" title="Brush size">
+          <span className="sr-only">Brush size</span>
+          <i style={{ width: 6, height: 6 }} aria-hidden="true" />
+          <input type="range" min={8} max={120} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
+          <i style={{ width: 12, height: 12 }} aria-hidden="true" />
+        </label>
+      )}
+      <button type="button" className="render-preview-icon" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={strokes.length === 0} onClick={undo}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3" /><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7" /></svg>
+      </button>
+      <button type="button" className="render-edit-clear" disabled={strokes.length === 0} onClick={clearStrokes}>
+        Clear
+      </button>
+      <button type="button" className="render-edit-done" onClick={onDone}>
+        Done
+      </button>
+    </div>
+  );
+}
+
+/** Full-size view of a finished render, shown over the canvas; also where renders are edited. */
 export function RenderPreview() {
   const jobs = useRenderJobsStore((state) => state.jobs);
   const previewJobId = useRenderJobsStore((state) => state.previewJobId);
+  const mode = useRenderJobsStore((state) => state.previewMode);
+  const setMode = useRenderJobsStore((state) => state.setPreviewMode);
   const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
-  const [mode, setMode] = useState<Mode>("render");
+  const activeTab = useCanvasStore((state) => state.activeTab);
+  const targetJobId = useRenderEditStore((state) => state.targetJobId);
+  const strokes = useRenderEditStore((state) => state.strokes);
+  const awaitingJobId = useRenderEditStore((state) => state.awaitingJobId);
+  const stopEditing = useRenderEditStore((state) => state.stopEditing);
   const [loaded, setLoaded] = useState(false);
 
   const viewable = jobs.filter((job) => job.status === "succeeded" && job.resultImageUrl);
   const index = viewable.findIndex((job) => job.id === previewJobId);
-  const job = index >= 0 ? viewable[index] : null;
+  const job = (index >= 0 ? viewable[index] : undefined) ?? null;
+  const isEditing = job !== null && targetJobId === job.id;
 
   useEffect(() => setLoaded(false), [job?.resultImageUrl, mode]);
 
@@ -128,8 +173,26 @@ export function RenderPreview() {
     }
   }, [activeViewId]);
 
+  // Editing a render only lasts while it's the one on screen and the Edit tab is open.
   useEffect(() => {
-    if (!job) return;
+    if (targetJobId && (previewJobId !== targetJobId || activeTab !== "edit")) stopEditing();
+  }, [targetJobId, previewJobId, activeTab, stopEditing]);
+
+  // When an edit queued from here finishes, show it against the render it came from.
+  const awaited = jobs.find((item) => item.id === awaitingJobId);
+  useEffect(() => {
+    if (!awaited || (awaited.status !== "succeeded" && awaited.status !== "failed")) return;
+    useRenderEditStore.getState().setAwaitingJob(null);
+    if (awaited.status !== "succeeded" || !awaited.resultImageUrl || !previewJobId) return;
+    const shown = jobs.find((item) => item.id === previewJobId);
+    if (shown?.resultImageUrl === awaited.sourceImageUrl) {
+      stopEditing();
+      setPreviewJob(awaited.id, "compare");
+    }
+  }, [awaited, jobs, previewJobId, setPreviewJob, stopEditing]);
+
+  useEffect(() => {
+    if (!job || isEditing) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
@@ -139,72 +202,100 @@ export function RenderPreview() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [job, index, viewable, setPreviewJob]);
+  }, [job, isEditing, index, viewable, setPreviewJob]);
 
   if (!job?.resultImageUrl) return null;
 
   const title = [job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
   const shownUrl = mode === "source" ? job.sourceImageUrl : job.resultImageUrl;
+  const parent = job.settings?.edit ? jobs.find((item) => item.resultImageUrl === job.sourceImageUrl) : undefined;
+  const selected = hasSelection(strokes);
 
   return (
-    <div className="render-preview" role="dialog" aria-label={`${title} preview`}>
+    <div className={`render-preview ${isEditing ? "is-editing" : ""}`} role="dialog" aria-label={`${title} ${isEditing ? "editor" : "preview"}`}>
       <header className="render-preview-bar">
         <button type="button" className="render-preview-back" onClick={() => setPreviewJob(null)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
           Back to canvas
         </button>
         <div className="render-preview-title">
-          <strong>{title}</strong>
-          {viewable.length > 1 && <span>{index + 1} of {viewable.length}</span>}
+          <strong>{isEditing ? `Editing ${title.toLowerCase()}` : title}</strong>
+          {!isEditing && viewable.length > 1 && <span>{index + 1} of {viewable.length}</span>}
+          {!isEditing && parent && (
+            <button type="button" className="render-preview-parent" onClick={() => setPreviewJob(parent.id)}>
+              from an earlier render
+            </button>
+          )}
         </div>
-        <div className="render-preview-actions">
-          <div className="render-preview-modes" role="tablist" aria-label="View">
-            {(["render", "compare", "source"] as const).map((item) => (
-              <button key={item} type="button" role="tab" aria-selected={mode === item} className={mode === item ? "is-active" : ""} onClick={() => setMode(item)}>
-                {item === "render" ? "Render" : item === "compare" ? "Compare" : "Source"}
-              </button>
-            ))}
+        {isEditing ? (
+          <EditToolbar onDone={stopEditing} />
+        ) : (
+          <div className="render-preview-actions">
+            <div className="render-preview-modes" role="tablist" aria-label="View">
+              {(["render", "compare", "source"] as const satisfies readonly PreviewMode[]).map((item) => (
+                <button key={item} type="button" role="tab" aria-selected={mode === item} className={mode === item ? "is-active" : ""} onClick={() => setMode(item)}>
+                  {item === "render" ? "Render" : item === "compare" ? "Compare" : "Source"}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="render-preview-edit" onClick={() => startRenderEdit(job.id)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" /></svg>
+              Edit
+            </button>
+            <button type="button" className="render-preview-icon" title="Download" aria-label="Download render" onClick={() => downloadImage(job.resultImageUrl!)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" /></svg>
+            </button>
+            <button type="button" className="render-preview-icon" title="Open original in a new tab" aria-label="Open original in a new tab" onClick={() => window.open(shownUrl, "_blank", "noopener,noreferrer")}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" /></svg>
+            </button>
+            <button type="button" className="render-preview-icon" title="Close (Esc)" aria-label="Close preview" onClick={() => setPreviewJob(null)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+            </button>
           </div>
-          <button type="button" className="render-preview-icon" title="Download" aria-label="Download render" onClick={() => downloadImage(job.resultImageUrl!)}>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" /></svg>
-          </button>
-          <button type="button" className="render-preview-icon" title="Open original in a new tab" aria-label="Open original in a new tab" onClick={() => window.open(shownUrl, "_blank", "noopener,noreferrer")}>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" /></svg>
-          </button>
-          <button type="button" className="render-preview-icon" title="Close (Esc)" aria-label="Close preview" onClick={() => setPreviewJob(null)}>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
-          </button>
-        </div>
+        )}
       </header>
 
       <div className="render-preview-stage">
-        {index > 0 && (
+        {!isEditing && index > 0 && (
           <button type="button" className="render-preview-nav is-prev" aria-label="Previous render" onClick={() => setPreviewJob(viewable[index - 1]!.id)}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
           </button>
         )}
-        {mode === "compare" ? (
+        {isEditing ? (
+          <RenderEditSurface imageUrl={job.resultImageUrl} onExit={stopEditing} />
+        ) : mode === "compare" ? (
           <CompareView key={job.id} renderUrl={job.resultImageUrl} sourceUrl={job.sourceImageUrl} />
         ) : (
           <img key={shownUrl} src={shownUrl} alt={mode === "source" ? "Source image" : title} className={`render-preview-image ${loaded ? "is-loaded" : ""}`} onLoad={() => setLoaded(true)} draggable={false} />
         )}
-        {mode !== "compare" && !loaded && <span className="render-preview-spinner" aria-label="Loading image" />}
-        {index < viewable.length - 1 && (
+        {!isEditing && mode !== "compare" && !loaded && <span className="render-preview-spinner" aria-label="Loading image" />}
+        {!isEditing && index < viewable.length - 1 && (
           <button type="button" className="render-preview-nav is-next" aria-label="Next render" onClick={() => setPreviewJob(viewable[index + 1]!.id)}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
           </button>
         )}
       </div>
 
-      {(job.prompt || job.style || job.resolution) && (
-        <footer className="render-preview-footer">
-          {job.prompt && <p title={job.prompt}>{job.prompt}</p>}
-          <div>
-            {[job.style, job.resolution].filter(Boolean).map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
-          </div>
+      {isEditing ? (
+        <footer className="render-preview-footer is-hint">
+          <p>
+            {selected
+              ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
+              : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
+          </p>
+          {awaitingJobId && <span className="render-edit-pending">Edit in progress…</span>}
         </footer>
+      ) : (
+        (job.prompt || job.style || job.resolution) && (
+          <footer className="render-preview-footer">
+            {job.prompt && <p title={job.prompt}>{job.prompt}</p>}
+            <div>
+              {[job.style, job.resolution].filter(Boolean).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+          </footer>
+        )
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useRenderJobsStore, type ClientRenderJob } from "../../canvas/hooks/use
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/placeImageNode";
 import { useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
+import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
 import { useApiClient } from "../../lib/apiClient";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 
@@ -293,12 +294,29 @@ export function RenderResultsPanel() {
               ))}
             </div>
 
-            <div>
-              <p className="text-xs font-medium text-muted">Source</p>
-              <div className="mt-1.5 h-14 w-14 overflow-hidden rounded-md border border-hairline">
-                <img src={activeJob.sourceImageUrl} alt="" className="h-full w-full object-cover" />
-              </div>
-            </div>
+            {(() => {
+              const parent = activeJob.settings?.edit
+                ? jobs.find((job) => job.status === "succeeded" && job.resultImageUrl === activeJob.sourceImageUrl)
+                : undefined;
+              const thumb = <img src={activeJob.sourceImageUrl} alt="" className="h-full w-full object-cover" />;
+              return (
+                <div>
+                  <p className="text-xs font-medium text-muted">{parent ? "Edited from" : "Source"}</p>
+                  {parent ? (
+                    <button
+                      type="button"
+                      title="Open the render this edit was made from"
+                      onClick={() => setPreviewJob(parent.id)}
+                      className="mt-1.5 block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
+                    >
+                      {thumb}
+                    </button>
+                  ) : (
+                    <div className="mt-1.5 h-14 w-14 overflow-hidden rounded-md border border-hairline">{thumb}</div>
+                  )}
+                </div>
+              );
+            })()}
 
             {(activeJob.settings?.referenceImageUrls?.length ?? 0) > 0 && (
               <div>
@@ -314,6 +332,17 @@ export function RenderResultsPanel() {
             )}
 
             <div className="mt-auto flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={activeJob.status !== "succeeded" || !activeJob.resultImageUrl}
+                onClick={() => startRenderEdit(activeJob.id)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                </svg>
+                Edit this render
+              </button>
               <button
                 type="button"
                 onClick={handleUsePromptAndSettings}

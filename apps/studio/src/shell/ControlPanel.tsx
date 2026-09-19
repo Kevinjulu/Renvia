@@ -10,6 +10,8 @@ import { GenerateBar } from "./panel/GenerateBar";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { nodeForView } from "../canvas/buildingViews";
+import { useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
+import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 
 interface ControlPanelProps {
   projectId: string;
@@ -27,7 +29,9 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
   const setResolution = useGenerationSettingsStore((state) => state.setResolution);
   const style = useGenerationSettingsStore((state) => state.style);
   const setStyle = useGenerationSettingsStore((state) => state.setStyle);
-  const currentImageUrl = nodeForView(nodes, activeViewId)?.imageUrl ?? null;
+  const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
+  const editRender = useRenderJobsStore((state) => state.jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null);
+  const currentImageUrl = editRender?.resultImageUrl ?? nodeForView(nodes, activeViewId)?.imageUrl ?? null;
 
   return (
     <div className="studio-control-panel">
@@ -41,7 +45,7 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
           </div>
         </>
       ) : (
-        <EditModeHeader />
+        <EditModeHeader render={editRender} />
       )}
 
       <div className="flex flex-1 flex-col">

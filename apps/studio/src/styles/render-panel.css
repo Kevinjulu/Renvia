@@ -1219,3 +1219,43 @@
 .render-preview-footer span{border-radius:999px;padding:2px 8px;background:#f0f1f4;color:#4e535c;font-size:10.5px;font-weight:500}
 @media(max-width:1280px){.render-preview-modes button{padding:5px 8px}.render-preview-back{padding-right:8px}}
 @media(prefers-reduced-motion:reduce){.render-preview,.render-preview-image{animation:none;transition:none}}
+
+/* Render edit mode — viewer toolbar, paintable surface, and the Edit tab's target card. */
+.render-preview-edit{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:8px;padding:6px 11px;background:#141414;color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.render-preview-edit:hover{opacity:.88}
+.render-preview-edit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+.render-preview-parent{flex:none;border:0;padding:0;background:none;color:#4265f5;font-size:11px;cursor:pointer}
+.render-preview-parent:hover{text-decoration:underline}
+.render-edit-toolbar{display:flex;flex:none;align-items:center;gap:6px}
+.render-edit-tools{display:flex;border-radius:9px;padding:2px;background:#f0f1f4}
+.render-edit-tools button{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:7px;padding:5px 9px;background:none;color:#5b616b;font-size:11.5px;font-weight:500;cursor:pointer}
+.render-edit-tools button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.render-edit-tools button.is-active{background:#fff;color:#254ee8;box-shadow:0 1px 2px rgba(20,24,32,.12)}
+.render-edit-tools button:focus-visible,.render-edit-clear:focus-visible,.render-edit-done:focus-visible,.render-edit-size input:focus-visible{outline:2px solid #4265f5;outline-offset:1px}
+.render-edit-size{display:flex;align-items:center;gap:6px;padding:0 4px}
+.render-edit-size i{flex:none;border-radius:50%;background:#8a9099}
+.render-edit-size input{width:84px;accent-color:#4265f5}
+.render-edit-clear{border:0;border-radius:8px;padding:6px 9px;background:none;color:#5b616b;font-size:12px;font-weight:500;cursor:pointer}
+.render-edit-clear:hover:not(:disabled){background:#f0f1f4;color:#1f2329}
+.render-edit-clear:disabled,.render-preview-icon:disabled{opacity:.4;cursor:default}
+.render-edit-done{border:0;border-radius:8px;padding:6px 13px;background:#4265f5;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.render-edit-done:hover{background:#3456e0}
+.render-edit-surface{position:relative;flex:none;overflow:hidden;border-radius:6px;box-shadow:0 12px 40px -12px rgba(20,24,32,.35);user-select:none}
+.render-edit-surface>img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:fill}
+.render-edit-surface>canvas{position:absolute;inset:0;touch-action:none}
+.render-edit-surface>canvas.is-brush,.render-edit-surface>canvas.is-eraser{cursor:none}
+.render-edit-surface>canvas.is-rectangle,.render-edit-surface>canvas.is-polygon{cursor:crosshair}
+.render-preview.is-editing .render-preview-stage{background-image:none;background-color:#eceef2}
+.render-preview-footer.is-hint{background:#f5f7ff;border-top-color:#dfe5fb}
+.render-preview-footer.is-hint p{color:#2b3a8f;white-space:normal}
+.render-edit-pending{display:inline-flex;flex:none;align-items:center;gap:6px;color:#4265f5;font-size:11.5px;font-weight:600}
+.render-edit-pending:before{width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;content:"";animation:render-preview-spin .8s linear infinite}
+.edit-target-card{display:flex;gap:11px;border:1px solid #dfe5fb;border-radius:11px;padding:10px;background:#f5f7ff}
+.edit-target-card>img{width:64px;height:64px;flex:none;border-radius:7px;object-fit:cover}
+.edit-target-card>div{display:flex;min-width:0;flex-direction:column}
+.edit-target-card p{margin:0;color:#4265f5;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.edit-target-card strong{margin-top:2px;overflow:hidden;color:#1f2329;font-size:13px;text-overflow:ellipsis;white-space:nowrap}
+.edit-target-card small{margin-top:3px;color:#5b616b;font-size:11px;line-height:1.4}
+.edit-target-card button{align-self:flex-start;margin-top:5px;border:0;padding:0;background:none;color:#4265f5;font-size:11px;font-weight:500;cursor:pointer}
+.edit-target-card button:hover{text-decoration:underline}
+@media(max-width:1440px){.render-edit-tools button span{display:none}.render-edit-tools button{padding:6px 8px}}

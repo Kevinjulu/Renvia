@@ -2,19 +2,23 @@ import { create } from "zustand";
 import type { RenderJob } from "@renvia/types";
 
 export type ClientRenderJob = RenderJob;
+export type PreviewMode = "render" | "compare" | "source";
 
 interface RenderJobsState {
   jobs: ClientRenderJob[];
   activeJobId: string | null;
   /** Render shown full-size over the canvas; null when the canvas itself is showing. */
   previewJobId: string | null;
+  previewMode: PreviewMode;
   favoriteIds: Set<string>;
   setJobs: (jobs: ClientRenderJob[]) => void;
   addJob: (job: ClientRenderJob) => void;
   updateJob: (id: string, patch: Partial<RenderJob>) => void;
   removeJob: (id: string) => void;
   setActiveJob: (id: string | null) => void;
-  setPreviewJob: (id: string | null) => void;
+  /** Opens a render full-size (or closes the viewer with null); `mode` defaults to the plain render. */
+  setPreviewJob: (id: string | null, mode?: PreviewMode) => void;
+  setPreviewMode: (mode: PreviewMode) => void;
   toggleFavorite: (id: string) => void;
 }
 
@@ -22,6 +26,7 @@ export const useRenderJobsStore = create<RenderJobsState>((set) => ({
   jobs: [],
   activeJobId: null,
   previewJobId: null,
+  previewMode: "render",
   favoriteIds: new Set(),
   setJobs: (jobs) => set({ jobs, previewJobId: null }),
   addJob: (job) => set((state) => ({ jobs: [job, ...state.jobs], activeJobId: job.id })),
@@ -36,7 +41,9 @@ export const useRenderJobsStore = create<RenderJobsState>((set) => ({
       previewJobId: state.previewJobId === id ? null : state.previewJobId,
     })),
   setActiveJob: (id) => set({ activeJobId: id }),
-  setPreviewJob: (id) => set(id ? { previewJobId: id, activeJobId: id } : { previewJobId: null }),
+  setPreviewJob: (id, mode = "render") =>
+    set(id ? { previewJobId: id, activeJobId: id, previewMode: mode } : { previewJobId: null, previewMode: "render" }),
+  setPreviewMode: (previewMode) => set({ previewMode }),
   toggleFavorite: (id) =>
     set((state) => {
       const next = new Set(state.favoriteIds);
