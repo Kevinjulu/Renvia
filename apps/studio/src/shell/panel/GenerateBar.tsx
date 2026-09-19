@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  CREDITS_PER_IMAGE,
   renderRouteFor,
   type CreateRenderResponse,
   type RenderBudgetResponse,
   type RenderEditSettings,
 } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
+import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
@@ -20,8 +22,20 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function isBudgetError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 402;
+function errorCode(error: unknown): string | null {
+  return error instanceof ApiError ? error.code : null;
+}
+
+/** User-facing reason a request was refused, or null for a generic failure. */
+function refusalMessage(code: string | null): string | null {
+  if (code === "insufficient_credits") return "You're out of credits.";
+  if (code === "budget_exhausted") return "Rendering is paused — the demo budget is used up.";
+  if (code === "account_disabled") return "Your account is disabled. Contact support.";
+  return null;
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
 interface GenerateBarProps {
@@ -48,20 +62,36 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const selection = useSelectionToolStore((state) => state.selection);
   const selectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const addJob = useRenderJobsStore((state) => state.addJob);
+  const failedJobCount = useRenderJobsStore((state) => state.jobs.filter((job) => job.status === "failed").length);
+  const me = useAccountStore((state) => state.me);
+  const isAdmin = me?.role === "admin";
   const [count, setCount] = useState(2);
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
 
+  // The global fal budget is admin-only; everyone else sees their own credits.
   const refreshBudget = useCallback(() => {
+    if (!isAdmin) return;
     apiClient
       .getRenderBudget()
       .then(setBudget)
       .catch(() => setBudget(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin]);
+
+  const refreshAfterSubmit = () => {
+    refreshBudget();
+    void refreshAccount(apiClient.getMe);
+  };
 
   useEffect(refreshBudget, [refreshBudget]);
+
+  // A failed render refunds its credits server-side; pull the new balance.
+  useEffect(() => {
+    if (failedJobCount > 0) void refreshAccount(apiClient.getMe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failedJobCount]);
 
   const isEdit = activeTab === "edit";
   const filled = filledBuildingViews(views, nodes);
@@ -78,13 +108,19 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     : renderRouteFor({ sourceType, referenceImageUrls });
   const estimateUsd = budget ? imageCount * budget.pricing[route] : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
+  const creditsNeeded = imageCount * CREDITS_PER_IMAGE;
+  const creditBalance = me?.creditBalance ?? 0;
+  const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
+  const isDisabled = me?.disabled ?? false;
   const hasTarget = isEdit ? Boolean(editNode) : filled.length > 0;
-  const canSubmit = hasTarget && !isSubmitting && !isOverBudget;
+  const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled;
 
   const viewWord = filled.length === 1 ? "view" : "views";
   const buttonLabel = (() => {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
+    if (isDisabled) return "Account disabled";
     if (isOverBudget) return "Over render budget";
+    if (isOutOfCredits) return creditBalance === 0 ? "Out of credits" : "Not enough credits";
     if (isEdit) return "Apply edit";
     if (filled.length === 0) return "Generate";
     if (count === 1) return `Generate ${filled.length} ${viewWord}`;
@@ -125,14 +161,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       queued.forEach(({ value }) => addJob(value.job));
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      if (rejected.some(({ reason }) => isBudgetError(reason))) {
-        setStatus(`Render budget reached — ${queued.length} of ${results.length} queued.`);
+      const refusal = rejected.map(({ reason }) => refusalMessage(errorCode(reason))).find(Boolean);
+      if (refusal) {
+        setStatus(`${refusal} ${queued.length} of ${results.length} renders queued.`);
       } else if (rejected.length > 0) {
         setStatus(`Couldn't queue ${rejected.length} of ${results.length} renders. Try again in a moment.`);
       }
     } finally {
       setIsSubmitting(false);
-      refreshBudget();
+      refreshAfterSubmit();
     }
   };
 
@@ -176,21 +213,26 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       });
       addJob(job);
     } catch (error) {
-      setStatus(isBudgetError(error) ? "Render budget reached — edit not applied." : "Couldn't apply the edit. Try again in a moment.");
+      const refusal = refusalMessage(errorCode(error));
+      setStatus(refusal ? `${refusal} The edit wasn't applied.` : "Couldn't apply the edit. Try again in a moment.");
     } finally {
       setIsSubmitting(false);
-      refreshBudget();
+      refreshAfterSubmit();
     }
   };
 
+  const scope = isEdit ? (editSelection ? "Selected area" : "1 edit") : plural(imageCount, "image");
   const costLine = (() => {
-    if (!budget || !hasTarget) return null;
-    if (budget.mode === "mock") {
-      return `Mock mode · ${imageCount} placeholder ${imageCount === 1 ? "image" : "images"}, no credit used`;
+    if (!hasTarget || !me) return null;
+    if (isAdmin) {
+      // Admins aren't charged credits; show the real fal spend against the global cap.
+      if (!budget) return null;
+      if (budget.mode === "mock") return `Admin · mock mode, ${scope.toLowerCase()} at no cost`;
+      return `Admin · ${scope} ≈ ${formatUsd(estimateUsd)} · ${formatUsd(remainingUsd)} of budget left`;
     }
-    const scope = isEdit ? (editSelection ? "Selected area" : "1 edit") : `${imageCount} ${imageCount === 1 ? "image" : "images"}`;
-    return `${scope} ≈ ${formatUsd(estimateUsd)} · ${formatUsd(remainingUsd)} left`;
+    return `${scope} · ${plural(creditsNeeded, "credit")} · ${plural(creditBalance, "credit")} left`;
   })();
+  const costIsBlocking = isOverBudget || isOutOfCredits;
 
   return (
     <div>
@@ -224,7 +266,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           </select>
         )}
       </div>
-      {costLine && <p className={`mt-2 text-xs ${isOverBudget ? "text-red-500" : "text-muted"}`}>{costLine}</p>}
+      {costLine && <p className={`mt-2 text-xs ${costIsBlocking ? "text-red-500" : "text-muted"}`}>{costLine}</p>}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>
   );
