@@ -8,6 +8,7 @@ import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
+import { allowedOrigins } from "./lib/origins.js";
 
 export interface Env {
   DATABASE_URL: string;
@@ -29,7 +30,6 @@ export interface Env {
 export interface AuthVariables {
   auth: {
     clerkId: string;
-    email: string;
   };
 }
 
@@ -41,9 +41,8 @@ export type AppContext = {
 const app = new Hono<AppContext>();
 
 app.use("*", async (c, next) => {
-  const allowedOrigins = c.env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()) ?? [];
   return cors({
-    origin: allowedOrigins,
+    origin: allowedOrigins(c.env),
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,

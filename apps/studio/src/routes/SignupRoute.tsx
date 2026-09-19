@@ -13,6 +13,7 @@ import { StepProgress } from "../components/auth/StepProgress";
 import { PasswordStrength } from "../components/auth/PasswordStrength";
 import { TermsCheckbox } from "../components/auth/TermsCheckbox";
 import { AUTH_ROUTES } from "../lib/authRoutes";
+import { finishAuth, MIN_PASSWORD_LENGTH } from "../lib/finishAuth";
 
 type Step = "details" | "verify";
 
@@ -29,7 +30,7 @@ export function SignupRoute() {
   const [statusNote, setStatusNote] = useState<string | null>(null);
 
   if (authLoaded && isSignedIn) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={AUTH_ROUTES.afterAuth} replace />;
   }
 
   const handleDetailsSubmit = async (event: FormEvent) => {
@@ -53,8 +54,7 @@ export function SignupRoute() {
     if (error) return;
 
     if (signUp.status === "complete") {
-      await signUp.finalize();
-      navigate("/dashboard");
+      await finishAuth(signUp, navigate);
     } else {
       setStatusNote("That code didn't complete your account. Please try again.");
     }
@@ -109,7 +109,7 @@ export function SignupRoute() {
                 type="password"
                 autoComplete="new-password"
                 required
-                minLength={8}
+                minLength={MIN_PASSWORD_LENGTH}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 error={errors.fields.password?.message}
@@ -118,6 +118,9 @@ export function SignupRoute() {
             </div>
 
             <TermsCheckbox checked={agreedToTerms} onChange={setAgreedToTerms} />
+
+            {/* Clerk bot protection renders its CAPTCHA here; custom sign-up flows must provide it. */}
+            <div id="clerk-captcha" />
 
             {globalError && <AuthAlert>{globalError.longMessage ?? globalError.message}</AuthAlert>}
 

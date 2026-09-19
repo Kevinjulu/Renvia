@@ -1,3 +1,5 @@
+import { MIN_PASSWORD_LENGTH } from "../../lib/finishAuth";
+
 const LEVELS = [
   { label: "Weak", color: "bg-red-400" },
   { label: "Fair", color: "bg-glow" },
@@ -7,7 +9,7 @@ const LEVELS = [
 
 function scorePassword(password: string) {
   let score = 0;
-  if (password.length >= 8) score++;
+  if (password.length >= MIN_PASSWORD_LENGTH) score++;
   if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
   if (/\d/.test(password)) score++;
   if (/[^A-Za-z0-9]/.test(password)) score++;
@@ -17,7 +19,9 @@ function scorePassword(password: string) {
 export function PasswordStrength({ password }: { password: string }) {
   if (!password) return null;
 
-  const score = scorePassword(password);
+  const tooShort = password.length < MIN_PASSWORD_LENGTH;
+  // Below the minimum Clerk rejects it outright, so never rate it above "Weak".
+  const score = tooShort ? 1 : scorePassword(password);
   const level = LEVELS[Math.max(0, score - 1)] ?? LEVELS[0]!;
 
   return (
@@ -32,7 +36,9 @@ export function PasswordStrength({ password }: { password: string }) {
           />
         ))}
       </div>
-      <span className="text-xs text-faint">{level.label} password</span>
+      <span className="text-xs text-faint">
+        {tooShort ? `Use at least ${MIN_PASSWORD_LENGTH} characters (${password.length}/${MIN_PASSWORD_LENGTH})` : `${level.label} password`}
+      </span>
     </div>
   );
 }

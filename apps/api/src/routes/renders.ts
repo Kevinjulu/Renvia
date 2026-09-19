@@ -42,11 +42,11 @@ const createRenderSchema = z.object({
 });
 
 renders.post("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const body = createRenderSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const project = await findOwnedProject(db, body.projectId, ownerId);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
@@ -96,14 +96,14 @@ renders.get("/budget", async (c) => {
 });
 
 renders.get("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const projectId = c.req.query("projectId");
   if (!projectId) {
     return c.json({ error: "projectId is required" }, 400);
   }
 
   const db = createDb(c.env.DATABASE_URL);
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const project = await findOwnedProject(db, projectId, ownerId);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
@@ -120,11 +120,11 @@ renders.get("/", async (c) => {
 });
 
 renders.get("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const row = await db
     .select({ render: schema.renders })
     .from(schema.renders)

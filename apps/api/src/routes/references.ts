@@ -16,10 +16,10 @@ const createReferenceSchema = z.object({
 });
 
 references.get("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const rows = await db
     .select()
     .from(schema.referenceImages)
@@ -30,11 +30,11 @@ references.get("/", async (c) => {
 });
 
 references.post("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const body = createReferenceSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const [created] = await db
     .insert(schema.referenceImages)
     .values({ ownerId, url: body.url, source: body.source })
@@ -44,11 +44,11 @@ references.post("/", async (c) => {
 });
 
 references.delete("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const existing = await db.query.referenceImages.findFirst({
     where: and(eq(schema.referenceImages.id, id), eq(schema.referenceImages.ownerId, ownerId)),
   });

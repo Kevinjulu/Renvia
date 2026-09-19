@@ -10,6 +10,8 @@ import { ResendCode } from "../components/auth/ResendCode";
 import { BackLink } from "../components/auth/BackLink";
 import { StepProgress } from "../components/auth/StepProgress";
 import { PasswordStrength } from "../components/auth/PasswordStrength";
+import { AUTH_ROUTES } from "../lib/authRoutes";
+import { finishAuth, MIN_PASSWORD_LENGTH } from "../lib/finishAuth";
 
 type Step = "request" | "reset";
 
@@ -25,7 +27,7 @@ export function ForgotPasswordRoute() {
   const [statusNote, setStatusNote] = useState<string | null>(null);
 
   if (authLoaded && isSignedIn) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={AUTH_ROUTES.afterAuth} replace />;
   }
 
   const handleRequestSubmit = async (event: FormEvent) => {
@@ -52,10 +54,10 @@ export function ForgotPasswordRoute() {
     if (submitError) return;
 
     if (signIn.status === "complete") {
-      await signIn.finalize();
-      navigate("/dashboard");
+      await finishAuth(signIn, navigate);
     } else {
-      setStatusNote("Couldn't complete the reset. Please try again.");
+      // The new password is saved, but the account still needs a second step (e.g. 2FA).
+      setStatusNote("Your password was updated. Sign in with it to finish.");
     }
   };
 
@@ -111,7 +113,7 @@ export function ForgotPasswordRoute() {
                 type="password"
                 autoComplete="new-password"
                 required
-                minLength={8}
+                minLength={MIN_PASSWORD_LENGTH}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 error={errors.fields.password?.message}

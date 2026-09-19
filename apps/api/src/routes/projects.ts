@@ -21,11 +21,11 @@ const updateProjectSchema = z.object({
 });
 
 projects.post("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const body = createProjectSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const [created] = await db
     .insert(schema.projects)
     .values({ ownerId, name: body.name })
@@ -35,10 +35,10 @@ projects.post("/", async (c) => {
 });
 
 projects.get("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const rows = await db
     .select()
     .from(schema.projects)
@@ -49,11 +49,11 @@ projects.get("/", async (c) => {
 });
 
 projects.get("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const project = await findOwnedProject(db, id, ownerId);
 
   if (!project) {
@@ -64,12 +64,12 @@ projects.get("/:id", async (c) => {
 });
 
 projects.patch("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const body = updateProjectSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const existing = await findOwnedProject(db, id, ownerId);
   if (!existing) {
     return c.json({ error: "Not found" }, 404);
@@ -89,11 +89,11 @@ projects.patch("/:id", async (c) => {
 });
 
 projects.delete("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const existing = await findOwnedProject(db, id, ownerId);
   if (!existing) {
     return c.json({ error: "Not found" }, 404);

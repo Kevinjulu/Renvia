@@ -23,14 +23,14 @@ const updateCanvasNodeSchema = z.object({
 });
 
 canvasNodes.get("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const projectId = c.req.query("projectId");
   if (!projectId) {
     return c.json({ error: "projectId is required" }, 400);
   }
 
   const db = createDb(c.env.DATABASE_URL);
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const project = await findOwnedProject(db, projectId, ownerId);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
@@ -46,11 +46,11 @@ canvasNodes.get("/", async (c) => {
 });
 
 canvasNodes.post("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const body = createCanvasNodeSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const project = await findOwnedProject(db, body.projectId, ownerId);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
@@ -65,12 +65,12 @@ canvasNodes.post("/", async (c) => {
 });
 
 canvasNodes.patch("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const body = updateCanvasNodeSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const existing = await db
     .select({ node: schema.canvasNodes })
     .from(schema.canvasNodes)
@@ -98,11 +98,11 @@ canvasNodes.patch("/:id", async (c) => {
 });
 
 canvasNodes.delete("/:id", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const id = c.req.param("id");
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(db, clerkId, email);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
   const existing = await db
     .select({ node: schema.canvasNodes })
     .from(schema.canvasNodes)

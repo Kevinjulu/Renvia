@@ -2,17 +2,18 @@ import { Hono } from "hono";
 import { createDb } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getOrCreateUser } from "../lib/users.js";
+import { syncUser } from "../lib/users.js";
 
 export const me = new Hono<AppContext>();
 
 me.use("*", requireAuth);
 
 me.get("/", async (c) => {
-  const { clerkId, email } = c.get("auth");
+  const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
 
-  const user = await getOrCreateUser(db, clerkId, email);
+  // Called once per studio load, so it also refreshes the stored email from Clerk.
+  const user = await syncUser(c.env, db, clerkId);
 
   return c.json(user);
 });
