@@ -804,14 +804,39 @@
 }
 
 .studio-ai-note {
-  margin-top: 8px;
+  margin: 8px 0 0;
   border: 1px dashed #d7dce6;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   background: #fafbfc;
   color: #6b7280;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.35;
+}
+
+/*
+ * Keep the control-panel body scrollable so the pinned generate footer
+ * (status message + AI note included) never overlaps the content above it.
+ * Every flex-1 ancestor in the chain needs min-height:0 for the inner
+ * .render-panel-body / .edit-panel-body overflow to take effect.
+ */
+.studio-control-panel > div:nth-last-child(2) {
+  min-height: 0;
+}
+
+.studio-control-panel > div:nth-last-child(2) > div:last-child {
+  min-height: 0;
+  flex: 1 1 0%;
+}
+
+.studio-generate-bar {
+  flex: none;
+  position: relative;
+  z-index: 2;
+  margin-top: 2px;
+  border-top: 1px solid #eceef1;
+  padding-top: 10px;
+  background: #fff;
 }
 
 .building-views-panel > div:first-child small {
