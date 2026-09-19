@@ -7,15 +7,9 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
-import {
-  engineMode,
-  estimateCostMicros,
-  getBudget,
-  refreshRender,
-  submitRender,
-  wouldExceedBudget,
-} from "../lib/engine.js";
+import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 import { modelFor } from "../lib/models.js";
+import { ownUploadKey } from "../lib/storage.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -60,9 +54,14 @@ renders.post("/", async (c) => {
 
   const settings = body.generationSettings ?? {};
   const origin = new URL(c.req.url).origin;
+  const maskImageUrl = settings.edit?.maskImageUrl;
+  // The masked area is composited back from our own copies of the source and mask.
+  if (maskImageUrl && (!ownUploadKey(body.sourceImageUrl, origin) || !ownUploadKey(maskImageUrl, origin))) {
+    return c.json({ error: "Selection edits need an uploaded source image" }, 400);
+  }
+
   const model = modelFor(engineMode(c.env), renderRouteFor(settings));
-  const costMicros = await estimateCostMicros(c.env, model, body.sourceImageUrl, origin);
-  if (await wouldExceedBudget(c.env, db, costMicros)) {
+  if (await wouldExceedBudget(c.env, db, model.costMicros)) {
     return c.json({ error: "Render budget exhausted" }, 402);
   }
 
@@ -78,7 +77,7 @@ renders.post("/", async (c) => {
       viewLabel: body.viewLabel,
       status: "pending",
       model: model.id,
-      costMicros,
+      costMicros: model.costMicros,
       settings,
     })
     .returning();

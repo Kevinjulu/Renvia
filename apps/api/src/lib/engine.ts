@@ -3,18 +3,10 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
-import { fitToOneMegapixel, readImageSize, type ImageSize } from "./imageSize.js";
-import { modelById, pricingFor, type ModelSpec } from "./models.js";
+import { compositeMaskedEdit } from "./composite.js";
+import { modelById, pricingFor } from "./models.js";
 import { buildEditPrompt, buildEnginePrompt } from "./prompts.js";
-import {
-  extensionForContentType,
-  getObject,
-  getObjectPrefix,
-  ownUploadKey,
-  publicUploadUrl,
-  putObject,
-  renderResultKeyFor,
-} from "./storage.js";
+import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
 
 type RenderRow = typeof schema.renders.$inferSelect;
 
@@ -62,24 +54,6 @@ export async function getBudget(env: Env, db: Database): Promise<RenderBudgetRes
   };
 }
 
-/** Megapixels assumed for a source we can't measure (not one of our uploads) — errs high. */
-const UNKNOWN_SOURCE_MEGAPIXELS = 2;
-
-/** Header bytes read to find an image's dimensions; covers typical JPEG EXIF blocks. */
-const IMAGE_HEADER_BYTES = 64 * 1024;
-
-/** Estimated cost of running `model` on the source image, in USD micros. */
-export async function estimateCostMicros(env: Env, model: ModelSpec, sourceUrl: string, origin: string): Promise<number> {
-  if (!model.perMegapixel) return model.costMicros;
-
-  const key = ownUploadKey(sourceUrl, origin);
-  const header = key ? await getObjectPrefix(env, key, IMAGE_HEADER_BYTES) : null;
-  const size = header ? readImageSize(header) : null;
-  // fal bills megapixel models per started megapixel.
-  const megapixels = size ? Math.max(1, Math.ceil((size.width * size.height) / 1_000_000)) : UNKNOWN_SOURCE_MEGAPIXELS;
-  return model.costMicros * megapixels;
-}
-
 /** True when one more render costing `costMicros` would exceed FAL_BUDGET_USD. */
 export async function wouldExceedBudget(env: Env, db: Database, costMicros: number): Promise<boolean> {
   if (costMicros === 0) return false;
@@ -125,25 +99,26 @@ function errorMessageOf(error: unknown): string {
 }
 
 /**
- * fal must be able to fetch the source image. Our own uploads are re-uploaded to fal
- * storage straight from the bucket — that works when the API origin is localhost, and
- * avoids fetching arbitrary client-supplied URLs server-side. Anything else is handed
- * to fal as-is.
+ * Bytes of one of our own served uploads, read straight from the bucket. Null for any
+ * other URL — client-supplied URLs are never fetched server-side.
  */
-async function falReachableImage(
-  env: Env,
-  fal: FalClient,
-  url: string,
-  origin: string,
-): Promise<{ url: string; size: ImageSize | null }> {
+async function readOwnUpload(env: Env, url: string, origin: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> {
   const key = ownUploadKey(url, origin);
-  if (!key) return { url, size: null };
-
+  if (!key) return null;
   const object = await getObject(env, key);
   if (!object) throw new Error("Image not found");
-  const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
-  const uploadedUrl = await fal.storage.upload(new Blob([bytes], { type: object.contentType }));
-  return { url: uploadedUrl, size: readImageSize(bytes) };
+  return { bytes: new Uint8Array(await new Response(object.body).arrayBuffer()), contentType: object.contentType };
+}
+
+/**
+ * fal must be able to fetch every input image. Our own uploads are re-uploaded to fal
+ * storage, which works even when the API origin is localhost; anything else is handed
+ * to fal as-is.
+ */
+async function falReachableImageUrl(env: Env, fal: FalClient, url: string, origin: string): Promise<string> {
+  const upload = await readOwnUpload(env, url, origin);
+  if (!upload) return url;
+  return fal.storage.upload(new Blob([upload.bytes], { type: upload.contentType }));
 }
 
 function webhookUrlFor(origin: string): string | undefined {
@@ -165,17 +140,13 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const settings = render.settings ?? {};
     const influence = settings.styleInfluence ?? 2;
     const preserveStructure = settings.preserveStructure ?? true;
-    const referenceUrls = settings.referenceImageUrls ?? [];
-    const maskUrl = settings.edit?.maskImageUrl;
-    const [source, mask, ...references] = await Promise.all([
-      falReachableImage(env, fal, render.sourceImageUrl, origin),
-      maskUrl ? falReachableImage(env, fal, maskUrl, origin) : null,
-      ...referenceUrls.map((url) => falReachableImage(env, fal, url, origin)),
-    ]);
+    const [sourceUrl, ...referenceUrls] = await Promise.all(
+      [render.sourceImageUrl, ...(settings.referenceImageUrls ?? [])].map((url) => falReachableImageUrl(env, fal, url, origin)),
+    );
 
     const route = renderRouteFor(settings);
     const prompt = settings.edit
-      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, masked: Boolean(mask), hasReferences: references.length > 0 })
+      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, hasReferences: referenceUrls.length > 0 })
       : buildEnginePrompt({
           prompt: render.prompt,
           style: render.style,
@@ -186,13 +157,11 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
 
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
-        imageUrl: source!.url,
-        referenceUrls: references.map((reference) => reference!.url),
-        maskUrl: mask?.url ?? null,
+        imageUrl: sourceUrl!,
+        referenceUrls,
         prompt,
         influence,
         preserveStructure,
-        outputSize: source!.size ? fitToOneMegapixel(source!.size) : null,
       }),
       webhookUrl: webhookUrlFor(origin),
     });
@@ -206,11 +175,24 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
 async function storeFalResult(env: Env, render: RenderRow, imageUrl: string, origin: string): Promise<string> {
   const response = await fetch(imageUrl);
   if (!response.ok) throw new Error(`Couldn't download render result (${response.status})`);
+  let bytes = new Uint8Array(await response.arrayBuffer());
+  let contentType = response.headers.get("Content-Type")?.split(";")[0]?.trim() ?? "image/jpeg";
 
-  const contentType = response.headers.get("Content-Type")?.split(";")[0]?.trim() ?? "image/jpeg";
+  // Selection edits keep only the masked area of the model's output.
+  const maskUrl = render.settings?.edit?.maskImageUrl;
+  if (maskUrl) {
+    const [source, mask] = await Promise.all([
+      readOwnUpload(env, render.sourceImageUrl, origin),
+      readOwnUpload(env, maskUrl, origin),
+    ]);
+    if (!source || !mask) throw new Error("Edit source or mask isn't one of our uploads");
+    bytes = new Uint8Array(await compositeMaskedEdit(source.bytes, bytes, mask.bytes));
+    contentType = "image/jpeg";
+  }
+
   const storedType = extensionForContentType(contentType) ? contentType : "image/jpeg";
   const key = renderResultKeyFor(render.id, storedType);
-  await putObject(env, key, await response.arrayBuffer(), storedType);
+  await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, storedType);
   return publicUploadUrl(origin, key);
 }
 

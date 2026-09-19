@@ -1,9 +1,9 @@
 import type { SelectionShape } from "../hooks/useSelectionToolStore";
 
 /**
- * Renders a selection as an inpainting mask: white marks the area to edit, black is kept.
- * Selections are in the canvas node's display space, so they're scaled up to the image's
- * natural size — inpainting models require the mask to match the source image exactly.
+ * Renders a selection as an edit mask: white marks the area to edit, black is kept. The
+ * API pastes only the white area of the model's output back onto the source. Selections
+ * are in the canvas node's display space, so they're scaled up to the image's natural size.
  */
 export function buildSelectionMask(
   selection: SelectionShape,

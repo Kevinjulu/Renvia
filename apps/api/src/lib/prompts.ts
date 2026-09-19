@@ -47,8 +47,6 @@ export interface EditPromptOptions {
   /** The user's own edit description; may be empty when references carry the intent. */
   prompt: string;
   edit: RenderEditSettings;
-  /** Inpaint models only regenerate the masked area, so they get a description of its new content. */
-  masked: boolean;
   hasReferences: boolean;
 }
 
@@ -62,31 +60,24 @@ function asSentence(text: string): string {
   return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
 }
 
-/** Composes the model prompt for an Edit-tab job. */
-export function buildEditPrompt({ prompt, edit, masked, hasReferences }: EditPromptOptions): string {
+/**
+ * Composes the model prompt for an Edit-tab job. Selection edits use the same instruction
+ * prompt — only the selected area of the result is kept, so the model needn't know about it.
+ */
+export function buildEditPrompt({ prompt, edit, hasReferences }: EditPromptOptions): string {
   const subject = prompt.trim();
 
   if (edit.mode === "element" && hasReferences) {
-    const target = subject || (masked ? "this area" : "the matching surfaces of the building");
-    return masked
-      ? asSentence(`${target} finished in the material, texture and colour shown in the reference image, matching the building's perspective and lighting`)
-      : `Apply the material, texture and colour from the reference images to ${target}. ${KEEP_THE_REST}`;
+    const target = subject || "the matching surfaces of the building";
+    return `Apply the material, texture and colour from the reference images to ${target}. ${KEEP_THE_REST}`;
   }
 
   if (edit.mode === "building" && hasReferences) {
     return (
       "Restyle the building in the architectural style of the reference images" +
       (subject ? `: ${subject}. ` : ". ") +
-      (masked ? "" : `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`)
-    ).trim();
-  }
-
-  if (masked) {
-    // Fill models paint the masked area from a description of what should be there.
-    if (edit.action === "remove") {
-      return `${subject ? `Without ${subject}: ` : ""}the surrounding wall, materials and background continued seamlessly, matching perspective and lighting.`;
-    }
-    return asSentence(`${subject || "The same building detail"}, matching the building's perspective, materials and lighting`);
+      `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`
+    );
   }
 
   const instruction = {

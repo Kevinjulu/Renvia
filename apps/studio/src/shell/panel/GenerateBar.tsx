@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  estimateImageCostUsd,
   renderRouteFor,
   type CreateRenderResponse,
   type RenderBudgetResponse,
@@ -53,7 +52,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
-  const [editSourceSize, setEditSourceSize] = useState<{ url: string; width: number; height: number } | null>(null);
 
   const refreshBudget = useCallback(() => {
     apiClient
@@ -72,34 +70,13 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   // A selection only applies to the image it was drawn on.
   const editSelection = selection && editNode && selectionNodeId === editNode.id ? selection : null;
 
-  useEffect(() => {
-    if (!isEdit || !editNode || editSourceSize?.url === editNode.imageUrl) return;
-    let cancelled = false;
-    loadImageSize(editNode.imageUrl)
-      .then((size) => {
-        if (!cancelled) setEditSourceSize({ url: editNode.imageUrl, ...size });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [isEdit, editNode, editSourceSize?.url]);
-
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
-  const estimateUsd = (() => {
-    if (!budget) return 0;
-    if (!isEdit) {
-      const route = renderRouteFor({ sourceType, referenceImageUrls });
-      return renderImageCount * estimateImageCostUsd(budget.pricing[route], 1);
-    }
-    // The mask URL only exists after upload; a placeholder selects the same route.
-    const route = renderRouteFor({ referenceImageUrls, edit: { mode: editMode, maskImageUrl: editSelection ? "pending" : undefined } });
-    const sourceSize = editSourceSize?.url === editNode?.imageUrl ? editSourceSize : null;
-    const megapixels = sourceSize ? (sourceSize.width * sourceSize.height) / 1_000_000 : 1;
-    return estimateImageCostUsd(budget.pricing[route], megapixels);
-  })();
+  const route = isEdit
+    ? renderRouteFor({ referenceImageUrls, edit: { mode: editMode } })
+    : renderRouteFor({ sourceType, referenceImageUrls });
+  const estimateUsd = budget ? imageCount * budget.pricing[route] : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
   const hasTarget = isEdit ? Boolean(editNode) : filled.length > 0;
   const canSubmit = hasTarget && !isSubmitting && !isOverBudget;
@@ -162,8 +139,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const handleEditApply = async () => {
     if (!editNode) return;
     const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
-    const canBeEmpty = action === "remove" && Boolean(editSelection);
-    if (!editPrompt.trim() && referenceImageUrls.length === 0 && !canBeEmpty) {
+    if (!editPrompt.trim() && referenceImageUrls.length === 0) {
       setStatus("Describe an edit or attach a reference first.");
       return;
     }

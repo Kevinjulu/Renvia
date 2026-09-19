@@ -35,41 +35,26 @@ export type EditAction = "add" | "remove" | "change";
 export interface RenderEditSettings {
   mode: EditMode;
   action?: EditAction;
-  /** White-on-black PNG at the source image's size; white marks the area to edit. */
+  /**
+   * White-on-black PNG at the source image's size; white marks the area to edit.
+   * Only that area of the model's output is pasted back onto the source.
+   */
   maskImageUrl?: string;
 }
 
 /** Which model family serves a job. */
-export type RenderRoute =
-  | RenderSourceType
-  | "references"
-  | "edit"
-  | "edit-references"
-  | "inpaint"
-  | "inpaint-reference";
+export type RenderRoute = RenderSourceType | "references" | "edit" | "edit-references";
 
 export function renderRouteFor(settings: RenderGenerationSettings): RenderRoute {
   const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
-  if (settings.edit) {
-    if (settings.edit.maskImageUrl) return hasReferences ? "inpaint-reference" : "inpaint";
-    return hasReferences ? "edit-references" : "edit";
-  }
+  if (settings.edit) return hasReferences ? "edit-references" : "edit";
   return hasReferences ? "references" : (settings.sourceType ?? "photo");
-}
-
-export interface RoutePrice {
-  usd: number;
-  /** When true, `usd` is per started megapixel of the source image (fal rounds up). */
-  perMegapixel: boolean;
-}
-
-export function estimateImageCostUsd(price: RoutePrice, megapixels: number): number {
-  return price.perMegapixel ? price.usd * Math.max(1, Math.ceil(megapixels)) : price.usd;
 }
 
 export interface RenderBudgetResponse {
   mode: RenderEngineMode;
-  pricing: Record<RenderRoute, RoutePrice>;
+  /** Estimated USD per image for each route in the current mode. */
+  pricing: Record<RenderRoute, number>;
   spentUsd: number;
   budgetUsd: number;
 }
