@@ -9,6 +9,7 @@ feature logic yet, just the structure everything else gets built on.
 apps/
   marketing/   Next.js 15 (App Router, static export) — public landing site
   studio/      Vite + React 18 SPA — gated, infinite-canvas product
+  admin/       Vite + React 18 SPA — admin dashboard (users, credits, usage, settings)
   api/         Hono on Cloudflare Workers — shared backend
 packages/
   db/          Drizzle schema + client (Postgres via Neon, HTTP driver)
@@ -45,6 +46,7 @@ pnpm dev                # boots all three apps concurrently via Turborepo
 |---|---|---|
 | marketing | 3000 | http://localhost:3000 |
 | studio | 5173 | http://localhost:5173 |
+| admin | 5174 | http://localhost:5174 |
 | api | 8787 | http://localhost:8787 |
 
 Verify the scaffold:
@@ -76,6 +78,37 @@ Copy `.env.example` to `.env` at the repo root and fill in:
 Worker secrets (`wrangler secret put <NAME>`) rather than read from a `.env`
 file; `wrangler dev` picks up a local `.dev.vars` file (gitignored) for
 local development, or you can export them into your shell before `pnpm dev`.
+
+## Admin dashboard
+
+`apps/admin` is a separate app (its own Vercel project) on the same Clerk
+instance, calling the role-gated `/api/admin/*` routes:
+
+- **Overview** — users, renders, failure rate, fal spend against the budget,
+  renders per day, spend per model, top users.
+- **Users** — search; per user: grant/remove credits (with a note, recorded in
+  the ledger), disable/enable, make/remove admin, credit history, renders.
+- **Renders** — every render and edit with thumbnails, filterable by status.
+- **Settings** — signup bonus, per-user daily render limit, render mode and
+  budget cap. These live in the `app_settings` table and override `FAL_MODE` /
+  `FAL_BUDGET_USD` without a redeploy (blank = use the env var).
+
+Access: the admin role is stored in `users.role` (not Clerk metadata). Grant it
+from the dashboard, or for the first admin run
+`update users set role = 'admin' where email = '<you>';`.
+
+Env (`apps/admin/.env.local`, all public): `VITE_CLERK_PUBLISHABLE_KEY`,
+`VITE_API_BASE_URL`. **Its origin must be added to the API's `ALLOWED_ORIGINS`**
+(e.g. `http://localhost:5174` locally, the admin domain on Vercel) — the API
+uses that list for CORS and to reject session tokens minted for other origins.
+
+## Credits
+
+1 credit = 1 image. New users get the signup bonus (default 25) once; admins
+aren't charged. `POST /renders` debits the balance in the same transaction that
+creates the render (a balance can't go negative, so concurrent clicks can't
+overspend) and every failure path refunds it. `credit_ledger` records every
+change; `GET /me/credits` returns a user's balance and history.
 
 ## Database
 
