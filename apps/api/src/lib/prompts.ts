@@ -1,4 +1,4 @@
-import type { RenderRoute } from "@renvia/types";
+import type { RenderEditSettings, RenderSourceType } from "@renvia/types";
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
   Photorealistic: "a photorealistic architectural visualization with physically accurate materials, lighting and shadows",
@@ -21,7 +21,7 @@ export interface EnginePromptOptions {
   /** The user's own prompt; may be empty. */
   prompt: string;
   style: string;
-  route: RenderRoute;
+  route: RenderSourceType | "references";
   preserveStructure: boolean;
   /** 1 (subtle) – 4 (maximum). */
   influence: number;
@@ -39,6 +39,63 @@ export function buildEnginePrompt({ prompt, style, route, preserveStructure, inf
   }[route];
 
   return [lead, preserveStructure ? STRUCTURE_LOCK : null, INFLUENCE_PHRASES[influence], prompt.trim() ? `Scene: ${prompt.trim()}` : null]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export interface EditPromptOptions {
+  /** The user's own edit description; may be empty when references carry the intent. */
+  prompt: string;
+  edit: RenderEditSettings;
+  /** Inpaint models only regenerate the masked area, so they get a description of its new content. */
+  masked: boolean;
+  hasReferences: boolean;
+}
+
+const KEEP_THE_REST = "Keep everything else in the image exactly as it is.";
+
+/** Capitalizes and terminates free text so it reads as its own sentence next to others. */
+function asSentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const capitalized = trimmed[0]!.toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
+}
+
+/** Composes the model prompt for an Edit-tab job. */
+export function buildEditPrompt({ prompt, edit, masked, hasReferences }: EditPromptOptions): string {
+  const subject = prompt.trim();
+
+  if (edit.mode === "element" && hasReferences) {
+    const target = subject || (masked ? "this area" : "the matching surfaces of the building");
+    return masked
+      ? asSentence(`${target} finished in the material, texture and colour shown in the reference image, matching the building's perspective and lighting`)
+      : `Apply the material, texture and colour from the reference images to ${target}. ${KEEP_THE_REST}`;
+  }
+
+  if (edit.mode === "building" && hasReferences) {
+    return (
+      "Restyle the building in the architectural style of the reference images" +
+      (subject ? `: ${subject}. ` : ". ") +
+      (masked ? "" : `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`)
+    ).trim();
+  }
+
+  if (masked) {
+    // Fill models paint the masked area from a description of what should be there.
+    if (edit.action === "remove") {
+      return `${subject ? `Without ${subject}: ` : ""}the surrounding wall, materials and background continued seamlessly, matching perspective and lighting.`;
+    }
+    return asSentence(`${subject || "The same building detail"}, matching the building's perspective, materials and lighting`);
+  }
+
+  const instruction = {
+    add: `Add ${subject} to the building.`,
+    remove: `Remove ${subject} from the image and fill the area to match its surroundings.`,
+    change: `Change ${subject}.`,
+  }[edit.action ?? "change"];
+  const referenceHint = hasReferences ? "Use the reference images as a guide." : "";
+  return [asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction), referenceHint, KEEP_THE_REST]
     .filter(Boolean)
     .join(" ");
 }

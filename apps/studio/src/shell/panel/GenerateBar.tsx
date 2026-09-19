@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import { renderRouteFor, type CreateRenderResponse, type RenderBudgetResponse } from "@renvia/types";
+import {
+  estimateImageCostUsd,
+  renderRouteFor,
+  type CreateRenderResponse,
+  type RenderBudgetResponse,
+  type RenderEditSettings,
+} from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
+import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
+import { loadImageSize } from "../../canvas/utils/placeImageNode";
+import { buildSelectionMask } from "../../canvas/utils/buildSelectionMask";
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function isBudgetError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 402;
 }
 
 interface GenerateBarProps {
@@ -21,19 +34,26 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const activeTab = useCanvasStore((state) => state.activeTab);
   const views = useCanvasStore((state) => state.views);
   const nodes = useCanvasStore((state) => state.nodes);
+  const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
+  const editMode = useGenerationSettingsStore((state) => state.editMode);
+  const editAction = useGenerationSettingsStore((state) => state.editAction);
+  const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
   const resolution = useGenerationSettingsStore((state) => state.resolution);
   const style = useGenerationSettingsStore((state) => state.style);
   const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
+  const selection = useSelectionToolStore((state) => state.selection);
+  const selectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const addJob = useRenderJobsStore((state) => state.addJob);
   const [count, setCount] = useState(2);
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
+  const [editSourceSize, setEditSourceSize] = useState<{ url: string; width: number; height: number } | null>(null);
 
   const refreshBudget = useCallback(() => {
     apiClient
@@ -45,36 +65,65 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   useEffect(refreshBudget, [refreshBudget]);
 
-  const filled = filledBuildingViews(views, nodes);
   const isEdit = activeTab === "edit";
-  const imageCount = filled.length * count;
-  const route = renderRouteFor(sourceType, referenceImageUrls.length);
-  const estimateUsd = budget ? imageCount * budget.costByRouteUsd[route] : 0;
+  const filled = filledBuildingViews(views, nodes);
+  const editNode = nodeForView(nodes, activeViewId);
+  const editView = views.find((view) => view.id === activeViewId);
+  // A selection only applies to the image it was drawn on.
+  const editSelection = selection && editNode && selectionNodeId === editNode.id ? selection : null;
+
+  useEffect(() => {
+    if (!isEdit || !editNode || editSourceSize?.url === editNode.imageUrl) return;
+    let cancelled = false;
+    loadImageSize(editNode.imageUrl)
+      .then((size) => {
+        if (!cancelled) setEditSourceSize({ url: editNode.imageUrl, ...size });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit, editNode, editSourceSize?.url]);
+
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
+  const renderImageCount = filled.length * count;
+  const imageCount = isEdit ? 1 : renderImageCount;
+  const estimateUsd = (() => {
+    if (!budget) return 0;
+    if (!isEdit) {
+      const route = renderRouteFor({ sourceType, referenceImageUrls });
+      return renderImageCount * estimateImageCostUsd(budget.pricing[route], 1);
+    }
+    // The mask URL only exists after upload; a placeholder selects the same route.
+    const route = renderRouteFor({ referenceImageUrls, edit: { mode: editMode, maskImageUrl: editSelection ? "pending" : undefined } });
+    const sourceSize = editSourceSize?.url === editNode?.imageUrl ? editSourceSize : null;
+    const megapixels = sourceSize ? (sourceSize.width * sourceSize.height) / 1_000_000 : 1;
+    return estimateImageCostUsd(budget.pricing[route], megapixels);
+  })();
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
-  const canGenerate = !isEdit && filled.length > 0 && !isSubmitting && !isOverBudget;
+  const hasTarget = isEdit ? Boolean(editNode) : filled.length > 0;
+  const canSubmit = hasTarget && !isSubmitting && !isOverBudget;
 
   const viewWord = filled.length === 1 ? "view" : "views";
   const buttonLabel = (() => {
-    if (isEdit) return "Apply edit";
-    if (isSubmitting) return "Queuing…";
-    if (filled.length === 0) return "Generate";
+    if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isOverBudget) return "Over render budget";
+    if (isEdit) return "Apply edit";
+    if (filled.length === 0) return "Generate";
     if (count === 1) return `Generate ${filled.length} ${viewWord}`;
     return `Generate ${filled.length} ${viewWord} × ${count}`;
   })();
 
-  const generationSettings = {
-    sourceType,
-    styleInfluence,
-    preserveStructure,
-    referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
-  };
-
   const handleGenerate = async () => {
-    if (isEdit || filled.length === 0) return;
+    if (filled.length === 0) return;
     setIsSubmitting(true);
     setStatus(null);
+    const generationSettings = {
+      sourceType,
+      styleInfluence,
+      preserveStructure,
+      referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+    };
     try {
       const requests = filled.flatMap((view) => {
         const node = nodeForView(nodes, view.id);
@@ -99,8 +148,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       queued.forEach(({ value }) => addJob(value.job));
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      const hitBudget = rejected.some(({ reason }) => reason instanceof ApiError && reason.status === 402);
-      if (hitBudget) {
+      if (rejected.some(({ reason }) => isBudgetError(reason))) {
         setStatus(`Render budget reached — ${queued.length} of ${results.length} queued.`);
       } else if (rejected.length > 0) {
         setStatus(`Couldn't queue ${rejected.length} of ${results.length} renders. Try again in a moment.`);
@@ -111,23 +159,71 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     }
   };
 
-  const handleEditApply = () => {
-    // AI edit pipeline — prep only until fal edit endpoint is wired.
-    if (!editPrompt.trim() && referenceImageUrls.length === 0) {
+  const handleEditApply = async () => {
+    if (!editNode) return;
+    const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
+    const canBeEmpty = action === "remove" && Boolean(editSelection);
+    if (!editPrompt.trim() && referenceImageUrls.length === 0 && !canBeEmpty) {
       setStatus("Describe an edit or attach a reference first.");
       return;
     }
-    setStatus("Edit is ready to connect — AI apply isn't wired yet.");
+    if (selectionMode === "manual" && !editSelection) {
+      setStatus("Draw a selection on the image first, or switch to Auto select.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const edit: RenderEditSettings = { mode: editMode, action };
+      if (editSelection) {
+        const naturalSize = await loadImageSize(editNode.imageUrl);
+        const mask = await buildSelectionMask(editSelection, editNode, naturalSize);
+        const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }));
+        edit.maskImageUrl = publicUrl;
+      }
+
+      const { job } = await apiClient.createRender({
+        projectId,
+        sourceImageUrl: editNode.imageUrl,
+        prompt: editPrompt.trim(),
+        resolution,
+        style,
+        viewKey: editView?.id,
+        viewLabel: editView?.label,
+        generationSettings: {
+          styleInfluence,
+          preserveStructure,
+          referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+          edit,
+        },
+      });
+      addJob(job);
+    } catch (error) {
+      setStatus(isBudgetError(error) ? "Render budget reached — edit not applied." : "Couldn't apply the edit. Try again in a moment.");
+    } finally {
+      setIsSubmitting(false);
+      refreshBudget();
+    }
   };
+
+  const costLine = (() => {
+    if (!budget || !hasTarget) return null;
+    if (budget.mode === "mock") {
+      return `Mock mode · ${imageCount} placeholder ${imageCount === 1 ? "image" : "images"}, no credit used`;
+    }
+    const scope = isEdit ? (editSelection ? "Selected area" : "1 edit") : `${imageCount} ${imageCount === 1 ? "image" : "images"}`;
+    return `${scope} ≈ ${formatUsd(estimateUsd)} · ${formatUsd(remainingUsd)} left`;
+  })();
 
   return (
     <div>
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled={isEdit ? false : !canGenerate}
+          disabled={!canSubmit}
           onClick={() => {
-            if (isEdit) handleEditApply();
+            if (isEdit) void handleEditApply();
             else void handleGenerate();
           }}
           className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -152,13 +248,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           </select>
         )}
       </div>
-      {!isEdit && budget && filled.length > 0 && (
-        <p className={`mt-2 text-xs ${isOverBudget ? "text-red-500" : "text-muted"}`}>
-          {budget.mode === "mock"
-            ? `Mock mode · ${imageCount} placeholder ${imageCount === 1 ? "image" : "images"}, no credit used`
-            : `${imageCount} ${imageCount === 1 ? "image" : "images"} ≈ ${formatUsd(estimateUsd)} · ${formatUsd(remainingUsd)} left`}
-        </p>
-      )}
+      {costLine && <p className={`mt-2 text-xs ${isOverBudget ? "text-red-500" : "text-muted"}`}>{costLine}</p>}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>
   );

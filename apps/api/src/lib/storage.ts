@@ -77,6 +77,22 @@ export interface StoredObject {
   contentType: string;
 }
 
+/** The first `length` bytes of an object — enough for image headers without a full download. */
+export async function getObjectPrefix(env: Env, key: string, length: number): Promise<Uint8Array | null> {
+  const client = createStorageClient(env);
+  try {
+    const result = await client.send(
+      new GetObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: key, Range: `bytes=0-${length - 1}` }),
+    );
+    return result.Body!.transformToByteArray();
+  } catch (error) {
+    if (error instanceof Error && error.name === "NoSuchKey") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function getObject(env: Env, key: string): Promise<StoredObject | null> {
   const client = createStorageClient(env);
   try {

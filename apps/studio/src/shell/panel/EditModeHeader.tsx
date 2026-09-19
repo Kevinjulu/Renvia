@@ -14,7 +14,7 @@ export function EditModeHeader() {
       </div>
       <h2 className="mt-3 font-display text-base font-semibold text-primary">Editing mode</h2>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
-        Describe the changes you would like to see. To edit a specific part, use the selection tool at the bottom of
+        Describe the changes you would like to see. To edit a specific part, use the selection tools at the top of
         the canvas to highlight that area.
       </p>
     </div>

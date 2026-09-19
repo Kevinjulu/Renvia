@@ -145,7 +145,9 @@ export function RenderResultsPanel() {
       <div className="flex h-full w-[300px] flex-col gap-4 overflow-y-auto border-l border-hairline bg-white p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-primary">
-            {activeJob ? (activeJob.viewLabel ? `Render · ${activeJob.viewLabel}` : "Render") : "Uploaded views"}
+            {activeJob
+              ? [activeJob.settings?.edit ? "Edit" : "Render", activeJob.viewLabel].filter(Boolean).join(" · ")
+              : "Uploaded views"}
           </p>
           <div className="flex items-center gap-3 text-faint">
             {activeJob && (
@@ -258,7 +260,13 @@ export function RenderResultsPanel() {
             <div className="flex flex-wrap gap-1.5">
               {[
                 activeJob.viewLabel,
-                activeJob.settings?.sourceType === "drawing" ? "From drawing" : "From photo",
+                activeJob.settings?.edit
+                  ? activeJob.settings.edit.maskImageUrl
+                    ? "Area edit"
+                    : "Edit"
+                  : activeJob.settings?.sourceType === "drawing"
+                    ? "From drawing"
+                    : "From photo",
                 activeJob.style,
                 activeJob.resolution,
               ].filter(Boolean).map((tag) => (

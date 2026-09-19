@@ -2,11 +2,11 @@ import { ReferenceBar } from "./ReferenceBar";
 import {
   useGenerationSettingsStore,
   type EditAction,
-  type EditModeKind,
+  type EditMode,
   type SelectionMode,
 } from "../../canvas/hooks/useGenerationSettingsStore";
 
-const EDIT_MODES: { id: EditModeKind; icon: string; title: string; subtitle: string }[] = [
+const EDIT_MODES: { id: EditMode; icon: string; title: string; subtitle: string }[] = [
   { id: "element", icon: "◫", title: "Element / texture", subtitle: "Borrow a finish or material" },
   { id: "building", icon: "▧", title: "Whole building", subtitle: "Reference architectural style" },
   { id: "prompt", icon: "✦", title: "Prompt edit", subtitle: "Describe the transformation" },
@@ -127,7 +127,9 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
       </div>
 
       <p className="studio-ai-note">
-        Edit actions, selection mode, and apply-edit will call the AI edit pipeline when connected. Settings are saved locally for that handoff.
+        {selectionMode === "manual"
+          ? "Draw a rectangle or polygon on the image — only that area is regenerated."
+          : "The AI finds what to change from your description. Draw a selection to limit the edit to one area."}
       </p>
     </div>
   );

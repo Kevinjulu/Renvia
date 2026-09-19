@@ -7,7 +7,14 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
-import { engineMode, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import {
+  engineMode,
+  estimateCostMicros,
+  getBudget,
+  refreshRender,
+  submitRender,
+  wouldExceedBudget,
+} from "../lib/engine.js";
 import { modelFor } from "../lib/models.js";
 
 export const renders = new Hono<AppContext>();
@@ -29,6 +36,13 @@ const createRenderSchema = z.object({
       styleInfluence: z.number().int().min(1).max(4).optional(),
       preserveStructure: z.boolean().optional(),
       referenceImageUrls: z.array(z.string().url()).max(8).optional(),
+      edit: z
+        .object({
+          mode: z.enum(["element", "building", "prompt"]),
+          action: z.enum(["add", "remove", "change"]).optional(),
+          maskImageUrl: z.string().url().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -45,9 +59,10 @@ renders.post("/", async (c) => {
   }
 
   const settings = body.generationSettings ?? {};
-  const route = renderRouteFor(settings.sourceType ?? "photo", settings.referenceImageUrls?.length ?? 0);
-  const model = modelFor(engineMode(c.env), route);
-  if (await wouldExceedBudget(c.env, db, model.costMicros)) {
+  const origin = new URL(c.req.url).origin;
+  const model = modelFor(engineMode(c.env), renderRouteFor(settings));
+  const costMicros = await estimateCostMicros(c.env, model, body.sourceImageUrl, origin);
+  if (await wouldExceedBudget(c.env, db, costMicros)) {
     return c.json({ error: "Render budget exhausted" }, 402);
   }
 
@@ -63,7 +78,7 @@ renders.post("/", async (c) => {
       viewLabel: body.viewLabel,
       status: "pending",
       model: model.id,
-      costMicros: model.costMicros,
+      costMicros,
       settings,
     })
     .returning();
@@ -72,7 +87,7 @@ renders.post("/", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  const job = await submitRender(c.env, db, created, new URL(c.req.url).origin);
+  const job = await submitRender(c.env, db, created, origin);
   return c.json({ job }, 201);
 });
 

@@ -1,8 +1,7 @@
 import { create } from "zustand";
-import type { RenderGenerationSettings, RenderSourceType } from "@renvia/types";
+import type { EditAction, EditMode, RenderGenerationSettings, RenderSourceType } from "@renvia/types";
 
-export type EditModeKind = "element" | "building" | "prompt";
-export type EditAction = "add" | "remove" | "change";
+export type { EditAction, EditMode };
 export type SelectionMode = "auto" | "manual";
 
 export const STYLE_INFLUENCE_LABELS = ["Minimal", "Balanced", "Strong", "Maximum"] as const;
@@ -18,7 +17,7 @@ interface GenerationSettingsState {
   referenceImageUrls: string[];
   /** UI-only: which quick-atmosphere chip filled the prompt. */
   atmospherePreset: string | null;
-  editMode: EditModeKind;
+  editMode: EditMode;
   editAction: EditAction | null;
   selectionMode: SelectionMode;
   setPrompt: (prompt: string) => void;
@@ -30,7 +29,7 @@ interface GenerationSettingsState {
   setPreserveStructure: (value: boolean) => void;
   setReferenceImageUrls: (urls: string[]) => void;
   setAtmospherePreset: (label: string | null) => void;
-  setEditMode: (mode: EditModeKind) => void;
+  setEditMode: (mode: EditMode) => void;
   setEditAction: (action: EditAction | null) => void;
   setSelectionMode: (mode: SelectionMode) => void;
   /** Restores a previous render's prompt, style and generation settings. */
@@ -69,10 +68,12 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setSelectionMode: (selectionMode) => set({ selectionMode }),
   applyRenderSettings: ({ prompt, style, resolution, settings }) =>
     set((state) => ({
-      prompt,
+      // Edit jobs restore into the Edit tab's fields; renders into the Render tab's.
+      ...(settings?.edit
+        ? { editPrompt: prompt, editMode: settings.edit.mode, editAction: settings.edit.action ?? null }
+        : { prompt, atmospherePreset: null }),
       style,
       resolution,
-      atmospherePreset: null,
       sourceType: settings?.sourceType ?? state.sourceType,
       styleInfluence: settings?.styleInfluence ?? state.styleInfluence,
       preserveStructure: settings?.preserveStructure ?? state.preserveStructure,

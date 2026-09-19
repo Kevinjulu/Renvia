@@ -28,17 +28,48 @@ export type RenderEngineMode = "mock" | "dev" | "prod";
 /** drawing = CAD/line elevation (geometry-locked model); photo = photo or 3D massing. */
 export type RenderSourceType = "drawing" | "photo";
 
-/** Which model family serves a render; references take precedence over the source type. */
-export type RenderRoute = RenderSourceType | "references";
+export type EditMode = "element" | "building" | "prompt";
+export type EditAction = "add" | "remove" | "change";
 
-export function renderRouteFor(sourceType: RenderSourceType, referenceCount: number): RenderRoute {
-  return referenceCount > 0 ? "references" : sourceType;
+/** Present on edit jobs (Edit tab); absent on renders. */
+export interface RenderEditSettings {
+  mode: EditMode;
+  action?: EditAction;
+  /** White-on-black PNG at the source image's size; white marks the area to edit. */
+  maskImageUrl?: string;
+}
+
+/** Which model family serves a job. */
+export type RenderRoute =
+  | RenderSourceType
+  | "references"
+  | "edit"
+  | "edit-references"
+  | "inpaint"
+  | "inpaint-reference";
+
+export function renderRouteFor(settings: RenderGenerationSettings): RenderRoute {
+  const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
+  if (settings.edit) {
+    if (settings.edit.maskImageUrl) return hasReferences ? "inpaint-reference" : "inpaint";
+    return hasReferences ? "edit-references" : "edit";
+  }
+  return hasReferences ? "references" : (settings.sourceType ?? "photo");
+}
+
+export interface RoutePrice {
+  usd: number;
+  /** When true, `usd` is per started megapixel of the source image (fal rounds up). */
+  perMegapixel: boolean;
+}
+
+export function estimateImageCostUsd(price: RoutePrice, megapixels: number): number {
+  return price.perMegapixel ? price.usd * Math.max(1, Math.ceil(megapixels)) : price.usd;
 }
 
 export interface RenderBudgetResponse {
   mode: RenderEngineMode;
-  /** Estimated cost of one image per route in the current mode. */
-  costByRouteUsd: Record<RenderRoute, number>;
+  pricing: Record<RenderRoute, RoutePrice>;
   spentUsd: number;
   budgetUsd: number;
 }
@@ -50,6 +81,7 @@ export interface RenderGenerationSettings {
   styleInfluence?: number;
   preserveStructure?: boolean;
   referenceImageUrls?: string[];
+  edit?: RenderEditSettings;
 }
 
 export interface CreateRenderRequest {

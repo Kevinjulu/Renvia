@@ -4,9 +4,17 @@ import { schema, type Database } from "@renvia/db";
 import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
 import { fitToOneMegapixel, readImageSize, type ImageSize } from "./imageSize.js";
-import { costByRouteUsd, modelById } from "./models.js";
-import { buildEnginePrompt } from "./prompts.js";
-import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
+import { modelById, pricingFor, type ModelSpec } from "./models.js";
+import { buildEditPrompt, buildEnginePrompt } from "./prompts.js";
+import {
+  extensionForContentType,
+  getObject,
+  getObjectPrefix,
+  ownUploadKey,
+  publicUploadUrl,
+  putObject,
+  renderResultKeyFor,
+} from "./storage.js";
 
 type RenderRow = typeof schema.renders.$inferSelect;
 
@@ -48,10 +56,28 @@ async function spentMicros(db: Database): Promise<number> {
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {
   return {
     mode: engineMode(env),
-    costByRouteUsd: costByRouteUsd(engineMode(env)),
+    pricing: pricingFor(engineMode(env)),
     spentUsd: (await spentMicros(db)) / MICROS_PER_USD,
     budgetUsd: budgetMicros(env) / MICROS_PER_USD,
   };
+}
+
+/** Megapixels assumed for a source we can't measure (not one of our uploads) — errs high. */
+const UNKNOWN_SOURCE_MEGAPIXELS = 2;
+
+/** Header bytes read to find an image's dimensions; covers typical JPEG EXIF blocks. */
+const IMAGE_HEADER_BYTES = 64 * 1024;
+
+/** Estimated cost of running `model` on the source image, in USD micros. */
+export async function estimateCostMicros(env: Env, model: ModelSpec, sourceUrl: string, origin: string): Promise<number> {
+  if (!model.perMegapixel) return model.costMicros;
+
+  const key = ownUploadKey(sourceUrl, origin);
+  const header = key ? await getObjectPrefix(env, key, IMAGE_HEADER_BYTES) : null;
+  const size = header ? readImageSize(header) : null;
+  // fal bills megapixel models per started megapixel.
+  const megapixels = size ? Math.max(1, Math.ceil((size.width * size.height) / 1_000_000)) : UNKNOWN_SOURCE_MEGAPIXELS;
+  return model.costMicros * megapixels;
 }
 
 /** True when one more render costing `costMicros` would exceed FAL_BUDGET_USD. */
@@ -139,16 +165,31 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const settings = render.settings ?? {};
     const influence = settings.styleInfluence ?? 2;
     const preserveStructure = settings.preserveStructure ?? true;
-    const [source, ...references] = await Promise.all(
-      [render.sourceImageUrl, ...(settings.referenceImageUrls ?? [])].map((url) => falReachableImage(env, fal, url, origin)),
-    );
-    const route = renderRouteFor(settings.sourceType ?? "photo", references.length);
+    const referenceUrls = settings.referenceImageUrls ?? [];
+    const maskUrl = settings.edit?.maskImageUrl;
+    const [source, mask, ...references] = await Promise.all([
+      falReachableImage(env, fal, render.sourceImageUrl, origin),
+      maskUrl ? falReachableImage(env, fal, maskUrl, origin) : null,
+      ...referenceUrls.map((url) => falReachableImage(env, fal, url, origin)),
+    ]);
+
+    const route = renderRouteFor(settings);
+    const prompt = settings.edit
+      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, masked: Boolean(mask), hasReferences: references.length > 0 })
+      : buildEnginePrompt({
+          prompt: render.prompt,
+          style: render.style,
+          route: route === "references" || route === "drawing" ? route : "photo",
+          preserveStructure,
+          influence,
+        });
 
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
         imageUrl: source!.url,
-        referenceUrls: references.map((reference) => reference.url),
-        prompt: buildEnginePrompt({ prompt: render.prompt, style: render.style, route, preserveStructure, influence }),
+        referenceUrls: references.map((reference) => reference!.url),
+        maskUrl: mask?.url ?? null,
+        prompt,
         influence,
         preserveStructure,
         outputSize: source!.size ? fitToOneMegapixel(source!.size) : null,
