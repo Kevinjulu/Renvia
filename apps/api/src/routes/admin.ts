@@ -40,6 +40,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { modelsFor } from "../lib/models.js";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsRow } from "../lib/settings.js";
+import { getUsage, resolveLimits } from "../lib/limits.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type AdminContext = { Bindings: Env; Variables: AuthVariables & { admin: UserRow; db: Database } };
@@ -105,6 +106,11 @@ function selectAdminUsers(db: Database) {
       role: schema.users.role,
       creditBalance: schema.users.creditBalance,
       disabled: schema.users.disabled,
+      dailyRenderLimitOverride: schema.users.dailyRenderLimitOverride,
+      dailySegmentLimitOverride: schema.users.dailySegmentLimitOverride,
+      monthlyRenderLimitOverride: schema.users.monthlyRenderLimitOverride,
+      monthlySegmentLimitOverride: schema.users.monthlySegmentLimitOverride,
+      limitsExempt: schema.users.limitsExempt,
       createdAt: schema.users.createdAt,
       renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
       spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,
@@ -484,6 +490,11 @@ admin.get("/users", async (c) => {
         role: schema.users.role,
         creditBalance: schema.users.creditBalance,
         disabled: schema.users.disabled,
+        dailyRenderLimitOverride: schema.users.dailyRenderLimitOverride,
+        dailySegmentLimitOverride: schema.users.dailySegmentLimitOverride,
+        monthlyRenderLimitOverride: schema.users.monthlyRenderLimitOverride,
+        monthlySegmentLimitOverride: schema.users.monthlySegmentLimitOverride,
+        limitsExempt: schema.users.limitsExempt,
         createdAt: schema.users.createdAt,
         renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
         spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,
@@ -590,10 +601,13 @@ admin.get("/users/:id", async (c) => {
     createdAt: entry.createdAt.toISOString(),
     actorEmail,
   }));
+  const [userRow] = await db.select().from(schema.users).where(eq(schema.users.id, user.id));
   return c.json({
     user,
     ledger,
     renders: renderRows.map((row) => toAdminRender(row, settings.stuckTimeoutMinutes)),
+    limits: resolveLimits(userRow!, settings),
+    usage: await getUsage(db, user.id),
   });
 });
 
@@ -641,6 +655,24 @@ admin.post("/users/:id/credits", async (c) => {
   const { amount, note } = grantSchema.parse(await c.req.json());
   const adminUser = c.get("admin");
 
+  // The balance ceiling applies to grants only — a removal is always allowed.
+  if (amount > 0) {
+    const settings = await getSettings(db);
+    const target = await findAdminUser(db, id);
+    if (!target) return c.json({ error: "Not found" }, 404);
+    if (settings.maxCreditBalance !== null && target.creditBalance + amount > settings.maxCreditBalance) {
+      return c.json(
+        {
+          error: `That would take the balance past the ${settings.maxCreditBalance}-credit cap`,
+          code: "balance_cap",
+          limit: settings.maxCreditBalance,
+          used: target.creditBalance,
+        },
+        400,
+      );
+    }
+  }
+
   try {
     // Balance and ledger entry commit together; a removal past zero rolls both back.
     const [updated] = await db.batch([
@@ -679,8 +711,17 @@ const updateUserSchema = z
     disabled: z.boolean().optional(),
     role: z.enum(["user", "admin"]).optional(),
     confirmEmail: z.string().trim().email().optional(),
+    // 0 blocks the user outright; null clears the override so the global setting applies.
+    dailyRenderLimitOverride: z.number().int().min(0).max(10_000).nullable().optional(),
+    dailySegmentLimitOverride: z.number().int().min(0).max(10_000).nullable().optional(),
+    monthlyRenderLimitOverride: z.number().int().min(0).max(100_000).nullable().optional(),
+    monthlySegmentLimitOverride: z.number().int().min(0).max(100_000).nullable().optional(),
+    limitsExempt: z.boolean().optional(),
   })
-  .refine((body) => body.disabled !== undefined || body.role !== undefined, "Nothing to update")
+  .refine(
+    (body) => Object.keys(body).some((key) => key !== "confirmEmail" && body[key as keyof typeof body] !== undefined),
+    "Nothing to update",
+  )
   .superRefine((body, ctx) => {
     if (body.role !== undefined && !body.confirmEmail) {
       ctx.addIssue({
@@ -690,6 +731,14 @@ const updateUserSchema = z
       });
     }
   });
+
+/** Audit wording for each per-user override. */
+const LIMIT_OVERRIDE_LABELS = [
+  ["dailyRenderLimitOverride", "daily renders"],
+  ["dailySegmentLimitOverride", "daily selections"],
+  ["monthlyRenderLimitOverride", "monthly renders"],
+  ["monthlySegmentLimitOverride", "monthly selections"],
+] as const;
 
 admin.patch("/users/:id", async (c) => {
   const db = c.get("db");
@@ -738,6 +787,11 @@ admin.patch("/users/:id", async (c) => {
     .set({
       ...(body.disabled !== undefined ? { disabled: body.disabled } : {}),
       ...(body.role !== undefined ? { role: body.role } : {}),
+      ...(body.limitsExempt !== undefined ? { limitsExempt: body.limitsExempt } : {}),
+      ...(body.dailyRenderLimitOverride !== undefined ? { dailyRenderLimitOverride: body.dailyRenderLimitOverride } : {}),
+      ...(body.dailySegmentLimitOverride !== undefined ? { dailySegmentLimitOverride: body.dailySegmentLimitOverride } : {}),
+      ...(body.monthlyRenderLimitOverride !== undefined ? { monthlyRenderLimitOverride: body.monthlyRenderLimitOverride } : {}),
+      ...(body.monthlySegmentLimitOverride !== undefined ? { monthlySegmentLimitOverride: body.monthlySegmentLimitOverride } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.users.id, id))
@@ -752,6 +806,15 @@ admin.patch("/users/:id", async (c) => {
   if (body.role !== undefined && body.role !== before.role) {
     parts.push(body.role === "admin" ? "promoted to admin" : "demoted to user");
   }
+  if (body.limitsExempt !== undefined && body.limitsExempt !== before.limitsExempt) {
+    parts.push(body.limitsExempt ? "exempted from limits" : "limits re-applied");
+  }
+  for (const [key, label] of LIMIT_OVERRIDE_LABELS) {
+    const next = body[key];
+    if (next !== undefined && next !== before[key]) {
+      parts.push(next === null ? `${label} override cleared` : `${label} override set to ${next}`);
+    }
+  }
   await recordAdminEvent(db, {
     actorId: adminUser.id,
     action: "user.update",
@@ -759,8 +822,21 @@ admin.patch("/users/:id", async (c) => {
     targetId: id,
     summary: `${before.email}: ${parts.join(", ") || "updated"}`,
     detail: {
-      before: { role: before.role, disabled: before.disabled },
-      after: { role: body.role, disabled: body.disabled },
+      before: {
+        role: before.role,
+        disabled: before.disabled,
+        limitsExempt: before.limitsExempt,
+        dailyRenderLimitOverride: before.dailyRenderLimitOverride,
+        dailySegmentLimitOverride: before.dailySegmentLimitOverride,
+        monthlyRenderLimitOverride: before.monthlyRenderLimitOverride,
+        monthlySegmentLimitOverride: before.monthlySegmentLimitOverride,
+      },
+      after: { role: body.role, disabled: body.disabled, limitsExempt: body.limitsExempt,
+        dailyRenderLimitOverride: body.dailyRenderLimitOverride,
+        dailySegmentLimitOverride: body.dailySegmentLimitOverride,
+        monthlyRenderLimitOverride: body.monthlyRenderLimitOverride,
+        monthlySegmentLimitOverride: body.monthlySegmentLimitOverride,
+      },
       confirmEmail: body.confirmEmail ?? null,
     },
   });
@@ -924,6 +1000,20 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     signupBonusCredits: row.signupBonusCredits,
     dailyRenderLimit: row.dailyRenderLimit,
     dailySegmentLimit: row.dailySegmentLimit,
+    monthlyRenderLimit: row.monthlyRenderLimit,
+    monthlySegmentLimit: row.monthlySegmentLimit,
+    maxCreditBalance: row.maxCreditBalance,
+    maxProjectsPerUser: row.maxProjectsPerUser,
+    maxUploadMb: row.maxUploadMb,
+    maxReferenceImages: row.maxReferenceImages,
+    maxPromptChars: row.maxPromptChars,
+    maxSelectionPromptChars: row.maxSelectionPromptChars,
+    lowCreditThreshold: row.lowCreditThreshold,
+    messageInsufficientCredits: row.messageInsufficientCredits,
+    messageDailyLimit: row.messageDailyLimit,
+    messageMonthlyLimit: row.messageMonthlyLimit,
+    messageBudgetExhausted: row.messageBudgetExhausted,
+    messageAccountDisabled: row.messageAccountDisabled,
     creditsPerImage: row.creditsPerImage,
     creditsPerSelection: row.creditsPerSelection,
     maintenanceRenders: row.maintenanceRenders,
@@ -971,6 +1061,20 @@ const updateSettingsSchema = z
     signupBonusCredits: z.number().int().min(0).max(1000).optional(),
     dailyRenderLimit: z.number().int().min(1).max(10_000).nullable().optional(),
     dailySegmentLimit: z.number().int().min(1).max(10_000).nullable().optional(),
+    monthlyRenderLimit: z.number().int().min(1).max(100_000).nullable().optional(),
+    monthlySegmentLimit: z.number().int().min(1).max(100_000).nullable().optional(),
+    maxCreditBalance: z.number().int().min(1).max(1_000_000).nullable().optional(),
+    maxProjectsPerUser: z.number().int().min(1).max(10_000).nullable().optional(),
+    maxUploadMb: z.number().int().min(1).max(100).optional(),
+    maxReferenceImages: z.number().int().min(0).max(16).optional(),
+    maxPromptChars: z.number().int().min(50).max(8000).optional(),
+    maxSelectionPromptChars: z.number().int().min(10).max(1000).optional(),
+    lowCreditThreshold: z.number().int().min(0).max(1000).optional(),
+    messageInsufficientCredits: z.string().trim().max(280).nullable().optional(),
+    messageDailyLimit: z.string().trim().max(280).nullable().optional(),
+    messageMonthlyLimit: z.string().trim().max(280).nullable().optional(),
+    messageBudgetExhausted: z.string().trim().max(280).nullable().optional(),
+    messageAccountDisabled: z.string().trim().max(280).nullable().optional(),
     creditsPerImage: z.number().int().min(0).max(100).optional(),
     creditsPerSelection: z.number().int().min(0).max(100).optional(),
     maintenanceRenders: z.boolean().optional(),
@@ -1030,6 +1134,20 @@ admin.put("/settings", async (c) => {
         signupBonusCredits: before.signupBonusCredits,
         dailyRenderLimit: before.dailyRenderLimit,
         dailySegmentLimit: before.dailySegmentLimit,
+        monthlyRenderLimit: before.monthlyRenderLimit,
+        monthlySegmentLimit: before.monthlySegmentLimit,
+        maxCreditBalance: before.maxCreditBalance,
+        maxProjectsPerUser: before.maxProjectsPerUser,
+        maxUploadMb: before.maxUploadMb,
+        maxReferenceImages: before.maxReferenceImages,
+        maxPromptChars: before.maxPromptChars,
+        maxSelectionPromptChars: before.maxSelectionPromptChars,
+        lowCreditThreshold: before.lowCreditThreshold,
+        messageInsufficientCredits: before.messageInsufficientCredits,
+        messageDailyLimit: before.messageDailyLimit,
+        messageMonthlyLimit: before.messageMonthlyLimit,
+        messageBudgetExhausted: before.messageBudgetExhausted,
+        messageAccountDisabled: before.messageAccountDisabled,
         creditsPerImage: before.creditsPerImage,
         creditsPerSelection: before.creditsPerSelection,
         maintenanceRenders: before.maintenanceRenders,

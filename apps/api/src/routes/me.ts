@@ -5,6 +5,7 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, syncUser } from "../lib/users.js";
 import { getSettings } from "../lib/settings.js";
+import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 
 export const me = new Hono<AppContext>();
 
@@ -16,9 +17,13 @@ me.get("/", async (c) => {
 
   // Called once per studio load, so it also refreshes the stored email from Clerk.
   const [user, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
+  const usage = await getUsage(db, user.id);
 
   return c.json({
     ...user,
+    limits: resolveLimits(user, settings),
+    usage,
+    limitMessages: limitMessages(settings),
     creditsPerImage: settings.creditsPerImage,
     creditsPerSelection: settings.creditsPerSelection,
     maintenanceRenders: settings.maintenanceRenders,

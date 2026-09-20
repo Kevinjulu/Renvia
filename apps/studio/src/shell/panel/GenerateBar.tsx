@@ -4,8 +4,11 @@ import {
   type CreateRenderResponse,
   type RenderBudgetResponse,
   type RenderEditSettings,
+  type MeResponse,
 } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
+import { limitRefusal, type LimitRefusal } from "../../components/LimitDialog";
+import { reportLimit, useLimitDialogStore } from "../../lib/useLimitDialog";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
@@ -35,6 +38,19 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
   if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
   return null;
+}
+
+/**
+ * A refusal we can see coming without asking the server — the Generate button stays
+ * clickable for these so the dialog can explain what's blocking them.
+ */
+function localRefusal(
+  code: LimitRefusal["code"],
+  messages: MeResponse["limitMessages"] | undefined,
+  limit: number | null = null,
+  used: number | null = null,
+): LimitRefusal {
+  return { code, message: messages?.[code] ?? null, limit, used };
 }
 
 function plural(count: number, word: string): string {
@@ -75,6 +91,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
+  const showLimit = useLimitDialogStore((state) => state.show);
+  const setCreditsOpen = useLimitDialogStore((state) => state.setCreditsOpen);
 
   // The global fal budget is admin-only; everyone else sees their own credits.
   const refreshBudget = useCallback(() => {
@@ -125,7 +143,19 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
   const isSegMaintenance = Boolean(me?.maintenanceSegments) && !isAdmin;
   const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
-  const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled && !isMaintenance;
+
+  // The first reason this request would be refused, or null when it should go through.
+  // The button stays enabled for these so clicking opens the dialog rather than doing nothing.
+  const blocked: LimitRefusal | null = isDisabled
+    ? localRefusal("account_disabled", me?.limitMessages)
+    : isMaintenance
+      ? localRefusal("maintenance", me?.limitMessages)
+      : isOutOfCredits
+        ? localRefusal("insufficient_credits", me?.limitMessages, creditsNeeded, creditBalance)
+        : isOverBudget
+          ? localRefusal("budget_exhausted", me?.limitMessages)
+          : null;
+  const canSubmit = hasTarget && !isSubmitting;
 
   const viewWord = filled.length === 1 ? "view" : "views";
   const buttonLabel = (() => {
@@ -174,6 +204,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       queued.forEach(({ value }) => addJob(value.job));
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      const blocking = rejected.map(({ reason }) => limitRefusal(reason)).find(Boolean);
+      if (blocking) showLimit(blocking);
       const refusal = rejected
         .map(({ reason }) => refusalMessage(errorCode(reason), me?.maintenanceMessage))
         .find(Boolean);
@@ -263,6 +295,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       addJob(job);
       if (editRender) useRenderEditStore.getState().setAwaitingJob(job.id);
     } catch (error) {
+      reportLimit(error);
       const refusal = refusalMessage(errorCode(error), me?.maintenanceMessage);
       setStatus(refusal ? `${refusal} The edit wasn't applied.` : "Couldn't apply the edit. Try again in a moment.");
     } finally {
@@ -286,6 +319,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     return `${scope} · ${plural(creditsNeeded, "credit")} · ${plural(creditBalance, "credit")} left`;
   })();
   const costIsBlocking = isOverBudget || isOutOfCredits || isMaintenance;
+  // Nudge before they run out, at the threshold the operator set.
+  const lowCreditThreshold = me?.limits.lowCreditThreshold ?? 0;
+  const lowCredits =
+    !isAdmin && !isOutOfCredits && lowCreditThreshold > 0 && me !== null && creditBalance <= lowCreditThreshold;
 
   return (
     <div>
@@ -294,6 +331,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           type="button"
           disabled={!canSubmit}
           onClick={() => {
+            if (blocked) {
+              showLimit(blocked);
+              return;
+            }
             if (isEdit) void handleEditApply();
             else void handleGenerate();
           }}
@@ -320,6 +361,14 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         )}
       </div>
       {costLine && <p className={`mt-2 text-xs ${costIsBlocking ? "text-red-500" : "text-muted"}`}>{costLine}</p>}
+      {lowCredits && (
+        <p className="mt-2 text-xs text-amber-700">
+          {plural(creditBalance, "credit")} left —{" "}
+          <button type="button" onClick={() => setCreditsOpen(true)} className="font-medium underline">
+            view credits
+          </button>
+        </p>
+      )}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>
   );

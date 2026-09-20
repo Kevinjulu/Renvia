@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReferenceImage } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
+import { reportLimit } from "../../lib/useLimitDialog";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
 import { viewImage } from "../../canvas/utils/viewImage";
@@ -129,8 +130,9 @@ export function ReferenceBar() {
       setLibrary((current) => [reference, ...current]);
       setLibraryLoaded(true);
       attach(reference);
-    } catch {
-      // Idle state restored either way.
+    } catch (error) {
+      // A limit refusal explains itself in the shared dialog; anything else just restores idle.
+      reportLimit(error);
     } finally {
       setIsUploading(false);
     }

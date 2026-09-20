@@ -36,10 +36,17 @@ export class ApiError extends Error {
     readonly status: number,
     /** Machine-readable reason from the response body, e.g. "insufficient_credits". */
     readonly code: string | null = null,
+    /** Operator-authored copy for a refusal, when the server sent one. */
+    readonly detail: string | null = null,
+    /** The cap that was hit and how much of it was used, for refusals that report them. */
+    readonly limit: number | null = null,
+    readonly used: number | null = null,
   ) {
     super(`API request failed: ${status}${code ? ` (${code})` : ""}`);
   }
 }
+
+const numberOrNull = (value: unknown) => (typeof value === "number" ? value : null);
 
 async function request<T>(getToken: GetToken, path: string, init?: RequestInit): Promise<T> {
   const token = await getToken();
@@ -50,8 +57,16 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
 
   const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
-    throw new ApiError(response.status, typeof body?.code === "string" ? body.code : null);
+    const body = (await response.json().catch(() => null)) as
+      | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown }
+      | null;
+    throw new ApiError(
+      response.status,
+      typeof body?.code === "string" ? body.code : null,
+      typeof body?.error === "string" ? body.error : null,
+      numberOrNull(body?.limit),
+      numberOrNull(body?.used),
+    );
   }
   return response.json() as Promise<T>;
 }

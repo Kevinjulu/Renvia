@@ -78,7 +78,7 @@ async function combineMasks(maskUrls: string[]): Promise<string> {
   const height = meta.height ?? 0;
   if (!width || !height) throw new Error("Mask has no dimensions");
 
-  let combined = await sharp(layers[0]!).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const combined = await sharp(layers[0]!).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   for (let i = 1; i < layers.length; i++) {
     const next = await sharp(layers[i]!).resize(width, height, { fit: "fill" }).ensureAlpha().raw().toBuffer();
     for (let p = 0; p < combined.data.length; p += 4) {

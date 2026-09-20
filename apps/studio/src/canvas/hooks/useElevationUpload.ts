@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useApiClient } from "../../lib/apiClient";
+import { reportLimit } from "../../lib/useLimitDialog";
 import { nodeToPersistedData, placeImageInView } from "../utils/placeImageNode";
 import { useCanvasStore } from "./useCanvasStore";
 import type { BuildingView } from "../buildingViews";
@@ -14,7 +15,14 @@ export function useElevationUpload() {
       setIsUploading(true);
       setUploadingViewId(view.id);
       try {
-        const { publicUrl } = await apiClient.uploadImage(file);
+        let publicUrl: string;
+        try {
+          ({ publicUrl } = await apiClient.uploadImage(file));
+        } catch (error) {
+          // An oversized image is a limit refusal, not a broken upload — explain it and stop.
+          if (reportLimit(error)) return;
+          throw error;
+        }
         const { kind, node } = await placeImageInView(view, publicUrl);
 
         const projectId = useCanvasStore.getState().projectId;

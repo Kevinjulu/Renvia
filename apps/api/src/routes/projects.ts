@@ -1,11 +1,13 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getOrCreateUserId } from "../lib/users.js";
+import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
+import { getSettings } from "../lib/settings.js";
+import { refuseInput, resolveLimits } from "../lib/limits.js";
 
 export const projects = new Hono<AppContext>();
 
@@ -25,10 +27,22 @@ projects.post("/", async (c) => {
   const body = createProjectSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
+  const [user, settings] = await Promise.all([getOrCreateUser(c.env, db, clerkId), getSettings(db)]);
+  const { maxProjects } = resolveLimits(user, settings);
+  if (maxProjects !== null) {
+    const [owned] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.projects)
+      .where(eq(schema.projects.ownerId, user.id));
+    if ((owned?.count ?? 0) >= maxProjects) {
+      const refusal = refuseInput(settings, "project_limit_reached", maxProjects, owned?.count ?? 0);
+      return c.json(refusal, refusal.status);
+    }
+  }
+
   const [created] = await db
     .insert(schema.projects)
-    .values({ ownerId, name: body.name })
+    .values({ ownerId: user.id, name: body.name })
     .returning();
 
   return c.json(created, 201);

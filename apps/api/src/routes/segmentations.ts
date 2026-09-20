@@ -1,13 +1,13 @@
 import { Hono } from "hono";
-import { and, eq, gte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { createDb, schema } from "@renvia/db";
+import { createDb } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { createChargedSegmentation, InsufficientCreditsError } from "../lib/credits.js";
 import { wouldExceedBudget } from "../lib/engine.js";
 import { effectiveEngineMode, getSettings } from "../lib/settings.js";
+import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
 
@@ -18,7 +18,8 @@ segmentations.use("*", requireAuth);
 const createSchema = z
   .object({
     imageUrl: z.string().url(),
-    prompt: z.string().trim().min(1).max(200).optional(),
+    // Hard ceiling; app_settings.max_selection_prompt_chars is the tunable cap.
+    prompt: z.string().trim().min(1).max(1000).optional(),
     point: z
       .object({
         x: z.number().finite(),
@@ -36,8 +37,10 @@ segmentations.post("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   const user = await getOrCreateUser(c.env, db, clerkId);
+  const appSettings = await getSettings(db);
   if (user.disabled) {
-    return c.json({ error: "Account disabled", code: "account_disabled" }, 403);
+    const refusal = refuseDisabled(appSettings);
+    return c.json(refusal, refusal.status);
   }
 
   const origin = new URL(c.req.url).origin;
@@ -45,39 +48,22 @@ segmentations.post("/", async (c) => {
     return c.json({ error: "Selection needs an uploaded image", code: "invalid_image" }, 400);
   }
 
-  const appSettings = await getSettings(db);
   const isAdmin = user.role === "admin";
+  const limits = resolveLimits(user, appSettings);
 
-  if (!isAdmin && appSettings.maintenanceSegments) {
-    return c.json(
-      {
-        error: appSettings.maintenanceMessage?.trim() || "Selections are temporarily paused for maintenance",
-        code: "maintenance",
-      },
-      503,
-    );
+  if (body.prompt && body.prompt.length > limits.maxSelectionPromptChars) {
+    const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxSelectionPromptChars, body.prompt.length);
+    return c.json(refusal, refusal.status);
   }
 
-  if (!isAdmin && appSettings.dailySegmentLimit !== null) {
-    const [today] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.segmentations)
-      .where(
-        and(
-          eq(schema.segmentations.userId, user.id),
-          ne(schema.segmentations.status, "failed"),
-          gte(schema.segmentations.createdAt, sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`),
-        ),
-      );
-    if ((today?.count ?? 0) >= appSettings.dailySegmentLimit) {
-      return c.json({ error: "Daily selection limit reached", code: "daily_limit_reached" }, 429);
-    }
-  }
+  const allowance = await checkAllowance(db, user, appSettings, "segment");
+  if (allowance) return c.json(allowance, allowance.status);
 
   const mode = effectiveEngineMode(c.env, appSettings);
   const costMicros = mode === "mock" ? 0 : SAM_COST_MICROS;
   if (await wouldExceedBudget(c.env, db, costMicros)) {
-    return c.json({ error: "Render budget exhausted", code: "budget_exhausted" }, 402);
+    const refusal = refuseBudget(appSettings);
+    return c.json(refusal, refusal.status);
   }
 
   const credits = isAdmin ? 0 : appSettings.creditsPerSelection;
@@ -93,7 +79,8 @@ segmentations.post("/", async (c) => {
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
-      return c.json({ error: "Not enough credits", code: "insufficient_credits" }, 402);
+      const refusal = refuseCredits(appSettings, user.creditBalance, credits);
+      return c.json(refusal, refusal.status);
     }
     throw error;
   }

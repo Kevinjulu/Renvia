@@ -192,6 +192,48 @@ export interface MeCreditsResponse {
   entries: CreditLedgerEntry[];
 }
 
+/** Why a render or selection was refused. Drives the studio's limit dialog. */
+export type LimitCode =
+  | "insufficient_credits"
+  | "daily_limit_reached"
+  | "monthly_limit_reached"
+  | "budget_exhausted"
+  | "maintenance"
+  | "account_disabled"
+  | "project_limit_reached"
+  | "prompt_too_long"
+  | "too_many_references"
+  | "upload_too_large";
+
+/** Everything the caller is allowed, after per-user overrides and global settings. */
+export interface UserLimits {
+  /** null = unlimited. */
+  dailyRenders: number | null;
+  dailySegments: number | null;
+  monthlyRenders: number | null;
+  monthlySegments: number | null;
+  maxProjects: number | null;
+  maxCreditBalance: number | null;
+  maxUploadMb: number;
+  maxReferenceImages: number;
+  maxPromptChars: number;
+  maxSelectionPromptChars: number;
+  lowCreditThreshold: number;
+  /** True when the user skips daily/monthly caps and maintenance pauses (admins and exempt users). */
+  exempt: boolean;
+  /** Which of the daily/monthly caps came from a per-user override rather than the global setting. */
+  overridden: { dailyRenders: boolean; dailySegments: boolean; monthlyRenders: boolean; monthlySegments: boolean };
+}
+
+/** Consumption against `UserLimits`, counted in UTC and excluding failed (refunded) work. */
+export interface UserUsage {
+  rendersToday: number;
+  segmentsToday: number;
+  rendersThisMonth: number;
+  segmentsThisMonth: number;
+  projects: number;
+}
+
 export interface MeResponse {
   id: string;
   clerkId: string;
@@ -210,6 +252,12 @@ export interface MeResponse {
   maintenanceSegments: boolean;
   /** Optional operator message while maintenance is on. */
   maintenanceMessage: string | null;
+  /** What this user may do right now. */
+  limits: UserLimits;
+  /** What they've used against those limits today and this month. */
+  usage: UserUsage;
+  /** Operator-authored refusal copy; a null entry means use the studio's built-in wording. */
+  limitMessages: Partial<Record<LimitCode, string | null>>;
   createdAt: string;
   updatedAt: string;
 }
@@ -272,6 +320,13 @@ export interface AdminUser {
   role: UserRole;
   creditBalance: number;
   disabled: boolean;
+  /** Per-user limit overrides; null = inherit the global setting. */
+  dailyRenderLimitOverride: number | null;
+  dailySegmentLimitOverride: number | null;
+  monthlyRenderLimitOverride: number | null;
+  monthlySegmentLimitOverride: number | null;
+  /** Skips daily/monthly caps and maintenance pauses; still charged and still budget-capped. */
+  limitsExempt: boolean;
   createdAt: string;
   /** Renders and edits that didn't fail. */
   renderCount: number;
@@ -364,6 +419,10 @@ export interface AdminUserDetailResponse {
   user: AdminUser;
   ledger: AdminLedgerEntry[];
   renders: AdminRender[];
+  /** What this user is actually allowed right now, after overrides and global settings. */
+  limits: UserLimits;
+  /** This user's consumption against those limits. */
+  usage: UserUsage;
 }
 
 export interface AdminGrantCreditsRequest {
@@ -375,6 +434,12 @@ export interface AdminGrantCreditsRequest {
 export interface AdminUpdateUserRequest {
   disabled?: boolean;
   role?: UserRole;
+  /** Null clears the override so the user falls back to the global setting. */
+  dailyRenderLimitOverride?: number | null;
+  dailySegmentLimitOverride?: number | null;
+  monthlyRenderLimitOverride?: number | null;
+  monthlySegmentLimitOverride?: number | null;
+  limitsExempt?: boolean;
   /**
    * Required when changing role. Must match the target user's email exactly
    * (case-insensitive) so promotions can't happen from a mis-click alone.
@@ -440,6 +505,26 @@ export interface AdminSettings {
   dailyRenderLimit: number | null;
   /** Max segmentations per non-admin user per UTC day; null = unlimited. */
   dailySegmentLimit: number | null;
+  /** Max renders per non-admin user per UTC calendar month; null = unlimited. */
+  monthlyRenderLimit: number | null;
+  /** Max segmentations per non-admin user per UTC calendar month; null = unlimited. */
+  monthlySegmentLimit: number | null;
+  /** Ceiling on a non-admin's credit balance — grants clamp to it. Null = uncapped. */
+  maxCreditBalance: number | null;
+  /** Max projects a non-admin may own; null = unlimited. */
+  maxProjectsPerUser: number | null;
+  maxUploadMb: number;
+  maxReferenceImages: number;
+  maxPromptChars: number;
+  maxSelectionPromptChars: number;
+  /** Studio warns at or below this balance; 0 disables the warning. */
+  lowCreditThreshold: number;
+  /** Operator copy per refusal; null falls back to the studio's built-in wording. */
+  messageInsufficientCredits: string | null;
+  messageDailyLimit: string | null;
+  messageMonthlyLimit: string | null;
+  messageBudgetExhausted: string | null;
+  messageAccountDisabled: string | null;
   creditsPerImage: number;
   creditsPerSelection: number;
   maintenanceRenders: boolean;
@@ -486,6 +571,20 @@ export type AdminUpdateSettingsRequest = Partial<
     | "signupBonusCredits"
     | "dailyRenderLimit"
     | "dailySegmentLimit"
+    | "monthlyRenderLimit"
+    | "monthlySegmentLimit"
+    | "maxCreditBalance"
+    | "maxProjectsPerUser"
+    | "maxUploadMb"
+    | "maxReferenceImages"
+    | "maxPromptChars"
+    | "maxSelectionPromptChars"
+    | "lowCreditThreshold"
+    | "messageInsufficientCredits"
+    | "messageDailyLimit"
+    | "messageMonthlyLimit"
+    | "messageBudgetExhausted"
+    | "messageAccountDisabled"
     | "creditsPerImage"
     | "creditsPerSelection"
     | "maintenanceRenders"

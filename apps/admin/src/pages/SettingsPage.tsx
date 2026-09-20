@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CheckCircle2, Coins, Cpu, Layers, PauseCircle, ScrollText, Settings, Shield, Timer, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Coins,
+  Cpu,
+  Layers,
+  MessageSquare,
+  PauseCircle,
+  ScrollText,
+  Settings,
+  Shield,
+  SlidersHorizontal,
+  Timer,
+  XCircle,
+} from "lucide-react";
 import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode, RenderRoute } from "@renvia/types";
 import { Button, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
 import { PageHero } from "../components/PageHero";
@@ -30,10 +44,58 @@ const ROUTE_LABEL: Record<RenderRoute, string> = {
   "edit-references": "Edit + references",
 };
 
+/** The five refusal messages, rendered as one block of textareas. */
+const REFUSAL_MESSAGE_FIELDS = [
+  {
+    key: "messageInsufficientCredits",
+    label: "Out of credits",
+    hint: "Shown when the balance can’t cover the next render or selection.",
+    placeholder: "You’re out of credits — ping us and we’ll top you up.",
+  },
+  {
+    key: "messageDailyLimit",
+    label: "Daily limit reached",
+    hint: "Shown when today’s render or selection allowance is used up.",
+    placeholder: "That’s today’s allowance. Fresh credits at midnight UTC.",
+  },
+  {
+    key: "messageMonthlyLimit",
+    label: "Monthly limit reached",
+    hint: "Shown when this month’s allowance is used up.",
+    placeholder: "You’ve hit this month’s cap — it resets on the 1st.",
+  },
+  {
+    key: "messageBudgetExhausted",
+    label: "Render budget exhausted",
+    hint: "Shown to everyone once the global fal budget is spent.",
+    placeholder: "Rendering is paused while we top up the demo budget.",
+  },
+  {
+    key: "messageAccountDisabled",
+    label: "Account disabled",
+    hint: "Shown to a user whose account has been switched off.",
+    placeholder: "This account is disabled. Contact support to reopen it.",
+  },
+] as const satisfies readonly { key: keyof Draft; label: string; hint: string; placeholder: string }[];
+
 interface Draft {
   signupBonusCredits: string;
   dailyRenderLimit: string;
   dailySegmentLimit: string;
+  monthlyRenderLimit: string;
+  monthlySegmentLimit: string;
+  maxCreditBalance: string;
+  maxProjectsPerUser: string;
+  maxUploadMb: string;
+  maxReferenceImages: string;
+  maxPromptChars: string;
+  maxSelectionPromptChars: string;
+  lowCreditThreshold: string;
+  messageInsufficientCredits: string;
+  messageDailyLimit: string;
+  messageMonthlyLimit: string;
+  messageBudgetExhausted: string;
+  messageAccountDisabled: string;
   creditsPerImage: string;
   creditsPerSelection: string;
   maintenanceRenders: boolean;
@@ -53,6 +115,20 @@ function toDraft(settings: AdminSettings): Draft {
     signupBonusCredits: String(settings.signupBonusCredits),
     dailyRenderLimit: settings.dailyRenderLimit === null ? "" : String(settings.dailyRenderLimit),
     dailySegmentLimit: settings.dailySegmentLimit === null ? "" : String(settings.dailySegmentLimit),
+    monthlyRenderLimit: settings.monthlyRenderLimit === null ? "" : String(settings.monthlyRenderLimit),
+    monthlySegmentLimit: settings.monthlySegmentLimit === null ? "" : String(settings.monthlySegmentLimit),
+    maxCreditBalance: settings.maxCreditBalance === null ? "" : String(settings.maxCreditBalance),
+    maxProjectsPerUser: settings.maxProjectsPerUser === null ? "" : String(settings.maxProjectsPerUser),
+    maxUploadMb: String(settings.maxUploadMb),
+    maxReferenceImages: String(settings.maxReferenceImages),
+    maxPromptChars: String(settings.maxPromptChars),
+    maxSelectionPromptChars: String(settings.maxSelectionPromptChars),
+    lowCreditThreshold: String(settings.lowCreditThreshold),
+    messageInsufficientCredits: settings.messageInsufficientCredits ?? "",
+    messageDailyLimit: settings.messageDailyLimit ?? "",
+    messageMonthlyLimit: settings.messageMonthlyLimit ?? "",
+    messageBudgetExhausted: settings.messageBudgetExhausted ?? "",
+    messageAccountDisabled: settings.messageAccountDisabled ?? "",
     creditsPerImage: String(settings.creditsPerImage),
     creditsPerSelection: String(settings.creditsPerSelection),
     maintenanceRenders: settings.maintenanceRenders,
@@ -64,6 +140,31 @@ function toDraft(settings: AdminSettings): Draft {
     falMode: settings.falMode ?? "",
     falBudgetUsd: settings.falBudgetUsd === null ? "" : String(settings.falBudgetUsd),
   };
+}
+
+/** Blank means "no cap"; anything else must be a whole number inside the range. */
+function optionalInt(raw: string, min: number, max: number): { value: number | null; error?: string } {
+  if (raw.trim() === "") return { value: null };
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    return { value: null, error: `Blank (unlimited) or ${formatNumber(min)}–${formatNumber(max)}.` };
+  }
+  return { value };
+}
+
+function requiredInt(raw: string, min: number, max: number): { value: number; error?: string } {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    return { value: min, error: `Whole number from ${formatNumber(min)} to ${formatNumber(max)}.` };
+  }
+  return { value };
+}
+
+/** Refusal copy: blank means "use the studio's built-in wording". */
+function optionalText(raw: string): { value: string | null; error?: string } {
+  const trimmed = raw.trim();
+  if (trimmed.length > 280) return { value: null, error: "Keep under 280 characters." };
+  return { value: trimmed === "" ? null : trimmed };
 }
 
 function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest; errors: FieldErrors } | { body: null; errors: FieldErrors } {
@@ -111,12 +212,79 @@ function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest; errors
   if (message.length > 280) {
     errors.maintenanceMessage = "Keep under 280 characters.";
   }
+
+  const monthlyRenderLimit = optionalInt(draft.monthlyRenderLimit, 1, 100_000);
+  if (monthlyRenderLimit.error) errors.monthlyRenderLimit = monthlyRenderLimit.error;
+  const monthlySegmentLimit = optionalInt(draft.monthlySegmentLimit, 1, 100_000);
+  if (monthlySegmentLimit.error) errors.monthlySegmentLimit = monthlySegmentLimit.error;
+  const maxCreditBalance = optionalInt(draft.maxCreditBalance, 1, 1_000_000);
+  if (maxCreditBalance.error) errors.maxCreditBalance = maxCreditBalance.error;
+  const maxProjectsPerUser = optionalInt(draft.maxProjectsPerUser, 1, 10_000);
+  if (maxProjectsPerUser.error) errors.maxProjectsPerUser = maxProjectsPerUser.error;
+  const maxUploadMb = requiredInt(draft.maxUploadMb, 1, 100);
+  if (maxUploadMb.error) errors.maxUploadMb = maxUploadMb.error;
+  const maxReferenceImages = requiredInt(draft.maxReferenceImages, 0, 16);
+  if (maxReferenceImages.error) errors.maxReferenceImages = maxReferenceImages.error;
+  const maxPromptChars = requiredInt(draft.maxPromptChars, 50, 8000);
+  if (maxPromptChars.error) errors.maxPromptChars = maxPromptChars.error;
+  const maxSelectionPromptChars = requiredInt(draft.maxSelectionPromptChars, 10, 1000);
+  if (maxSelectionPromptChars.error) errors.maxSelectionPromptChars = maxSelectionPromptChars.error;
+  const lowCreditThreshold = requiredInt(draft.lowCreditThreshold, 0, 1000);
+  if (lowCreditThreshold.error) errors.lowCreditThreshold = lowCreditThreshold.error;
+
+  // A daily cap above the monthly one can never be reached — flag it rather than silently ignoring it.
+  if (
+    !monthlyRenderLimit.error &&
+    monthlyRenderLimit.value !== null &&
+    renderLimit !== null &&
+    renderLimit > monthlyRenderLimit.value
+  ) {
+    errors.monthlyRenderLimit = "Monthly limit must be at least the daily limit.";
+  }
+  if (
+    !monthlySegmentLimit.error &&
+    monthlySegmentLimit.value !== null &&
+    segmentLimit !== null &&
+    segmentLimit > monthlySegmentLimit.value
+  ) {
+    errors.monthlySegmentLimit = "Monthly limit must be at least the daily limit.";
+  }
+  // A signup bonus above the balance cap would be clipped on every new account.
+  if (!maxCreditBalance.error && maxCreditBalance.value !== null && bonus > maxCreditBalance.value) {
+    errors.maxCreditBalance = "Must be at least the signup bonus.";
+  }
+
+  const messages = {
+    messageInsufficientCredits: optionalText(draft.messageInsufficientCredits),
+    messageDailyLimit: optionalText(draft.messageDailyLimit),
+    messageMonthlyLimit: optionalText(draft.messageMonthlyLimit),
+    messageBudgetExhausted: optionalText(draft.messageBudgetExhausted),
+    messageAccountDisabled: optionalText(draft.messageAccountDisabled),
+  } as const;
+  for (const [key, result] of Object.entries(messages)) {
+    if (result.error) errors[key as keyof Draft] = result.error;
+  }
+
   if (Object.keys(errors).length > 0) return { body: null, errors };
   return {
     body: {
       signupBonusCredits: bonus,
       dailyRenderLimit: renderLimit,
       dailySegmentLimit: segmentLimit,
+      monthlyRenderLimit: monthlyRenderLimit.value,
+      monthlySegmentLimit: monthlySegmentLimit.value,
+      maxCreditBalance: maxCreditBalance.value,
+      maxProjectsPerUser: maxProjectsPerUser.value,
+      maxUploadMb: maxUploadMb.value,
+      maxReferenceImages: maxReferenceImages.value,
+      maxPromptChars: maxPromptChars.value,
+      maxSelectionPromptChars: maxSelectionPromptChars.value,
+      lowCreditThreshold: lowCreditThreshold.value,
+      messageInsufficientCredits: messages.messageInsufficientCredits.value,
+      messageDailyLimit: messages.messageDailyLimit.value,
+      messageMonthlyLimit: messages.messageMonthlyLimit.value,
+      messageBudgetExhausted: messages.messageBudgetExhausted.value,
+      messageAccountDisabled: messages.messageAccountDisabled.value,
       creditsPerImage,
       creditsPerSelection,
       maintenanceRenders: draft.maintenanceRenders,
@@ -404,6 +572,76 @@ export function SettingsPage() {
                   className={inputClass(fieldErrors.dailySegmentLimit)}
                 />
               </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Monthly render limit per user"
+                  hint="Blank for unlimited. Counted per UTC calendar month."
+                  error={fieldErrors.monthlyRenderLimit}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={100_000}
+                    placeholder="Unlimited"
+                    value={draft.monthlyRenderLimit}
+                    onChange={(event) => update({ monthlyRenderLimit: event.target.value })}
+                    className={inputClass(fieldErrors.monthlyRenderLimit)}
+                  />
+                </Field>
+                <Field
+                  label="Monthly segment limit per user"
+                  hint="Blank for unlimited. Counted per UTC calendar month."
+                  error={fieldErrors.monthlySegmentLimit}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={100_000}
+                    placeholder="Unlimited"
+                    value={draft.monthlySegmentLimit}
+                    onChange={(event) => update({ monthlySegmentLimit: event.target.value })}
+                    className={inputClass(fieldErrors.monthlySegmentLimit)}
+                  />
+                </Field>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Credit balance cap"
+                  hint="Blank for uncapped. Grants that would exceed it are rejected."
+                  error={fieldErrors.maxCreditBalance}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={1_000_000}
+                    placeholder="Uncapped"
+                    value={draft.maxCreditBalance}
+                    onChange={(event) => update({ maxCreditBalance: event.target.value })}
+                    className={inputClass(fieldErrors.maxCreditBalance)}
+                  />
+                </Field>
+                <Field
+                  label="Low-credit warning at"
+                  hint="Studio nudges the user at or below this balance. 0 turns it off."
+                  error={fieldErrors.lowCreditThreshold}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={draft.lowCreditThreshold}
+                    onChange={(event) => update({ lowCreditThreshold: event.target.value })}
+                    className={inputClass(fieldErrors.lowCreditThreshold)}
+                  />
+                </Field>
+              </div>
+              <p className="rounded-xl border border-hairline bg-surface px-3.5 py-2.5 text-xs text-muted">
+                These are the defaults. Give one tester a different allowance from{" "}
+                <Link to="/users" className="font-medium text-blueprint hover:underline">
+                  their user page
+                </Link>
+                .
+              </p>
             </div>
           </section>
 
@@ -562,6 +800,123 @@ export function SettingsPage() {
 
           <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
             <div className="mb-5 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
+                <SlidersHorizontal size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Input limits</h2>
+                <p className="text-xs text-muted">What a single request may carry</p>
+              </div>
+            </div>
+            <div className="space-y-5">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Max upload size (MB)"
+                  hint="Rejected server-side before the image is stored."
+                  error={fieldErrors.maxUploadMb}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draft.maxUploadMb}
+                    onChange={(event) => update({ maxUploadMb: event.target.value })}
+                    className={inputClass(fieldErrors.maxUploadMb)}
+                  />
+                </Field>
+                <Field
+                  label="Max reference images"
+                  hint="Per render. 0 disables reference-image renders."
+                  error={fieldErrors.maxReferenceImages}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    max={16}
+                    value={draft.maxReferenceImages}
+                    onChange={(event) => update({ maxReferenceImages: event.target.value })}
+                    className={inputClass(fieldErrors.maxReferenceImages)}
+                  />
+                </Field>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Max prompt characters"
+                  hint="Render and edit prompts. 50–8,000."
+                  error={fieldErrors.maxPromptChars}
+                >
+                  <input
+                    type="number"
+                    min={50}
+                    max={8000}
+                    value={draft.maxPromptChars}
+                    onChange={(event) => update({ maxPromptChars: event.target.value })}
+                    className={inputClass(fieldErrors.maxPromptChars)}
+                  />
+                </Field>
+                <Field
+                  label="Max selection prompt characters"
+                  hint="“Auto select” text prompts. 10–1,000."
+                  error={fieldErrors.maxSelectionPromptChars}
+                >
+                  <input
+                    type="number"
+                    min={10}
+                    max={1000}
+                    value={draft.maxSelectionPromptChars}
+                    onChange={(event) => update({ maxSelectionPromptChars: event.target.value })}
+                    className={inputClass(fieldErrors.maxSelectionPromptChars)}
+                  />
+                </Field>
+              </div>
+              <Field
+                label="Max projects per user"
+                hint="Blank for unlimited. Checked when a non-admin creates a project."
+                error={fieldErrors.maxProjectsPerUser}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={10_000}
+                  placeholder="Unlimited"
+                  value={draft.maxProjectsPerUser}
+                  onChange={(event) => update({ maxProjectsPerUser: event.target.value })}
+                  className={inputClass(fieldErrors.maxProjectsPerUser)}
+                />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card lg:col-span-2">
+            <div className="mb-5 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-glow-soft text-[#8a5a17]">
+                <MessageSquare size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">What users see when they’re blocked</h2>
+                <p className="text-xs text-muted">
+                  Shown in the studio’s limit dialog. Leave blank to use the built-in wording.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {REFUSAL_MESSAGE_FIELDS.map((field) => (
+                <Field key={field.key} label={field.label} hint={field.hint} error={fieldErrors[field.key]}>
+                  <textarea
+                    rows={2}
+                    maxLength={280}
+                    value={draft[field.key]}
+                    onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)}
+                    placeholder={field.placeholder}
+                    className={`${inputClass(fieldErrors[field.key])} resize-y`}
+                  />
+                </Field>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-5 flex items-center gap-2">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-surface-muted text-muted">
                 <Timer size={17} />
               </span>
@@ -659,7 +1014,16 @@ export function SettingsPage() {
                 toward the global fal budget.
               </p>
             </div>
-            <p className="mt-3 text-xs text-faint">Per-role overrides aren’t editable yet — admins only for now.</p>
+            <div className="mt-3 rounded-xl border border-hairline bg-surface px-3.5 py-3 text-sm text-secondary">
+              <p className="font-medium text-primary">Exempt users</p>
+              <p className="mt-1 text-xs text-muted">
+                Any account can be flagged exempt, or given its own daily/monthly allowance, from{" "}
+                <Link to="/users" className="font-medium text-blueprint hover:underline">
+                  Users
+                </Link>
+                . Exempt users skip caps and maintenance but are still charged credits.
+              </p>
+            </div>
           </section>
         </div>
 
@@ -1049,8 +1413,61 @@ function diffChanges(settings: AdminSettings, draft: Draft): ChangeItem[] {
     formatBudget(body.falBudgetUsd!),
     body.falBudgetUsd !== undefined && body.falBudgetUsd !== settings.falBudgetUsd,
   );
+
+  // The newer knobs all diff the same way, so they're table-driven rather than
+  // another dozen near-identical pushIfChanged calls.
+  for (const { key, label, format } of EXTRA_CHANGE_FIELDS) {
+    const next = body[key] as ExtraValue | undefined;
+    const previous = settings[key] as ExtraValue;
+    pushIfChanged(items, key, label, format(previous), format(next ?? null), next !== undefined && next !== previous);
+  }
   return items;
 }
+
+type ExtraKey = Extract<
+  keyof AdminUpdateSettingsRequest,
+  | "monthlyRenderLimit"
+  | "monthlySegmentLimit"
+  | "maxCreditBalance"
+  | "maxProjectsPerUser"
+  | "maxUploadMb"
+  | "maxReferenceImages"
+  | "maxPromptChars"
+  | "maxSelectionPromptChars"
+  | "lowCreditThreshold"
+  | "messageInsufficientCredits"
+  | "messageDailyLimit"
+  | "messageMonthlyLimit"
+  | "messageBudgetExhausted"
+  | "messageAccountDisabled"
+>;
+
+type ExtraValue = number | string | null;
+
+const countOr = (suffix: string) => (value: ExtraValue) =>
+  value === null ? "Unlimited" : `${formatNumber(Number(value))}${suffix}`;
+
+const plain = (suffix: string) => (value: ExtraValue) =>
+  value === null ? "—" : `${formatNumber(Number(value))}${suffix}`;
+
+const asMessage = (value: ExtraValue) => formatMessage(value === null ? null : String(value));
+
+const EXTRA_CHANGE_FIELDS: { key: ExtraKey; label: string; format: (value: ExtraValue) => string }[] = [
+  { key: "monthlyRenderLimit", label: "Monthly render limit", format: countOr("/mo") },
+  { key: "monthlySegmentLimit", label: "Monthly selection limit", format: countOr("/mo") },
+  { key: "maxCreditBalance", label: "Credit balance cap", format: countOr(" credits") },
+  { key: "maxProjectsPerUser", label: "Projects per user", format: countOr("") },
+  { key: "maxUploadMb", label: "Max upload", format: plain(" MB") },
+  { key: "maxReferenceImages", label: "Max references", format: plain("") },
+  { key: "maxPromptChars", label: "Prompt length", format: plain(" chars") },
+  { key: "maxSelectionPromptChars", label: "Selection prompt length", format: plain(" chars") },
+  { key: "lowCreditThreshold", label: "Low-credit warning", format: plain(" credits") },
+  { key: "messageInsufficientCredits", label: "Out-of-credits message", format: asMessage },
+  { key: "messageDailyLimit", label: "Daily-limit message", format: asMessage },
+  { key: "messageMonthlyLimit", label: "Monthly-limit message", format: asMessage },
+  { key: "messageBudgetExhausted", label: "Budget message", format: asMessage },
+  { key: "messageAccountDisabled", label: "Disabled-account message", format: asMessage },
+];
 
 function isDangerous(settings: AdminSettings, draft: Draft): string | null {
   const result = validateDraft(draft);

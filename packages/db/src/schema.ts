@@ -12,10 +12,38 @@ export const users = pgTable(
   /** Spendable credits (1 credit = 1 image); every change is mirrored in credit_ledger. */
   creditBalance: integer("credit_balance").notNull().default(0),
   disabled: boolean("disabled").notNull().default(false),
+  /** Per-user override of app_settings.daily_render_limit; null = use the global setting. */
+  dailyRenderLimitOverride: integer("daily_render_limit_override"),
+  /** Per-user override of app_settings.daily_segment_limit; null = use the global setting. */
+  dailySegmentLimitOverride: integer("daily_segment_limit_override"),
+  /** Per-user override of app_settings.monthly_render_limit; null = use the global setting. */
+  monthlyRenderLimitOverride: integer("monthly_render_limit_override"),
+  /** Per-user override of app_settings.monthly_segment_limit; null = use the global setting. */
+  monthlySegmentLimitOverride: integer("monthly_segment_limit_override"),
+  /** Skips daily/monthly caps and maintenance pauses. Still charged credits, still capped by the fal budget. */
+  limitsExempt: boolean("limits_exempt").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("users_credit_balance_non_negative", sql`${table.creditBalance} >= 0`)],
+  (table) => [
+    check("users_credit_balance_non_negative", sql`${table.creditBalance} >= 0`),
+    check(
+      "users_daily_render_limit_override_range",
+      sql`${table.dailyRenderLimitOverride} IS NULL OR ${table.dailyRenderLimitOverride} BETWEEN 0 AND 10000`,
+    ),
+    check(
+      "users_daily_segment_limit_override_range",
+      sql`${table.dailySegmentLimitOverride} IS NULL OR ${table.dailySegmentLimitOverride} BETWEEN 0 AND 10000`,
+    ),
+    check(
+      "users_monthly_render_limit_override_range",
+      sql`${table.monthlyRenderLimitOverride} IS NULL OR ${table.monthlyRenderLimitOverride} BETWEEN 0 AND 100000`,
+    ),
+    check(
+      "users_monthly_segment_limit_override_range",
+      sql`${table.monthlySegmentLimitOverride} IS NULL OR ${table.monthlySegmentLimitOverride} BETWEEN 0 AND 100000`,
+    ),
+  ],
 );
 
 export const projects = pgTable("projects", {
@@ -151,6 +179,30 @@ export const appSettings = pgTable(
     dailyRenderLimit: integer("daily_render_limit"),
     /** Max segmentations per non-admin user per UTC day; null = unlimited. */
     dailySegmentLimit: integer("daily_segment_limit"),
+    /** Max renders per non-admin user per UTC calendar month; null = unlimited. */
+    monthlyRenderLimit: integer("monthly_render_limit"),
+    /** Max segmentations per non-admin user per UTC calendar month; null = unlimited. */
+    monthlySegmentLimit: integer("monthly_segment_limit"),
+    /** Ceiling on a non-admin's credit balance — grants clamp to it. Null = uncapped. */
+    maxCreditBalance: integer("max_credit_balance"),
+    /** Max projects a non-admin may own; null = unlimited. */
+    maxProjectsPerUser: integer("max_projects_per_user"),
+    /** Largest accepted upload, in megabytes. */
+    maxUploadMb: integer("max_upload_mb").notNull().default(10),
+    /** Max style/material reference images per render. */
+    maxReferenceImages: integer("max_reference_images").notNull().default(8),
+    /** Max characters in a render prompt. */
+    maxPromptChars: integer("max_prompt_chars").notNull().default(2000),
+    /** Max characters in an automatic-selection prompt. */
+    maxSelectionPromptChars: integer("max_selection_prompt_chars").notNull().default(200),
+    /** Studio warns the user at or below this balance. 0 disables the warning. */
+    lowCreditThreshold: integer("low_credit_threshold").notNull().default(5),
+    /** Operator copy for each refusal; null falls back to the studio's built-in wording. */
+    messageInsufficientCredits: text("message_insufficient_credits"),
+    messageDailyLimit: text("message_daily_limit"),
+    messageMonthlyLimit: text("message_monthly_limit"),
+    messageBudgetExhausted: text("message_budget_exhausted"),
+    messageAccountDisabled: text("message_account_disabled"),
     /** Credits charged per render/edit image. */
     creditsPerImage: integer("credits_per_image").notNull().default(1),
     /** Credits charged per automatic selection. */
@@ -183,6 +235,30 @@ export const appSettings = pgTable(
       "app_settings_daily_segment_limit_range",
       sql`${table.dailySegmentLimit} IS NULL OR ${table.dailySegmentLimit} BETWEEN 1 AND 10000`,
     ),
+    check(
+      "app_settings_monthly_limit_range",
+      sql`${table.monthlyRenderLimit} IS NULL OR ${table.monthlyRenderLimit} BETWEEN 1 AND 100000`,
+    ),
+    check(
+      "app_settings_monthly_segment_limit_range",
+      sql`${table.monthlySegmentLimit} IS NULL OR ${table.monthlySegmentLimit} BETWEEN 1 AND 100000`,
+    ),
+    check(
+      "app_settings_max_credit_balance_range",
+      sql`${table.maxCreditBalance} IS NULL OR ${table.maxCreditBalance} BETWEEN 1 AND 1000000`,
+    ),
+    check(
+      "app_settings_max_projects_range",
+      sql`${table.maxProjectsPerUser} IS NULL OR ${table.maxProjectsPerUser} BETWEEN 1 AND 10000`,
+    ),
+    check("app_settings_max_upload_mb_range", sql`${table.maxUploadMb} BETWEEN 1 AND 100`),
+    check("app_settings_max_reference_images_range", sql`${table.maxReferenceImages} BETWEEN 0 AND 16`),
+    check("app_settings_max_prompt_chars_range", sql`${table.maxPromptChars} BETWEEN 50 AND 8000`),
+    check(
+      "app_settings_max_selection_prompt_chars_range",
+      sql`${table.maxSelectionPromptChars} BETWEEN 10 AND 1000`,
+    ),
+    check("app_settings_low_credit_threshold_range", sql`${table.lowCreditThreshold} BETWEEN 0 AND 1000`),
     check("app_settings_credits_per_image_range", sql`${table.creditsPerImage} BETWEEN 0 AND 100`),
     check("app_settings_credits_per_selection_range", sql`${table.creditsPerSelection} BETWEEN 0 AND 100`),
     check("app_settings_budget_warning_range", sql`${table.budgetWarningPercent} BETWEEN 1 AND 99`),

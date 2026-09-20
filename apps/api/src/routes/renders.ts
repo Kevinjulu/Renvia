@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
@@ -10,6 +10,7 @@ import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
 import { getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 import { effectiveEngineMode, getSettings } from "../lib/settings.js";
+import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
 import { ownUploadKey } from "../lib/storage.js";
 
@@ -21,7 +22,8 @@ const createRenderSchema = z.object({
   projectId: z.string().uuid(),
   sourceImageUrl: z.string().url(),
   // Optional — the engine composes the full model prompt from style and settings.
-  prompt: z.string().trim().max(2000),
+  // The real cap is app_settings.max_prompt_chars; this is only the hard ceiling.
+  prompt: z.string().trim().max(8000),
   resolution: z.string().trim().min(1).max(20),
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
@@ -31,7 +33,8 @@ const createRenderSchema = z.object({
       sourceType: z.enum(["drawing", "photo"]).optional(),
       styleInfluence: z.number().int().min(1).max(4).optional(),
       preserveStructure: z.boolean().optional(),
-      referenceImageUrls: z.array(z.string().url()).max(8).optional(),
+      // Hard ceiling; app_settings.max_reference_images is the one operators tune.
+      referenceImageUrls: z.array(z.string().url()).max(16).optional(),
       edit: z
         .object({
           mode: z.enum(["element", "building", "prompt"]),
@@ -49,8 +52,10 @@ renders.post("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   const user = await getOrCreateUser(c.env, db, clerkId);
+  const appSettings = await getSettings(db);
   if (user.disabled) {
-    return c.json({ error: "Account disabled", code: "account_disabled" }, 403);
+    const refusal = refuseDisabled(appSettings);
+    return c.json(refusal, refusal.status);
   }
   const project = await findOwnedProject(db, body.projectId, user.id);
   if (!project) {
@@ -65,40 +70,26 @@ renders.post("/", async (c) => {
     return c.json({ error: "Selection edits need an uploaded source image" }, 400);
   }
 
-  const appSettings = await getSettings(db);
   const isAdmin = user.role === "admin";
+  const limits = resolveLimits(user, appSettings);
 
-  if (!isAdmin && appSettings.maintenanceRenders) {
-    return c.json(
-      {
-        error: appSettings.maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance",
-        code: "maintenance",
-      },
-      503,
-    );
+  if (body.prompt.length > limits.maxPromptChars) {
+    const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxPromptChars, body.prompt.length);
+    return c.json(refusal, refusal.status);
+  }
+  const referenceCount = settings.referenceImageUrls?.length ?? 0;
+  if (referenceCount > limits.maxReferenceImages) {
+    const refusal = refuseInput(appSettings, "too_many_references", limits.maxReferenceImages, referenceCount);
+    return c.json(refusal, refusal.status);
   }
 
-  if (!isAdmin && appSettings.dailyRenderLimit !== null) {
-    // Failed renders were refunded, so they don't count toward the day's allowance.
-    const [today] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.renders)
-      .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
-      .where(
-        and(
-          eq(schema.projects.ownerId, user.id),
-          ne(schema.renders.status, "failed"),
-          gte(schema.renders.createdAt, sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`),
-        ),
-      );
-    if ((today?.count ?? 0) >= appSettings.dailyRenderLimit) {
-      return c.json({ error: "Daily render limit reached", code: "daily_limit_reached" }, 429);
-    }
-  }
+  const allowance = await checkAllowance(db, user, appSettings, "render");
+  if (allowance) return c.json(allowance, allowance.status);
 
   const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(settings));
   if (await wouldExceedBudget(c.env, db, model.costMicros)) {
-    return c.json({ error: "Render budget exhausted", code: "budget_exhausted" }, 402);
+    const refusal = refuseBudget(appSettings);
+    return c.json(refusal, refusal.status);
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
@@ -120,7 +111,8 @@ renders.post("/", async (c) => {
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
-      return c.json({ error: "Not enough credits", code: "insufficient_credits" }, 402);
+      const refusal = refuseCredits(appSettings, user.creditBalance, credits);
+      return c.json(refusal, refusal.status);
     }
     throw error;
   }
