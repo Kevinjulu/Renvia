@@ -230,7 +230,7 @@ admin.get("/overview", async (c) => {
       .orderBy(desc(sql`sum(${schema.renders.costMicros})`)),
     db
       .select({
-        granted: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.reason} <> 'render_refund'), 0)::int`,
+        granted: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.reason} not in ('render_refund', 'segment_refund')), 0)::int`,
         spent: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.reason} in ('render', 'render_refund', 'segment', 'segment_refund')), 0)::int`,
       })
       .from(schema.creditLedger),
