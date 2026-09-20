@@ -12,6 +12,9 @@ import type {
   AdminLedgerEntry,
   AdminOverviewResponse,
   AdminProject,
+  AdminProjectHealth,
+  AdminProjectOrder,
+  AdminProjectSort,
   AdminRender,
   AdminSegmentation,
   AdminSettings,
@@ -664,10 +667,12 @@ admin.get("/renders", async (c) => {
   const { limit, offset } = paging.parse(c.req.query());
   const status = z.enum(["pending", "processing", "succeeded", "failed"]).optional().parse(c.req.query("status") || undefined);
   const userId = z.string().uuid().optional().parse(c.req.query("userId") || undefined);
+  const projectId = z.string().uuid().optional().parse(c.req.query("projectId") || undefined);
 
   const filters: SQL[] = [];
   if (status) filters.push(eq(schema.renders.status, status));
   if (userId) filters.push(eq(schema.users.id, userId));
+  if (projectId) filters.push(eq(schema.renders.projectId, projectId));
   const where = filters.length ? and(...filters) : undefined;
 
   const [rows, [count]] = await Promise.all([
@@ -749,66 +754,178 @@ admin.put("/settings", async (c) => {
 
 // ── Projects ─────────────────────────────────────────────────────────────────────
 
-admin.get("/projects", async (c) => {
-  const db = c.get("db");
-  const { limit, offset } = paging.parse(c.req.query());
-  const search = c.req.query("search")?.trim();
-  const escaped = search ? `%${search.replace(/[%_\\]/g, "\\$&")}%` : null;
-  const where = escaped ? or(ilike(schema.projects.name, escaped), ilike(schema.users.email, escaped)) : undefined;
+const HIGH_SPEND_MICROS = 1_000_000; // $1
 
-  const renderStats = db
+function projectRenderStats(db: Database) {
+  return db
     .select({
       projectId: schema.renders.projectId,
       renderCount: sql<number>`count(*) filter (where ${schema.renders.status} <> 'failed')::int`.as("render_count"),
-      spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}) filter (where ${schema.renders.status} <> 'failed'), 0)::bigint`.as("spent_micros"),
+      failedCount: sql<number>`count(*) filter (where ${schema.renders.status} = 'failed')::int`.as("failed_count"),
+      inFlightCount: sql<number>`count(*) filter (where ${schema.renders.status} in ('pending', 'processing'))::int`.as(
+        "in_flight_count",
+      ),
+      totalRenders: sql<number>`count(*)::int`.as("total_renders"),
+      spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}) filter (where ${schema.renders.status} <> 'failed'), 0)::bigint`.as(
+        "spent_micros",
+      ),
       lastRenderAt: sql<Date | null>`max(${schema.renders.createdAt})`.as("last_render_at"),
     })
     .from(schema.renders)
     .groupBy(schema.renders.projectId)
     .as("project_render_stats");
+}
 
-  const [rows, [count]] = await Promise.all([
-    db
-      .select({
-        id: schema.projects.id,
-        name: schema.projects.name,
-        thumbnailUrl: schema.projects.thumbnailUrl,
-        ownerId: schema.users.id,
-        ownerEmail: schema.users.email,
-        createdAt: schema.projects.createdAt,
-        updatedAt: schema.projects.updatedAt,
-        renderCount: sql<number>`coalesce(${renderStats.renderCount}, 0)::int`,
-        spentMicros: sql<number>`coalesce(${renderStats.spentMicros}, 0)::bigint`,
-        lastRenderAt: renderStats.lastRenderAt,
-      })
-      .from(schema.projects)
-      .innerJoin(schema.users, eq(schema.projects.ownerId, schema.users.id))
-      .leftJoin(renderStats, eq(renderStats.projectId, schema.projects.id))
-      .where(where)
-      .orderBy(desc(schema.projects.updatedAt))
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(schema.projects)
-      .innerJoin(schema.users, eq(schema.projects.ownerId, schema.users.id))
-      .where(where),
-  ]);
+type ProjectStats = ReturnType<typeof projectRenderStats>;
 
-  const projects: AdminProject[] = rows.map((row) => ({
+function toAdminProject(row: {
+  id: string;
+  name: string;
+  thumbnailUrl: string | null;
+  ownerId: string;
+  ownerEmail: string;
+  createdAt: Date;
+  updatedAt: Date;
+  renderCount: number;
+  failedCount: number;
+  inFlightCount: number;
+  spentMicros: number;
+  lastRenderAt: Date | null;
+}): AdminProject {
+  return {
     id: row.id,
     name: row.name,
     thumbnailUrl: row.thumbnailUrl,
     ownerId: row.ownerId,
     ownerEmail: row.ownerEmail,
     renderCount: row.renderCount,
+    failedCount: row.failedCount,
+    inFlightCount: row.inFlightCount,
     spentUsd: Number(row.spentMicros) / MICROS_PER_USD,
     lastRenderAt: row.lastRenderAt ? new Date(row.lastRenderAt).toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-  }));
+  };
+}
 
-  return c.json({ projects, total: count?.total ?? 0 });
+function projectSelect(db: Database, stats: ProjectStats) {
+  return db
+    .select({
+      id: schema.projects.id,
+      name: schema.projects.name,
+      thumbnailUrl: schema.projects.thumbnailUrl,
+      ownerId: schema.users.id,
+      ownerEmail: schema.users.email,
+      createdAt: schema.projects.createdAt,
+      updatedAt: schema.projects.updatedAt,
+      renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
+      failedCount: sql<number>`coalesce(${stats.failedCount}, 0)::int`,
+      inFlightCount: sql<number>`coalesce(${stats.inFlightCount}, 0)::int`,
+      spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,
+      lastRenderAt: stats.lastRenderAt,
+    })
+    .from(schema.projects)
+    .innerJoin(schema.users, eq(schema.projects.ownerId, schema.users.id))
+    .leftJoin(stats, eq(stats.projectId, schema.projects.id));
+}
+
+admin.get("/projects", async (c) => {
+  const db = c.get("db");
+  const { limit, offset } = paging.parse(c.req.query());
+  const search = c.req.query("search")?.trim();
+  const health = z
+    .enum(["active", "failures", "inflight", "never", "high_spend"])
+    .optional()
+    .parse(c.req.query("health") || undefined) as AdminProjectHealth | undefined;
+  const sort = z
+    .enum(["updatedAt", "createdAt", "lastRenderAt", "renderCount", "spentUsd", "failedCount"])
+    .default("updatedAt")
+    .parse(c.req.query("sort") || "updatedAt") as AdminProjectSort;
+  const order = z.enum(["asc", "desc"]).default("desc").parse(c.req.query("order") || "desc") as AdminProjectOrder;
+
+  const stats = projectRenderStats(db);
+  const filters: SQL[] = [];
+  if (search) {
+    const escaped = `%${search.replace(/[%_\\]/g, "\\$&")}%`;
+    filters.push(or(ilike(schema.projects.name, escaped), ilike(schema.users.email, escaped))!);
+  }
+  if (health === "active") {
+    filters.push(
+      or(
+        gte(schema.projects.updatedAt, sql`now() - interval '7 days'`),
+        gte(stats.lastRenderAt, sql`now() - interval '7 days'`),
+      )!,
+    );
+  }
+  if (health === "failures") filters.push(sql`coalesce(${stats.failedCount}, 0) > 0`);
+  if (health === "inflight") filters.push(sql`coalesce(${stats.inFlightCount}, 0) > 0`);
+  if (health === "never") filters.push(sql`coalesce(${stats.totalRenders}, 0) = 0`);
+  if (health === "high_spend") filters.push(sql`coalesce(${stats.spentMicros}, 0) >= ${HIGH_SPEND_MICROS}`);
+  const where = filters.length ? and(...filters) : undefined;
+
+  const direction = order === "asc" ? asc : desc;
+  const orderBy =
+    sort === "createdAt"
+      ? direction(schema.projects.createdAt)
+      : sort === "lastRenderAt"
+        ? direction(stats.lastRenderAt)
+        : sort === "renderCount"
+          ? direction(sql`coalesce(${stats.renderCount}, 0)`)
+          : sort === "spentUsd"
+            ? direction(sql`coalesce(${stats.spentMicros}, 0)`)
+            : sort === "failedCount"
+              ? direction(sql`coalesce(${stats.failedCount}, 0)`)
+              : direction(schema.projects.updatedAt);
+
+  const [rows, [count], [summary]] = await Promise.all([
+    projectSelect(db, stats).where(where).orderBy(orderBy).limit(limit).offset(offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(schema.projects)
+      .innerJoin(schema.users, eq(schema.projects.ownerId, schema.users.id))
+      .leftJoin(stats, eq(stats.projectId, schema.projects.id))
+      .where(where),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        activeLast7Days: sql<number>`count(*) filter (where ${schema.projects.updatedAt} >= now() - interval '7 days' or ${stats.lastRenderAt} >= now() - interval '7 days')::int`,
+        withFailures: sql<number>`count(*) filter (where coalesce(${stats.failedCount}, 0) > 0)::int`,
+        neverRendered: sql<number>`count(*) filter (where coalesce(${stats.totalRenders}, 0) = 0)::int`,
+        spentMicros: sql<number>`coalesce(sum(${stats.spentMicros}), 0)::bigint`,
+      })
+      .from(schema.projects)
+      .leftJoin(stats, eq(stats.projectId, schema.projects.id)),
+  ]);
+
+  return c.json({
+    projects: rows.map(toAdminProject),
+    total: count?.total ?? 0,
+    summary: {
+      total: summary?.total ?? 0,
+      activeLast7Days: summary?.activeLast7Days ?? 0,
+      withFailures: summary?.withFailures ?? 0,
+      neverRendered: summary?.neverRendered ?? 0,
+      spentUsd: Number(summary?.spentMicros ?? 0) / MICROS_PER_USD,
+    },
+  });
+});
+
+admin.get("/projects/:id", async (c) => {
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const stats = projectRenderStats(db);
+  const [row] = await projectSelect(db, stats).where(eq(schema.projects.id, id));
+  if (!row) return c.json({ error: "Project not found" }, 404);
+
+  const renders = await selectAdminRenders(db)
+    .where(eq(schema.renders.projectId, id))
+    .orderBy(desc(schema.renders.createdAt))
+    .limit(25);
+
+  return c.json({
+    project: toAdminProject(row),
+    renders: renders.map(toAdminRender),
+  });
 });
 
 // ── Credits ledger ───────────────────────────────────────────────────────────────

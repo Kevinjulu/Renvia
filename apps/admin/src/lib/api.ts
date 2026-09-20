@@ -7,6 +7,10 @@ import type {
   AdminCreditsResponse,
   AdminGrantCreditsRequest,
   AdminOverviewResponse,
+  AdminProjectDetailResponse,
+  AdminProjectHealth,
+  AdminProjectOrder,
+  AdminProjectSort,
   AdminProjectsResponse,
   AdminRendersResponse,
   AdminSegmentationsResponse,
@@ -90,10 +94,17 @@ export function useAdminApi() {
         request<AdminBulkGrantCreditsResponse>(getToken, "/admin/users/bulk-credits", { method: "POST", body: JSON.stringify(body) }),
       updateUser: (id: string, body: AdminUpdateUserRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-      listRenders: (params: { status?: RenderStatus; userId?: string; limit?: number; offset?: number }) =>
+      listRenders: (params: { status?: RenderStatus; userId?: string; projectId?: string; limit?: number; offset?: number }) =>
         request<AdminRendersResponse>(getToken, `/admin/renders${query(params)}`),
-      listProjects: (params: { search?: string; limit?: number; offset?: number }) =>
-        request<AdminProjectsResponse>(getToken, `/admin/projects${query(params)}`),
+      listProjects: (params: {
+        search?: string;
+        health?: AdminProjectHealth;
+        sort?: AdminProjectSort;
+        order?: AdminProjectOrder;
+        limit?: number;
+        offset?: number;
+      }) => request<AdminProjectsResponse>(getToken, `/admin/projects${query(params)}`),
+      getProject: (id: string) => request<AdminProjectDetailResponse>(getToken, `/admin/projects/${id}`),
       listCredits: (params: { reason?: CreditLedgerReason; userId?: string; limit?: number; offset?: number }) =>
         request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       listSegmentations: (params: { status?: SegmentationStatus; userId?: string; limit?: number; offset?: number }) =>

@@ -409,16 +409,36 @@ export interface AdminProject {
   thumbnailUrl: string | null;
   ownerId: string;
   ownerEmail: string;
+  /** Non-failed renders (succeeded + in flight). */
   renderCount: number;
+  failedCount: number;
+  /** pending + processing. */
+  inFlightCount: number;
   spentUsd: number;
   lastRenderAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+export type AdminProjectHealth = "active" | "failures" | "inflight" | "never" | "high_spend";
+export type AdminProjectSort = "updatedAt" | "createdAt" | "lastRenderAt" | "renderCount" | "spentUsd" | "failedCount";
+export type AdminProjectOrder = "asc" | "desc";
+
 export interface AdminProjectsResponse {
   projects: AdminProject[];
   total: number;
+  summary: {
+    total: number;
+    activeLast7Days: number;
+    withFailures: number;
+    neverRendered: number;
+    spentUsd: number;
+  };
+}
+
+export interface AdminProjectDetailResponse {
+  project: AdminProject;
+  renders: AdminRender[];
 }
 
 export interface AdminCreditEntry {
