@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, Clock, Coins, DollarSign, History, ImageIcon, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, Clock, Coins, DollarSign, History, ImageIcon, Shield, SlidersHorizontal } from "lucide-react";
 import { RenderTable } from "../components/RenderTable";
+import { RoleChangeModal } from "../components/RoleChangeModal";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
 import { ApiError, useAdminApi } from "../lib/api";
 import { formatCreditReason } from "../lib/labels";
@@ -16,6 +17,7 @@ export function UserDetailPage() {
   const { data, error, reload } = useLoad(() => api.getUser(id), [api, id]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [roleAction, setRoleAction] = useState<"promote" | "demote" | null>(null);
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
   if (!data) return <Skeleton className="h-64" />;
@@ -42,16 +44,6 @@ export function UserDetailPage() {
     void runAction(() => api.updateUser(user.id, { disabled: !user.disabled }));
   };
 
-  const toggleRole = () => {
-    const nextRole = user.role === "admin" ? "user" : "admin";
-    const message =
-      nextRole === "admin"
-        ? `Make ${user.email} an admin? They'll get this dashboard, free renders and control over every account.`
-        : `Remove admin access from ${user.email}? They'll be charged credits again.`;
-    if (!window.confirm(message)) return;
-    void runAction(() => api.updateUser(user.id, { role: nextRole }));
-  };
-
   return (
     <>
       <Link to="/users" className="mb-3 inline-flex items-center gap-1 text-sm text-muted transition hover:text-primary">
@@ -64,8 +56,20 @@ export function UserDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             {user.role === "admin" && <Pill tone="blue">Admin</Pill>}
             {user.disabled && <Pill tone="red">Disabled</Pill>}
-            <Button onClick={toggleRole} disabled={busy || isSelf} title={isSelf ? "You can't change your own role" : undefined}>
-              {user.role === "admin" ? "Remove admin" : "Make admin"}
+            <Button
+              icon={Shield}
+              onClick={() => setRoleAction(user.role === "admin" ? "demote" : "promote")}
+              disabled={busy || isSelf || (user.disabled && user.role !== "admin")}
+              title={
+                isSelf
+                  ? "You can't change your own role"
+                  : user.disabled && user.role !== "admin"
+                    ? "Enable the account before promoting"
+                    : undefined
+              }
+              variant={user.role === "admin" ? "danger" : "secondary"}
+            >
+              {user.role === "admin" ? "Remove admin…" : "Make admin…"}
             </Button>
             <Button
               variant={user.disabled ? "secondary" : "danger"}
@@ -129,6 +133,18 @@ export function UserDetailPage() {
       <Card title="Recent renders" icon={ImageIcon} className="mt-6">
         {renders.length === 0 ? <EmptyState icon={ImageIcon}>No renders yet.</EmptyState> : <RenderTable renders={renders} showUser={false} />}
       </Card>
+
+      {roleAction && (
+        <RoleChangeModal
+          user={user}
+          action={roleAction}
+          onClose={() => setRoleAction(null)}
+          onDone={() => {
+            setRoleAction(null);
+            reload();
+          }}
+        />
+      )}
     </>
   );
 }

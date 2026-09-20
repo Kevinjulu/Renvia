@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
+import { RoleChangeModal } from "../components/RoleChangeModal";
 import { ApiError, useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { useAdmin } from "../lib/useAdmin";
@@ -51,6 +52,7 @@ export function UsersPage() {
   const [draft, setDraft] = useState(search);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [grantTarget, setGrantTarget] = useState<AdminUser[] | null>(null);
+  const [roleTarget, setRoleTarget] = useState<{ user: AdminUser; action: "promote" | "demote" } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -303,6 +305,12 @@ export function UsersPage() {
                             busy={busyId === user.id}
                             onGrant={() => setGrantTarget([user])}
                             onToggleDisabled={() => void runToggleDisabled(user)}
+                            onChangeRole={() =>
+                              setRoleTarget({
+                                user,
+                                action: user.role === "admin" ? "demote" : "promote",
+                              })
+                            }
                           />
                         </td>
                       </tr>
@@ -347,6 +355,18 @@ export function UsersPage() {
           }}
         />
       )}
+
+      {roleTarget && (
+        <RoleChangeModal
+          user={roleTarget.user}
+          action={roleTarget.action}
+          onClose={() => setRoleTarget(null)}
+          onDone={() => {
+            setRoleTarget(null);
+            reload();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -381,14 +401,17 @@ function RowActions({
   busy,
   onGrant,
   onToggleDisabled,
+  onChangeRole,
 }: {
   user: AdminUser;
   isSelf: boolean;
   busy: boolean;
   onGrant: () => void;
   onToggleDisabled: () => void;
+  onChangeRole: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const isAdmin = user.role === "admin";
 
   return (
     <div className="relative flex justify-end">
@@ -404,7 +427,7 @@ function RowActions({
       {open && (
         <>
           <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-hairline bg-canvas py-1 shadow-lift">
+          <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border border-hairline bg-canvas py-1 shadow-lift">
             <Link
               to={`/users/${user.id}`}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface"
@@ -421,6 +444,27 @@ function RowActions({
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface"
             >
               <Coins size={14} /> Grant credits
+            </button>
+            <button
+              type="button"
+              disabled={isSelf || busy || (user.disabled && !isAdmin)}
+              title={
+                isSelf
+                  ? "You can't change your own role"
+                  : user.disabled && !isAdmin
+                    ? "Enable the account before promoting"
+                    : undefined
+              }
+              onClick={() => {
+                setOpen(false);
+                onChangeRole();
+              }}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40 ${
+                isAdmin ? "text-rose-700" : "text-primary"
+              }`}
+            >
+              <Shield size={14} />
+              {isAdmin ? "Remove admin…" : "Make admin…"}
             </button>
             <button
               type="button"

@@ -675,8 +675,21 @@ admin.post("/users/:id/credits", async (c) => {
 });
 
 const updateUserSchema = z
-  .object({ disabled: z.boolean().optional(), role: z.enum(["user", "admin"]).optional() })
-  .refine((body) => body.disabled !== undefined || body.role !== undefined, "Nothing to update");
+  .object({
+    disabled: z.boolean().optional(),
+    role: z.enum(["user", "admin"]).optional(),
+    confirmEmail: z.string().trim().email().optional(),
+  })
+  .refine((body) => body.disabled !== undefined || body.role !== undefined, "Nothing to update")
+  .superRefine((body, ctx) => {
+    if (body.role !== undefined && !body.confirmEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "confirmEmail is required when changing role",
+        path: ["confirmEmail"],
+      });
+    }
+  });
 
 admin.patch("/users/:id", async (c) => {
   const db = c.get("db");
@@ -692,9 +705,41 @@ admin.patch("/users/:id", async (c) => {
   const before = await findAdminUser(db, id);
   if (!before) return c.json({ error: "Not found" }, 404);
 
+  if (body.role !== undefined && body.role !== before.role) {
+    const typed = body.confirmEmail?.trim().toLowerCase() ?? "";
+    if (typed !== before.email.trim().toLowerCase()) {
+      return c.json(
+        { error: "Type the user's email exactly to confirm the role change", code: "confirm_email_mismatch" },
+        400,
+      );
+    }
+    if (body.role === "admin" && before.disabled) {
+      return c.json(
+        { error: "Enable the account before promoting them to admin", code: "disabled_user" },
+        400,
+      );
+    }
+    if (body.role === "user" && before.role === "admin") {
+      const [adminCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.users)
+        .where(and(eq(schema.users.role, "admin"), eq(schema.users.disabled, false)));
+      if ((adminCount?.count ?? 0) <= 1) {
+        return c.json(
+          { error: "Can't demote the last active admin — promote someone else first", code: "last_admin" },
+          400,
+        );
+      }
+    }
+  }
+
   const [updated] = await db
     .update(schema.users)
-    .set({ ...body, updatedAt: new Date() })
+    .set({
+      ...(body.disabled !== undefined ? { disabled: body.disabled } : {}),
+      ...(body.role !== undefined ? { role: body.role } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(schema.users.id, id))
     .returning({ id: schema.users.id });
   if (!updated) return c.json({ error: "Not found" }, 404);
@@ -705,7 +750,7 @@ admin.patch("/users/:id", async (c) => {
     parts.push(body.disabled ? "disabled account" : "enabled account");
   }
   if (body.role !== undefined && body.role !== before.role) {
-    parts.push(`role → ${body.role}`);
+    parts.push(body.role === "admin" ? "promoted to admin" : "demoted to user");
   }
   await recordAdminEvent(db, {
     actorId: adminUser.id,
@@ -713,7 +758,11 @@ admin.patch("/users/:id", async (c) => {
     targetType: "user",
     targetId: id,
     summary: `${before.email}: ${parts.join(", ") || "updated"}`,
-    detail: { before: { role: before.role, disabled: before.disabled }, after: body },
+    detail: {
+      before: { role: before.role, disabled: before.disabled },
+      after: { role: body.role, disabled: body.disabled },
+      confirmEmail: body.confirmEmail ?? null,
+    },
   });
 
   return c.json({ user });

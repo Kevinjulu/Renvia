@@ -375,6 +375,11 @@ export interface AdminGrantCreditsRequest {
 export interface AdminUpdateUserRequest {
   disabled?: boolean;
   role?: UserRole;
+  /**
+   * Required when changing role. Must match the target user's email exactly
+   * (case-insensitive) so promotions can't happen from a mis-click alone.
+   */
+  confirmEmail?: string;
 }
 
 export interface AdminOverviewResponse {
