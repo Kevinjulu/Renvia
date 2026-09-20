@@ -12,6 +12,7 @@ import { ControlPanel } from "./ControlPanel";
 import { CanvasTopBar } from "./CanvasTopBar";
 import { RenderResultsPanel } from "./panel/RenderResultsPanel";
 import { AddViewMenu } from "./panel/AddViewMenu";
+import { GuideProvider } from "../guide/GuideProvider";
 import { useElevationUpload } from "../canvas/hooks/useElevationUpload";
 import { nodeForView, tabLabel, type BuildingView } from "../canvas/buildingViews";
 
@@ -73,14 +74,15 @@ export function StudioShell({ projectId }: { projectId: string }) {
   };
 
   return (
-    <div className="studio-shell-v2">
+    <GuideProvider>
+      <div className="studio-shell-v2">
       <IconRail />
       <main className="studio-main">
         <CanvasTopBar projectName={projectName} />
         <div className="studio-workbench">
           <ControlPanel projectId={projectId} projectName={projectName} />
           <section className="studio-canvas-column">
-            <div className="elevation-tabs">
+            <div className="elevation-tabs" data-guide="canvas.tabs">
               {views.map((view) => (
                 <button
                   key={view.id}
@@ -96,11 +98,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
               ))}
               <AddViewMenu />
             </div>
-            <div className="studio-stage-wrap" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front View"}`}>
+            <div className="studio-stage-wrap" data-guide="canvas.stage" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front View"}`}>
               <CanvasStage />
               <RenderPreview />
             </div>
-            <div className="elevation-filmstrip" style={{ gridTemplateColumns: `repeat(${views.length + 1}, minmax(88px, 1fr))` }}>
+            <div className="elevation-filmstrip" data-guide="canvas.filmstrip" style={{ gridTemplateColumns: `repeat(${views.length + 1}, minmax(88px, 1fr))` }}>
               {views.map((view, index) => {
                 const node = nodeForView(nodes, view.id);
                 return (
@@ -141,6 +143,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <RenderResultsPanel />
         </div>
       </main>
-    </div>
+      </div>
+    </GuideProvider>
   );
 }

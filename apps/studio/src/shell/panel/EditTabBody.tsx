@@ -6,6 +6,7 @@ import {
   type EditMode,
   type SelectionMode,
 } from "../../canvas/hooks/useGenerationSettingsStore";
+import { GuideLabel } from "../../guide/HelpHotspot";
 
 const EDIT_MODES: { id: EditMode; icon: string; title: string; subtitle: string }[] = [
   { id: "element", icon: "◫", title: "Element / texture", subtitle: "Borrow a finish or material" },
@@ -44,7 +45,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
 
   return (
     <div className="edit-panel-body flex flex-1 flex-col">
-      <div className="edit-mode-cards">
+      <div className="edit-mode-cards" data-guide="edit.modes">
         {EDIT_MODES.map((mode) => (
           <button
             key={mode.id}
@@ -62,8 +63,8 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
         ))}
       </div>
 
-      <div className="selection-mode">
-        <span>Selection mode</span>
+      <div className="selection-mode" data-guide="edit.selection">
+        <GuideLabel topicId="edit.selection">Selection mode</GuideLabel>
         {SELECTION_MODES.map((mode) => (
           <button
             key={mode.id}

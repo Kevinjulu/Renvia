@@ -74,7 +74,7 @@ export function EditToolbar() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-hairline bg-white px-1.5 py-1 shadow-lg">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-hairline bg-white px-1.5 py-1 shadow-lg" data-guide="canvas.editToolbar">
         <ToolButton
           icon={<RectangleIcon />}
           label="Rectangle select"

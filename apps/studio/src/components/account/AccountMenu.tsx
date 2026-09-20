@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useClerk, useUser } from "@clerk/react";
 import { AUTH_ROUTES } from "../../lib/authRoutes";
 import { creditsLeftPercent, planLabel, useAccountStore } from "../../lib/useAccountStore";
+import { getRecentlyViewed } from "../../lib/localCollections";
+import { useGuideStore } from "../../guide/useGuideStore";
 import { Avatar } from "./Avatar";
 import { AccountDialog, type AccountTab } from "./AccountDialog";
 
@@ -94,6 +96,17 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
   const go = (path: string) => {
     close(false);
     navigate(path);
+  };
+
+  const openStudioTour = () => {
+    close(false);
+    if (window.location.pathname.startsWith("/project/")) {
+      useGuideStore.getState().startTour("orientation");
+      return;
+    }
+    const recent = getRecentlyViewed()[0];
+    if (recent) navigate(`/project/${recent.id}?tour=1`);
+    else navigate("/help/getting-started");
   };
 
   const openDialog = (tab: AccountTab) => {
@@ -194,6 +207,9 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
             </button>
             <button type="button" role="menuitem" onClick={() => go("/activity")}>
               <MenuIcon name="activity" /> Activity
+            </button>
+            <button type="button" role="menuitem" onClick={openStudioTour}>
+              <MenuIcon name="help" /> Studio tour
             </button>
             <button type="button" role="menuitem" onClick={() => go("/help/getting-started")}>
               <MenuIcon name="help" /> Help center

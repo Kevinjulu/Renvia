@@ -1,7 +1,8 @@
 import type { RenderSourceType } from "@renvia/types";
+import { ReferenceBar } from "./ReferenceBar";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
-import { ReferenceBar } from "./ReferenceBar";
+import { GuideLabel } from "../../guide/HelpHotspot";
 
 interface RenderTabBodyProps {
   prompt: string;
@@ -35,6 +36,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
 
   return (
     <div className="render-panel-body flex flex-1 flex-col">
+      <div data-guide="control.direction">
       <div className="prompt-heading">
         <p>
           Prompt <span>(optional)</span>
@@ -62,10 +64,13 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
         </p>
         <ReferenceBar />
       </section>
+      </div>
 
       <div className="render-controls">
-        <div className="studio-source-control">
-          <strong>Source</strong>
+        <div className="studio-source-control" data-guide="control.source">
+          <strong>
+            <GuideLabel topicId="control.source">Source</GuideLabel>
+          </strong>
           <div role="group" aria-label="Source image type">
             {SOURCE_TYPES.map((option) => (
               <button
@@ -81,8 +86,10 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             ))}
           </div>
         </div>
-        <label className="studio-influence-control">
-          <strong>Style influence</strong>
+        <label className="studio-influence-control" data-guide="control.influence">
+          <strong>
+            <GuideLabel topicId="control.influence">Style influence</GuideLabel>
+          </strong>
           <div>
             <input
               type="range"
@@ -94,8 +101,10 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             <b>{styleInfluence}</b>
           </div>
         </label>
-        <label className="studio-preserve-control">
-          <strong>Preserve structure</strong>
+        <label className="studio-preserve-control" data-guide="control.preserve">
+          <strong>
+            <GuideLabel topicId="control.preserve">Preserve structure</GuideLabel>
+          </strong>
           <input
             type="checkbox"
             checked={preserveStructure}

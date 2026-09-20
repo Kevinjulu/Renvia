@@ -9,7 +9,7 @@ interface RenderEditTabsProps {
 
 export function RenderEditTabs({ active, onChange }: RenderEditTabsProps) {
   return (
-    <div className="flex border-b border-hairline">
+    <div className="flex border-b border-hairline" data-guide="control.tabs">
       <button
         type="button"
         onClick={() => onChange("render")}

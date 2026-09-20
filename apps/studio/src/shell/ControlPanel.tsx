@@ -39,7 +39,7 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
         <>
           <ProjectDropdown projectName={projectName} />
           <RenderFromUploadZone />
-          <div className="studio-settings-row">
+          <div className="studio-settings-row" data-guide="control.style">
             <StylePicker value={style} onChange={setStyle} />
             <ResolutionPicker value={resolution} onChange={setResolution} />
           </div>
@@ -59,7 +59,7 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
         </div>
       </div>
 
-      <div className="studio-generate-bar">
+      <div className="studio-generate-bar" data-guide="control.generate">
         <GenerateBar projectId={projectId} />
       </div>
     </div>

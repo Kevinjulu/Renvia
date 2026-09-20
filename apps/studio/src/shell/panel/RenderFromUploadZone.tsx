@@ -34,7 +34,7 @@ export function RenderFromUploadZone() {
   };
 
   return (
-    <div className="building-views-panel">
+    <div className="building-views-panel" data-guide="control.uploads">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-primary">Building views</p>

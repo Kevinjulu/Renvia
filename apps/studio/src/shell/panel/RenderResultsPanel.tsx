@@ -7,6 +7,7 @@ import { useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
 import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
 import { useApiClient } from "../../lib/apiClient";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
+import { useGuideStore } from "../../guide/useGuideStore";
 
 const PROGRESS_CEILING = 92;
 
@@ -45,6 +46,7 @@ export function RenderResultsPanel() {
   const favoriteIds = useRenderJobsStore((state) => state.favoriteIds);
   const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
+  const guideOpen = useGuideStore((state) => state.mode !== "idle");
 
   const [dismissed, setDismissed] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
@@ -72,8 +74,9 @@ export function RenderResultsPanel() {
 
   const filled = filledBuildingViews(views, nodes);
   const previewUrl = nodeForView(nodes, filled[0]?.id ?? "")?.imageUrl ?? nodes[0]?.imageUrl ?? null;
+  const isEmpty = filled.length === 0 && jobs.length === 0;
 
-  if ((filled.length === 0 && jobs.length === 0) || dismissed) return null;
+  if ((isEmpty && !guideOpen) || (dismissed && !guideOpen)) return null;
 
   const handleCopyPrompt = () => {
     if (!activeJob) return;
@@ -107,7 +110,7 @@ export function RenderResultsPanel() {
   };
 
   return (
-    <div className="flex h-full shrink-0">
+    <div className="flex h-full shrink-0" data-guide="results.panel">
       {jobs.length > 1 && (
         <div className="flex w-16 shrink-0 flex-col gap-2 overflow-y-auto border-l border-hairline bg-surface p-2">
           {jobs.map((job) => (
@@ -148,7 +151,9 @@ export function RenderResultsPanel() {
       <div className="flex h-full w-[300px] flex-col gap-4 overflow-y-auto border-l border-hairline bg-white p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-primary">
-            {activeJob
+            {isEmpty
+              ? "Past renders"
+              : activeJob
               ? [activeJob.settings?.edit ? "Edit" : "Render", activeJob.viewLabel].filter(Boolean).join(" · ")
               : "Uploaded views"}
           </p>
@@ -196,7 +201,12 @@ export function RenderResultsPanel() {
           </div>
         </div>
 
-        {!activeJob ? (
+        {isEmpty ? (
+          <div className="guide-results-empty">
+            <p>Finished visualizations land here after Generate.</p>
+            <p>Download them, reuse a prompt, set one as the new base, or start a regional edit from a result.</p>
+          </div>
+        ) : !activeJob ? (
           <>
             {previewUrl && (
               <div className="overflow-hidden rounded-lg border border-hairline">

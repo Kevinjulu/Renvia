@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { getRecentlyViewed } from "../lib/localCollections";
 
 const ICONS: Record<string, ReactNode> = {
   play: <path d="M8 5.5v13l10.5-6.5Z" />,
@@ -20,8 +21,13 @@ interface LearningItem {
   detail: string;
 }
 
+function tourHref(): string {
+  const recent = getRecentlyViewed()[0];
+  return recent ? `/project/${recent.id}?tour=1` : "/help/getting-started";
+}
+
 const learning: LearningItem[] = [
-  { slug: "getting-started", image: "/dashboard/house-detail.jpg", focus: "50% 38%", icon: "play", kind: "Video", length: "5 min", title: "Getting started with Renvia", detail: "A quick tour from first upload to finished render." },
+  { slug: "getting-started", image: "/dashboard/house-detail.jpg", focus: "50% 38%", icon: "play", kind: "Tour", length: "1 min", title: "Getting started with Renvia", detail: "A walkthrough of the studio, from elevation slots to Generate." },
   { slug: "getting-started", image: "/dashboard/lakeside-house-sketch.png", focus: "50% 55%", icon: "upload", kind: "Guide", length: "4 min read", title: "Uploading your model or sketch", detail: "Prepare elevations, sketches and exports for clean results." },
   { slug: "consistent-results", image: "/dashboard/interior.jpg", focus: "50% 50%", icon: "spark", kind: "Tips", length: "6 min read", title: "Prompting for better results", detail: "Describe materials, light and mood with examples that work." },
   { slug: "regional-editing", image: "/dashboard/lakeside-house.jpg", focus: "50% 60%", icon: "brush", kind: "Advanced", length: "7 min read", title: "Advanced editing techniques", detail: "Refine regions of a render without losing the structure." },
@@ -36,7 +42,11 @@ export function HelpArticles() {
       </div>
       <div className="dashboard-learning-grid">
         {learning.map((item, index) => (
-          <Link key={`${item.slug}-${index}`} to={`/help/${item.slug}`} className="learning-card">
+          <Link
+            key={`${item.slug}-${index}`}
+            to={index === 0 ? tourHref() : `/help/${item.slug}`}
+            className="learning-card"
+          >
             <div className="learning-card-media">
               <img src={item.image} alt="" loading="lazy" style={{ objectPosition: item.focus }} />
               <span className={`learning-card-kind ${item.icon === "play" ? "is-video" : ""}`}>
@@ -55,7 +65,7 @@ export function HelpArticles() {
               <div className="learning-card-meta">
                 <span>{item.length}</span>
                 <span className="learning-card-cta">
-                  {item.icon === "play" ? "Watch" : "Read"}
+                  {item.icon === "play" ? "Start" : "Read"}
                   <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7M6.5 2.5 10 6l-3.5 3.5" /></svg>
                 </span>
               </div>

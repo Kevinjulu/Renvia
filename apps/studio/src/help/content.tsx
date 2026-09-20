@@ -60,25 +60,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "getting-started",
     eyebrow: "Guide — Interface",
-    title: "Uploading your four elevations",
-    summary: "Where the elevation slots, material area, and render tools sit.",
+    title: "The Studio workspace",
+    summary: "Where elevations, direction, Generate, and past renders sit — and how to inspect the layout.",
     image: "/auth/sign-in.jpg",
     accent: "blueprint",
     readTime: "2 min read",
     sections: [
       "The four elevation slots",
-      "Material space and the cluster",
-      "Editing tools",
-      "Regional selection",
+      "Prompt, references, and style",
+      "Generate",
+      "The canvas and filmstrip",
       "Past renders",
-      "Rendering and exporting",
+      "Edit",
+      "The in-studio guide",
     ],
     Body: function GettingStartedBody() {
       return (
         <>
           <P>
-            The Studio interface is built around building-view slots and three supporting panels. This is
-            where everything sits and what each one does.
+            The Studio is built around building-view slots and three supporting panels: controls on the left,
+            the canvas in the centre, and past renders on the right.
           </P>
 
           <H2>The four elevation slots</H2>
@@ -88,42 +89,48 @@ export const HELP_ARTICLES: HelpArticle[] = [
             isometric if you need them.
           </P>
 
-          <H2>Material space and the cluster</H2>
+          <H2>Prompt, references, and style</H2>
           <P>
-            The material area has two parts. Material space is where you browse and pick textures. Cluster space
-            sits at the bottom of the panel and holds the materials you've chosen.
+            Direction is optional. A short prompt sets atmosphere and materials. Reference images are stronger:
+            the model blends them with your elevation so cladding, landscape, and lighting follow what you show.
+            Style and resolution sit above the prompt. Source type tells the model whether it is looking at a
+            photo / 3D view or a line drawing.
           </P>
-          <Callout label="Before it settles in" accent="blueprint">
-            Every material gets a name before it drops into the cluster, so "white paint" and "brown paint" don't
-            end up looking the same in the list later.
+          <Callout label="Preserve structure" accent="blueprint">
+            Leave this on for client elevations. The model may change finish and colour, but it should not
+            invent new openings or reshape the massing.
           </Callout>
 
-          <H2>Editing tools</H2>
-          <P>Three ways to bring a reference into a render:</P>
-          <List
-            items={[
-              "A text prompt describing the change directly.",
-              "A building image reference, pulled from Pinterest, Google, or a file on your computer.",
-              "A texture cluster reference, sourced the same way.",
-            ]}
-          />
-
-          <H2>Regional selection</H2>
+          <H2>Generate</H2>
           <P>
-            The manual regional rendering tool lets you mark the exact area you want changed before you render, so
-            the rest of the elevation is left alone.
+            Generate renders every uploaded view. The number beside the button is variations per view. Credits
+            are shown underneath. If you only uploaded a front elevation, you get that one render.
+          </P>
+
+          <H2>The canvas and filmstrip</H2>
+          <P>
+            The stage shows the active view. Drop a file onto an empty canvas, or use the filmstrip under the
+            stage to switch sides and fill missing elevations. Scroll to zoom; Fit in the top bar resets the view.
           </P>
 
           <H2>Past renders</H2>
           <P>
-            The panel on the right keeps a running list of rendered images and imported sketches, so earlier
-            attempts stay within reach while you keep working.
+            The panel on the right keeps every generate and edit. Open one full-size, download it, reuse its
+            prompt and settings, set it as the new base elevation, or start a regional edit from it.
           </P>
 
-          <H2>Rendering and exporting</H2>
+          <H2>Edit</H2>
           <P>
-            Click Generate to render each uploaded view. If you only uploaded a front elevation, you get that
-            one render. Finished renders can be downloaded and exported one at a time.
+            Switch to Edit after you have a render. Element / texture borrows a finish, Whole building follows a
+            reference house, and Prompt edit describes the change in a sentence. Auto select finds the region;
+            Manual lets you draw it on the canvas.
+          </P>
+
+          <H2>The in-studio guide</H2>
+          <P>
+            The first time you open a project, a short tour names each region. Press Guide in the top bar to
+            inspect the layout anytime, or the small question marks on Source, Style influence, Preserve
+            structure, and Selection mode.
           </P>
         </>
       );
