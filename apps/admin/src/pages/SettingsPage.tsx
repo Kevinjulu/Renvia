@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Coins, Cpu, ScrollText, Settings } from "lucide-react";
+import { AlertTriangle, Coins, Cpu, PauseCircle, ScrollText, Settings, Timer } from "lucide-react";
 import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode } from "@renvia/types";
 import { Button, EmptyState, ErrorNote, PageHeader, Pill, Skeleton } from "../components/ui";
 import { useAdminApi } from "../lib/api";
@@ -23,6 +23,15 @@ const MODE_LABEL: Record<RenderEngineMode, string> = {
 interface Draft {
   signupBonusCredits: string;
   dailyRenderLimit: string;
+  dailySegmentLimit: string;
+  creditsPerImage: string;
+  creditsPerSelection: string;
+  maintenanceRenders: boolean;
+  maintenanceSegments: boolean;
+  maintenanceMessage: string;
+  budgetWarningPercent: string;
+  budgetCriticalPercent: string;
+  stuckTimeoutMinutes: string;
   falMode: RenderEngineMode | "";
   falBudgetUsd: string;
 }
@@ -33,6 +42,15 @@ function toDraft(settings: AdminSettings): Draft {
   return {
     signupBonusCredits: String(settings.signupBonusCredits),
     dailyRenderLimit: settings.dailyRenderLimit === null ? "" : String(settings.dailyRenderLimit),
+    dailySegmentLimit: settings.dailySegmentLimit === null ? "" : String(settings.dailySegmentLimit),
+    creditsPerImage: String(settings.creditsPerImage),
+    creditsPerSelection: String(settings.creditsPerSelection),
+    maintenanceRenders: settings.maintenanceRenders,
+    maintenanceSegments: settings.maintenanceSegments,
+    maintenanceMessage: settings.maintenanceMessage ?? "",
+    budgetWarningPercent: String(settings.budgetWarningPercent),
+    budgetCriticalPercent: String(settings.budgetCriticalPercent),
+    stuckTimeoutMinutes: String(settings.stuckTimeoutMinutes),
     falMode: settings.falMode ?? "",
     falBudgetUsd: settings.falBudgetUsd === null ? "" : String(settings.falBudgetUsd),
   };
@@ -44,19 +62,59 @@ function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest; errors
   if (!Number.isInteger(bonus) || bonus < 0 || bonus > 1000) {
     errors.signupBonusCredits = "Whole number from 0 to 1,000.";
   }
-  const limit = draft.dailyRenderLimit.trim() === "" ? null : Number(draft.dailyRenderLimit);
-  if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 10_000)) {
+  const renderLimit = draft.dailyRenderLimit.trim() === "" ? null : Number(draft.dailyRenderLimit);
+  if (renderLimit !== null && (!Number.isInteger(renderLimit) || renderLimit < 1 || renderLimit > 10_000)) {
     errors.dailyRenderLimit = "Blank (unlimited) or 1–10,000.";
+  }
+  const segmentLimit = draft.dailySegmentLimit.trim() === "" ? null : Number(draft.dailySegmentLimit);
+  if (segmentLimit !== null && (!Number.isInteger(segmentLimit) || segmentLimit < 1 || segmentLimit > 10_000)) {
+    errors.dailySegmentLimit = "Blank (unlimited) or 1–10,000.";
+  }
+  const creditsPerImage = Number(draft.creditsPerImage);
+  if (!Number.isInteger(creditsPerImage) || creditsPerImage < 0 || creditsPerImage > 100) {
+    errors.creditsPerImage = "Whole number from 0 to 100.";
+  }
+  const creditsPerSelection = Number(draft.creditsPerSelection);
+  if (!Number.isInteger(creditsPerSelection) || creditsPerSelection < 0 || creditsPerSelection > 100) {
+    errors.creditsPerSelection = "Whole number from 0 to 100.";
+  }
+  const warning = Number(draft.budgetWarningPercent);
+  if (!Number.isInteger(warning) || warning < 1 || warning > 99) {
+    errors.budgetWarningPercent = "Whole number from 1 to 99.";
+  }
+  const critical = Number(draft.budgetCriticalPercent);
+  if (!Number.isInteger(critical) || critical < 2 || critical > 100) {
+    errors.budgetCriticalPercent = "Whole number from 2 to 100.";
+  }
+  if (!errors.budgetWarningPercent && !errors.budgetCriticalPercent && critical <= warning) {
+    errors.budgetCriticalPercent = "Must be greater than the warning percent.";
+  }
+  const stuck = Number(draft.stuckTimeoutMinutes);
+  if (!Number.isInteger(stuck) || stuck < 1 || stuck > 1440) {
+    errors.stuckTimeoutMinutes = "Whole number from 1 to 1,440 minutes.";
   }
   const budget = draft.falBudgetUsd.trim() === "" ? null : Number(draft.falBudgetUsd);
   if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 10_000)) {
     errors.falBudgetUsd = "Blank (env default) or $0–$10,000.";
   }
+  const message = draft.maintenanceMessage.trim();
+  if (message.length > 280) {
+    errors.maintenanceMessage = "Keep under 280 characters.";
+  }
   if (Object.keys(errors).length > 0) return { body: null, errors };
   return {
     body: {
       signupBonusCredits: bonus,
-      dailyRenderLimit: limit,
+      dailyRenderLimit: renderLimit,
+      dailySegmentLimit: segmentLimit,
+      creditsPerImage,
+      creditsPerSelection,
+      maintenanceRenders: draft.maintenanceRenders,
+      maintenanceSegments: draft.maintenanceSegments,
+      maintenanceMessage: message === "" ? null : message,
+      budgetWarningPercent: warning,
+      budgetCriticalPercent: critical,
+      stuckTimeoutMinutes: stuck,
       falMode: draft.falMode || null,
       falBudgetUsd: budget,
     },
@@ -77,6 +135,16 @@ function formatLimit(value: number | null | string): string {
 function formatBudget(value: number | null | string): string {
   if (value === "" || value === null) return "Env default";
   return formatUsd(Number(value));
+}
+
+function formatOnOff(value: boolean): string {
+  return value ? "On" : "Off";
+}
+
+function formatMessage(value: string | null): string {
+  if (!value?.trim()) return "None";
+  const trimmed = value.trim();
+  return trimmed.length > 40 ? `${trimmed.slice(0, 40)}…` : trimmed;
 }
 
 export function SettingsPage() {
@@ -147,13 +215,16 @@ export function SettingsPage() {
   const spent = data.spentUsd;
   const remaining = Math.max(0, budget - spent);
   const ratio = budget > 0 ? Math.min(1, spent / budget) : spent > 0 ? 1 : 0;
-  const meterTone = ratio >= 0.9 ? "bg-rose-500" : ratio >= 0.7 ? "bg-[#c45c26]" : "bg-emerald-500";
+  const warningRatio = data.budgetWarningPercent / 100;
+  const criticalRatio = data.budgetCriticalPercent / 100;
+  const meterTone = ratio >= criticalRatio ? "bg-rose-500" : ratio >= warningRatio ? "bg-[#c45c26]" : "bg-emerald-500";
+  const maintenanceOn = data.maintenanceRenders || data.maintenanceSegments;
 
   return (
     <>
       <PageHeader
         title="Settings"
-        description="Control credits, engine mode, and spend — changes apply immediately."
+        description="Control credits, limits, maintenance, and spend — changes apply immediately."
         actions={
           <Link
             to="/audit?action=settings.update"
@@ -176,6 +247,7 @@ export function SettingsPage() {
                   {MODE_LABEL[data.effectiveMode]}
                 </Pill>
                 {data.falMode === null && <span className="text-xs text-faint">via env</span>}
+                {maintenanceOn && <Pill tone="red">Maintenance</Pill>}
               </div>
               <p className="mt-3 font-display text-3xl font-bold tracking-tight text-primary">
                 {formatUsd(spent)}
@@ -194,7 +266,10 @@ export function SettingsPage() {
                 >
                   <div className={`h-full rounded-full transition-all ${meterTone}`} style={{ width: `${ratio * 100}%` }} />
                 </div>
-                <p className="mt-2 text-xs text-faint">Estimated from model prices. Failed renders don’t count.</p>
+                <p className="mt-2 text-xs text-faint">
+                  Alerts at {data.budgetWarningPercent}% / {data.budgetCriticalPercent}% · stuck after {data.stuckTimeoutMinutes}m ·{" "}
+                  {data.creditsPerImage} credit{data.creditsPerImage === 1 ? "" : "s"}/image
+                </p>
               </div>
             </div>
 
@@ -217,12 +292,15 @@ export function SettingsPage() {
               />
             </div>
           </div>
-          {(data.effectiveMode === "prod" || ratio >= 0.9) && (
+          {(data.effectiveMode === "prod" || ratio >= criticalRatio || maintenanceOn) && (
             <div className="flex items-start gap-2 border-t border-hairline bg-[#f8ebe3]/60 px-5 py-3 text-sm text-[#8a3d14]">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-              {data.effectiveMode === "prod"
-                ? "Production mode is live — every successful render spends fal credit."
-                : "Budget is nearly exhausted — new paid renders will be blocked soon."}
+              {maintenanceOn
+                ? data.maintenanceMessage?.trim() ||
+                  "Maintenance is on — non-admin renders and/or segmentations are paused."
+                : data.effectiveMode === "prod"
+                  ? "Production mode is live — every successful render spends fal credit."
+                  : "Budget is nearly exhausted — new paid renders will be blocked soon."}
             </div>
           )}
         </section>
@@ -235,13 +313,13 @@ export function SettingsPage() {
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-primary">Credits & limits</h2>
-                <p className="text-xs text-muted">Signup grants and per-user daily caps</p>
+                <p className="text-xs text-muted">Signup grants, per-job costs, and daily caps</p>
               </div>
             </div>
             <div className="space-y-5">
               <Field
                 label="Signup bonus"
-                hint="Credits every new account gets once (1 credit = 1 image). Existing users are unchanged."
+                hint="Credits every new account gets once. Existing users are unchanged."
                 error={fieldErrors.signupBonusCredits}
               >
                 <input
@@ -253,6 +331,36 @@ export function SettingsPage() {
                   className={inputClass(fieldErrors.signupBonusCredits)}
                 />
               </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Credits per image"
+                  hint="Charged for each render or edit."
+                  error={fieldErrors.creditsPerImage}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={draft.creditsPerImage}
+                    onChange={(event) => update({ creditsPerImage: event.target.value })}
+                    className={inputClass(fieldErrors.creditsPerImage)}
+                  />
+                </Field>
+                <Field
+                  label="Credits per selection"
+                  hint="Stored for automatic selection when that API ships."
+                  error={fieldErrors.creditsPerSelection}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={draft.creditsPerSelection}
+                    onChange={(event) => update({ creditsPerSelection: event.target.value })}
+                    className={inputClass(fieldErrors.creditsPerSelection)}
+                  />
+                </Field>
+              </div>
               <Field
                 label="Daily render limit per user"
                 hint="Leave blank for unlimited. Admins are exempt; failed renders don’t count."
@@ -268,6 +376,21 @@ export function SettingsPage() {
                   className={inputClass(fieldErrors.dailyRenderLimit)}
                 />
               </Field>
+              <Field
+                label="Daily segment limit per user"
+                hint="Leave blank for unlimited. Applied when segment create is wired."
+                error={fieldErrors.dailySegmentLimit}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={10_000}
+                  placeholder="Unlimited"
+                  value={draft.dailySegmentLimit}
+                  onChange={(event) => update({ dailySegmentLimit: event.target.value })}
+                  className={inputClass(fieldErrors.dailySegmentLimit)}
+                />
+              </Field>
             </div>
           </section>
 
@@ -278,7 +401,7 @@ export function SettingsPage() {
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-primary">Engine & budget</h2>
-                <p className="text-xs text-muted">Mode and global fal spend cap</p>
+                <p className="text-xs text-muted">Mode, spend cap, and alert thresholds</p>
               </div>
             </div>
             <div className="space-y-5">
@@ -325,7 +448,103 @@ export function SettingsPage() {
                   className={inputClass(fieldErrors.falBudgetUsd)}
                 />
               </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label="Budget warning %"
+                  hint="Overview alert when spend reaches this share of the cap."
+                  error={fieldErrors.budgetWarningPercent}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={draft.budgetWarningPercent}
+                    onChange={(event) => update({ budgetWarningPercent: event.target.value })}
+                    className={inputClass(fieldErrors.budgetWarningPercent)}
+                  />
+                </Field>
+                <Field
+                  label="Budget critical %"
+                  hint="Must be higher than warning. Critical alert + hero tone."
+                  error={fieldErrors.budgetCriticalPercent}
+                >
+                  <input
+                    type="number"
+                    min={2}
+                    max={100}
+                    value={draft.budgetCriticalPercent}
+                    onChange={(event) => update({ budgetCriticalPercent: event.target.value })}
+                    className={inputClass(fieldErrors.budgetCriticalPercent)}
+                  />
+                </Field>
+              </div>
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-5 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-rose-50 text-rose-600">
+                <PauseCircle size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Maintenance</h2>
+                <p className="text-xs text-muted">Pause new work for non-admins without a redeploy</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <ToggleRow
+                label="Pause renders"
+                hint="Blocks create-render for non-admins."
+                checked={draft.maintenanceRenders}
+                onChange={(maintenanceRenders) => update({ maintenanceRenders })}
+              />
+              <ToggleRow
+                label="Pause segmentations"
+                hint="Stored now; enforced when segment create is wired."
+                checked={draft.maintenanceSegments}
+                onChange={(maintenanceSegments) => update({ maintenanceSegments })}
+              />
+              <Field
+                label="Message shown in studio"
+                hint="Optional. Shown when maintenance blocks a request."
+                error={fieldErrors.maintenanceMessage}
+              >
+                <textarea
+                  rows={3}
+                  maxLength={280}
+                  value={draft.maintenanceMessage}
+                  onChange={(event) => update({ maintenanceMessage: event.target.value })}
+                  placeholder="We’re upgrading the render pipeline — back shortly."
+                  className={`${inputClass(fieldErrors.maintenanceMessage)} resize-y`}
+                />
+              </Field>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-5 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-surface-muted text-muted">
+                <Timer size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Stuck detection</h2>
+                <p className="text-xs text-muted">How long before pending jobs count as stuck</p>
+              </div>
+            </div>
+            <Field
+              label="Stuck timeout (minutes)"
+              hint="Renders (pending/processing) and segmentations (pending) older than this appear as stuck on Overview and job lists."
+              error={fieldErrors.stuckTimeoutMinutes}
+            >
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                value={draft.stuckTimeoutMinutes}
+                onChange={(event) => update({ stuckTimeoutMinutes: event.target.value })}
+                className={inputClass(fieldErrors.stuckTimeoutMinutes)}
+              />
+            </Field>
           </section>
         </div>
 
@@ -440,6 +659,33 @@ function HeroMeta({
   );
 }
 
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-hairline px-3.5 py-3 transition hover:bg-surface">
+      <span>
+        <span className="block text-sm font-medium text-primary">{label}</span>
+        <span className="mt-0.5 block text-xs text-faint">{hint}</span>
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 size-4 accent-[#2F6FED]"
+      />
+    </label>
+  );
+}
+
 function Field({
   label,
   hint,
@@ -509,9 +755,9 @@ function ConfirmSaveModal({
         <h2 id="settings-confirm-title" className="text-lg font-semibold text-primary">
           Confirm settings changes
         </h2>
-        <p className="mt-1 text-sm text-muted">These apply immediately to new renders and signups.</p>
+        <p className="mt-1 text-sm text-muted">These apply immediately to new requests and studio sessions.</p>
 
-        <ul className="mt-4 space-y-2 rounded-xl border border-hairline bg-surface p-3">
+        <ul className="mt-4 max-h-64 space-y-2 overflow-y-auto rounded-xl border border-hairline bg-surface p-3">
           {changes.map((change) => (
             <li key={change.key} className="flex items-start justify-between gap-3 text-sm">
               <span className="text-muted">{change.label}</span>
@@ -551,44 +797,127 @@ interface ChangeItem {
   to: string;
 }
 
+function pushIfChanged(
+  items: ChangeItem[],
+  key: string,
+  label: string,
+  from: string,
+  to: string,
+  changed: boolean,
+) {
+  if (changed) items.push({ key, label, from, to });
+}
+
 function diffChanges(settings: AdminSettings, draft: Draft): ChangeItem[] {
   const result = validateDraft(draft);
   if (!result.body) return [];
   const body = result.body;
   const items: ChangeItem[] = [];
 
-  if (body.signupBonusCredits !== undefined && body.signupBonusCredits !== settings.signupBonusCredits) {
-    items.push({
-      key: "signupBonusCredits",
-      label: "Signup bonus",
-      from: formatNumber(settings.signupBonusCredits),
-      to: formatNumber(body.signupBonusCredits),
-    });
-  }
-  if (body.dailyRenderLimit !== undefined && body.dailyRenderLimit !== settings.dailyRenderLimit) {
-    items.push({
-      key: "dailyRenderLimit",
-      label: "Daily limit",
-      from: formatLimit(settings.dailyRenderLimit),
-      to: formatLimit(body.dailyRenderLimit),
-    });
-  }
-  if (body.falMode !== undefined && body.falMode !== settings.falMode) {
-    items.push({
-      key: "falMode",
-      label: "Mode",
-      from: formatMode(settings.falMode),
-      to: formatMode(body.falMode),
-    });
-  }
-  if (body.falBudgetUsd !== undefined && body.falBudgetUsd !== settings.falBudgetUsd) {
-    items.push({
-      key: "falBudgetUsd",
-      label: "Budget",
-      from: formatBudget(settings.falBudgetUsd),
-      to: formatBudget(body.falBudgetUsd),
-    });
-  }
+  pushIfChanged(
+    items,
+    "signupBonusCredits",
+    "Signup bonus",
+    formatNumber(settings.signupBonusCredits),
+    formatNumber(body.signupBonusCredits!),
+    body.signupBonusCredits !== undefined && body.signupBonusCredits !== settings.signupBonusCredits,
+  );
+  pushIfChanged(
+    items,
+    "creditsPerImage",
+    "Credits / image",
+    formatNumber(settings.creditsPerImage),
+    formatNumber(body.creditsPerImage!),
+    body.creditsPerImage !== undefined && body.creditsPerImage !== settings.creditsPerImage,
+  );
+  pushIfChanged(
+    items,
+    "creditsPerSelection",
+    "Credits / selection",
+    formatNumber(settings.creditsPerSelection),
+    formatNumber(body.creditsPerSelection!),
+    body.creditsPerSelection !== undefined && body.creditsPerSelection !== settings.creditsPerSelection,
+  );
+  pushIfChanged(
+    items,
+    "dailyRenderLimit",
+    "Daily render limit",
+    formatLimit(settings.dailyRenderLimit),
+    formatLimit(body.dailyRenderLimit!),
+    body.dailyRenderLimit !== undefined && body.dailyRenderLimit !== settings.dailyRenderLimit,
+  );
+  pushIfChanged(
+    items,
+    "dailySegmentLimit",
+    "Daily segment limit",
+    formatLimit(settings.dailySegmentLimit),
+    formatLimit(body.dailySegmentLimit!),
+    body.dailySegmentLimit !== undefined && body.dailySegmentLimit !== settings.dailySegmentLimit,
+  );
+  pushIfChanged(
+    items,
+    "maintenanceRenders",
+    "Pause renders",
+    formatOnOff(settings.maintenanceRenders),
+    formatOnOff(body.maintenanceRenders!),
+    body.maintenanceRenders !== undefined && body.maintenanceRenders !== settings.maintenanceRenders,
+  );
+  pushIfChanged(
+    items,
+    "maintenanceSegments",
+    "Pause segments",
+    formatOnOff(settings.maintenanceSegments),
+    formatOnOff(body.maintenanceSegments!),
+    body.maintenanceSegments !== undefined && body.maintenanceSegments !== settings.maintenanceSegments,
+  );
+  pushIfChanged(
+    items,
+    "maintenanceMessage",
+    "Maintenance message",
+    formatMessage(settings.maintenanceMessage),
+    formatMessage(body.maintenanceMessage ?? null),
+    body.maintenanceMessage !== undefined && body.maintenanceMessage !== settings.maintenanceMessage,
+  );
+  pushIfChanged(
+    items,
+    "budgetWarningPercent",
+    "Budget warning %",
+    `${settings.budgetWarningPercent}%`,
+    `${body.budgetWarningPercent!}%`,
+    body.budgetWarningPercent !== undefined && body.budgetWarningPercent !== settings.budgetWarningPercent,
+  );
+  pushIfChanged(
+    items,
+    "budgetCriticalPercent",
+    "Budget critical %",
+    `${settings.budgetCriticalPercent}%`,
+    `${body.budgetCriticalPercent!}%`,
+    body.budgetCriticalPercent !== undefined && body.budgetCriticalPercent !== settings.budgetCriticalPercent,
+  );
+  pushIfChanged(
+    items,
+    "stuckTimeoutMinutes",
+    "Stuck timeout",
+    `${settings.stuckTimeoutMinutes}m`,
+    `${body.stuckTimeoutMinutes!}m`,
+    body.stuckTimeoutMinutes !== undefined && body.stuckTimeoutMinutes !== settings.stuckTimeoutMinutes,
+  );
+  pushIfChanged(
+    items,
+    "falMode",
+    "Mode",
+    formatMode(settings.falMode),
+    formatMode(body.falMode!),
+    body.falMode !== undefined && body.falMode !== settings.falMode,
+  );
+  pushIfChanged(
+    items,
+    "falBudgetUsd",
+    "Budget",
+    formatBudget(settings.falBudgetUsd),
+    formatBudget(body.falBudgetUsd!),
+    body.falBudgetUsd !== undefined && body.falBudgetUsd !== settings.falBudgetUsd,
+  );
   return items;
 }
 
@@ -598,7 +927,6 @@ function isDangerous(settings: AdminSettings, draft: Draft): string | null {
   const nextMode = result.body.falMode !== undefined ? result.body.falMode : settings.falMode;
   const effectiveNext: RenderEngineMode =
     nextMode === "dev" || nextMode === "prod" ? nextMode : nextMode === "mock" ? "mock" : settings.effectiveMode;
-  // When switching override to null, effective becomes env — approximate with current envMode
   const resolved =
     nextMode === null
       ? settings.envMode === "dev" || settings.envMode === "prod"
@@ -617,6 +945,18 @@ function isDangerous(settings: AdminSettings, draft: Draft): string | null {
   if (typeof nextBudget === "number" && nextBudget > 0 && nextBudget < settings.spentUsd) {
     return `New budget (${formatUsd(nextBudget)}) is below current spend (${formatUsd(settings.spentUsd)}) — paid renders will pause.`;
   }
+
+  const pausingRenders = result.body.maintenanceRenders === true && !settings.maintenanceRenders;
+  const pausingSegments = result.body.maintenanceSegments === true && !settings.maintenanceSegments;
+  if (pausingRenders || pausingSegments) {
+    return `You’re turning on maintenance — non-admin ${[
+      pausingRenders ? "renders" : null,
+      pausingSegments ? "segmentations" : null,
+    ]
+      .filter(Boolean)
+      .join(" & ")} will be blocked immediately.`;
+  }
+
   return null;
 }
 

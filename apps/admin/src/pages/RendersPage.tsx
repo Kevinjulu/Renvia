@@ -157,7 +157,7 @@ export function RendersPage() {
               value={formatNumber(data.summary.stuckCount)}
               icon={Timer}
               accent={data.summary.stuckCount > 0 ? "rose" : "neutral"}
-              detail="Pending/processing over 15m"
+              detail={`Pending/processing over ${data.summary.stuckTimeoutMinutes}m`}
             />
             <StatCard
               label="Failed"

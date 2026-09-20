@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  CREDITS_PER_IMAGE,
   renderRouteFor,
   type CreateRenderResponse,
   type RenderBudgetResponse,
@@ -28,11 +27,12 @@ function errorCode(error: unknown): string | null {
 }
 
 /** User-facing reason a request was refused, or null for a generic failure. */
-function refusalMessage(code: string | null): string | null {
+function refusalMessage(code: string | null, maintenanceMessage?: string | null): string | null {
   if (code === "insufficient_credits") return "You're out of credits.";
   if (code === "budget_exhausted") return "Rendering is paused — the demo budget is used up.";
   if (code === "account_disabled") return "Your account is disabled. Contact support.";
   if (code === "daily_limit_reached") return "You've reached today's render limit. Try again tomorrow.";
+  if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
   return null;
 }
 
@@ -116,17 +116,20 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     : renderRouteFor({ sourceType, referenceImageUrls });
   const estimateUsd = budget ? imageCount * budget.pricing[route] : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
-  const creditsNeeded = imageCount * CREDITS_PER_IMAGE;
+  const creditsPerImage = me?.creditsPerImage ?? 1;
+  const creditsNeeded = imageCount * creditsPerImage;
   const creditBalance = me?.creditBalance ?? 0;
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
+  const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
   const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
-  const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled;
+  const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled && !isMaintenance;
 
   const viewWord = filled.length === 1 ? "view" : "views";
   const buttonLabel = (() => {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isDisabled) return "Account disabled";
+    if (isMaintenance) return "Temporarily unavailable";
     if (isOverBudget) return "Over render budget";
     if (isOutOfCredits) return creditBalance === 0 ? "Out of credits" : "Not enough credits";
     if (isEdit) return "Apply edit";
@@ -169,7 +172,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       queued.forEach(({ value }) => addJob(value.job));
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      const refusal = rejected.map(({ reason }) => refusalMessage(errorCode(reason))).find(Boolean);
+      const refusal = rejected
+        .map(({ reason }) => refusalMessage(errorCode(reason), me?.maintenanceMessage))
+        .find(Boolean);
       if (refusal) {
         setStatus(`${refusal} ${queued.length} of ${results.length} renders queued.`);
       } else if (rejected.length > 0) {
@@ -229,7 +234,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       addJob(job);
       if (editRender) useRenderEditStore.getState().setAwaitingJob(job.id);
     } catch (error) {
-      const refusal = refusalMessage(errorCode(error));
+      const refusal = refusalMessage(errorCode(error), me?.maintenanceMessage);
       setStatus(refusal ? `${refusal} The edit wasn't applied.` : "Couldn't apply the edit. Try again in a moment.");
     } finally {
       setIsSubmitting(false);
@@ -240,6 +245,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const scope = isEdit ? (hasEditSelection ? "Selected area" : "1 edit") : plural(imageCount, "image");
   const costLine = (() => {
     if (!hasTarget || !me) return null;
+    if (isMaintenance) {
+      return me.maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
+    }
     if (isAdmin) {
       // Admins aren't charged credits; show the real fal spend against the global cap.
       if (!budget) return null;
@@ -248,7 +256,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     }
     return `${scope} · ${plural(creditsNeeded, "credit")} · ${plural(creditBalance, "credit")} left`;
   })();
-  const costIsBlocking = isOverBudget || isOutOfCredits;
+  const costIsBlocking = isOverBudget || isOutOfCredits || isMaintenance;
 
   return (
     <div>

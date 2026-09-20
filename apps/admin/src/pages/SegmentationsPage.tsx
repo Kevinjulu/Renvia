@@ -161,7 +161,7 @@ export function SegmentationsPage() {
               value={formatNumber(data.summary.stuckCount)}
               icon={AlertTriangle}
               accent={data.summary.stuckCount > 0 ? "rose" : "neutral"}
-              detail="Pending over 15m"
+              detail={`Pending over ${data.summary.stuckTimeoutMinutes}m`}
             />
             <StatCard
               label="Failed"

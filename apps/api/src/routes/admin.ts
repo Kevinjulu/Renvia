@@ -47,6 +47,21 @@ export const admin = new Hono<AdminContext>();
 
 const MICROS_PER_USD = 1_000_000;
 
+/** SQL cutoff: rows updated/created before this are "stuck". */
+function stuckBeforeSql(minutes: number) {
+  return sql`now() - (${minutes}::int * interval '1 minute')`;
+}
+
+function isRenderStuck(status: RenderStatus, updatedAt: Date, minutes: number): boolean {
+  if (status !== "pending" && status !== "processing") return false;
+  return updatedAt.getTime() < Date.now() - minutes * 60 * 1000;
+}
+
+function isSegStuck(status: SegmentationStatus, createdAt: Date, minutes: number): boolean {
+  if (status !== "pending") return false;
+  return createdAt.getTime() < Date.now() - minutes * 60 * 1000;
+}
+
 /** Only active admins get past this — the role lives in our users table, not in Clerk. */
 const requireAdmin = createMiddleware<AdminContext>(async (c, next) => {
   const db = createDb(c.env.DATABASE_URL);
@@ -125,14 +140,10 @@ function selectAdminRenders(db: Database) {
 
 type AdminRenderRow = Awaited<ReturnType<ReturnType<typeof selectAdminRenders>["execute"]>>[number];
 
-const STUCK_AFTER = sql`now() - interval '15 minutes'`;
-
-function isStuck(status: RenderStatus, updatedAt: Date): boolean {
-  if (status !== "pending" && status !== "processing") return false;
-  return updatedAt.getTime() < Date.now() - 15 * 60 * 1000;
-}
-
-function toAdminRender({ render, projectId, projectName, userId, userEmail }: AdminRenderRow): AdminRender {
+function toAdminRender(
+  { render, projectId, projectName, userId, userEmail }: AdminRenderRow,
+  stuckMinutes = 15,
+): AdminRender {
   return {
     id: render.id,
     kind: render.settings?.edit ? "edit" : "render",
@@ -148,7 +159,7 @@ function toAdminRender({ render, projectId, projectName, userId, userEmail }: Ad
     resultImageUrl: render.resultImageUrl,
     errorMessage: render.errorMessage,
     falRequestId: render.falRequestId,
-    stuck: isStuck(render.status, render.updatedAt),
+    stuck: isRenderStuck(render.status, render.updatedAt, stuckMinutes),
     createdAt: render.createdAt.toISOString(),
     updatedAt: render.updatedAt.toISOString(),
     projectId,
@@ -249,7 +260,7 @@ admin.get("/overview", async (c) => {
       .where(
         and(
           inArray(schema.renders.status, ["pending", "processing"]),
-          sql`${schema.renders.updatedAt} < now() - interval '15 minutes'`,
+          sql`${schema.renders.updatedAt} < ${stuckBeforeSql(settings.stuckTimeoutMinutes)}`,
         ),
       ),
     db
@@ -300,14 +311,31 @@ admin.get("/overview", async (c) => {
   const segFinished = segByStatus.succeeded + segByStatus.failed;
 
   const alerts: AdminOverviewResponse["alerts"] = [];
-  if (budgetRatio >= 0.9) {
+  if (settings.maintenanceRenders || settings.maintenanceSegments) {
+    alerts.push({
+      id: "maintenance",
+      severity: "critical",
+      message: settings.maintenanceMessage?.trim()
+        ? settings.maintenanceMessage.trim()
+        : `Maintenance is on — ${[
+            settings.maintenanceRenders ? "renders" : null,
+            settings.maintenanceSegments ? "segmentations" : null,
+          ]
+            .filter(Boolean)
+            .join(" & ")} paused for non-admins.`,
+      href: "/settings",
+    });
+  }
+  const warningRatio = settings.budgetWarningPercent / 100;
+  const criticalRatio = settings.budgetCriticalPercent / 100;
+  if (budgetRatio >= criticalRatio) {
     alerts.push({
       id: "budget_critical",
       severity: "critical",
       message: `Budget nearly exhausted — ${formatUsdAlert(spentUsd)} of ${formatUsdAlert(budgetUsd)} used.`,
       href: "/settings",
     });
-  } else if (budgetRatio >= 0.7) {
+  } else if (budgetRatio >= warningRatio) {
     alerts.push({
       id: "budget_warning",
       severity: "warning",
@@ -327,7 +355,7 @@ admin.get("/overview", async (c) => {
     alerts.push({
       id: "stuck_renders",
       severity: "critical",
-      message: `${stuckCount} ${stuckCount === 1 ? "render has" : "renders have"} been pending or processing for over 15 minutes.`,
+      message: `${stuckCount} ${stuckCount === 1 ? "render has" : "renders have"} been pending or processing for over ${settings.stuckTimeoutMinutes} minutes.`,
       href: "/renders?status=processing",
     });
   }
@@ -348,11 +376,14 @@ admin.get("/overview", async (c) => {
       byStatus,
       failureRate,
       stuckCount,
+      stuckTimeoutMinutes: settings.stuckTimeoutMinutes,
     },
     spend: {
       mode,
       spentUsd,
       budgetUsd,
+      budgetWarningPercent: settings.budgetWarningPercent,
+      budgetCriticalPercent: settings.budgetCriticalPercent,
       byModel: modelRows.map((row) => ({
         model: row.model,
         renders: row.renders,
@@ -380,7 +411,7 @@ admin.get("/overview", async (c) => {
       spentUsd: Number(segSpend?.spentMicros ?? 0) / MICROS_PER_USD,
     },
     recentFailures: failureRows.map((row) => {
-      const render = toAdminRender(row);
+      const render = toAdminRender(row, settings.stuckTimeoutMinutes);
       return {
         id: render.id,
         kind: render.kind,
@@ -533,7 +564,7 @@ admin.post("/users/bulk-credits", async (c) => {
 admin.get("/users/:id", async (c) => {
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
-  const user = await findAdminUser(db, id);
+  const [user, settings] = await Promise.all([findAdminUser(db, id), getSettings(db)]);
   if (!user) return c.json({ error: "Not found" }, 404);
 
   const actor = alias(schema.users, "actor");
@@ -558,7 +589,11 @@ admin.get("/users/:id", async (c) => {
     createdAt: entry.createdAt.toISOString(),
     actorEmail,
   }));
-  return c.json({ user, ledger, renders: renderRows.map(toAdminRender) });
+  return c.json({
+    user,
+    ledger,
+    renders: renderRows.map((row) => toAdminRender(row, settings.stuckTimeoutMinutes)),
+  });
 });
 
 const grantSchema = z.object({
@@ -687,6 +722,9 @@ admin.patch("/users/:id", async (c) => {
 
 admin.get("/renders", async (c) => {
   const db = c.get("db");
+  const settings = await getSettings(db);
+  const stuckMinutes = settings.stuckTimeoutMinutes;
+  const stuckCutoff = stuckBeforeSql(stuckMinutes);
   const { limit, offset } = paging.parse(c.req.query());
   const status = z.enum(["pending", "processing", "succeeded", "failed"]).optional().parse(c.req.query("status") || undefined);
   const kind = z.enum(["render", "edit"]).optional().parse(c.req.query("kind") || undefined) as AdminRenderKind | undefined;
@@ -709,9 +747,7 @@ admin.get("/renders", async (c) => {
   if (kind === "edit") filters.push(sql`${schema.renders.settings}->'edit' is not null`);
   if (kind === "render") filters.push(sql`${schema.renders.settings}->'edit' is null`);
   if (stuck) {
-    filters.push(
-      and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${STUCK_AFTER}`)!,
-    );
+    filters.push(and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${stuckCutoff}`)!);
   }
   if (search) {
     const escaped = `%${search.replace(/[%_\\]/g, "\\$&")}%`;
@@ -749,7 +785,7 @@ admin.get("/renders", async (c) => {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.renders)
-      .where(and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${STUCK_AFTER}`)),
+      .where(and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${stuckCutoff}`)),
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}) filter (where ${schema.renders.status} <> 'failed'), 0)::bigint`,
@@ -772,13 +808,14 @@ admin.get("/renders", async (c) => {
   const inFlight = byStatus.pending + byStatus.processing;
 
   return c.json({
-    renders: rows.map(toAdminRender),
+    renders: rows.map((row) => toAdminRender(row, stuckMinutes)),
     total: count?.total ?? 0,
     summary: {
       total: byStatus.pending + byStatus.processing + byStatus.succeeded + byStatus.failed,
       byStatus,
       inFlight,
       stuckCount: stuckRow?.count ?? 0,
+      stuckTimeoutMinutes: stuckMinutes,
       failed: byStatus.failed,
       spentUsd: Number(spendRow?.spentMicros ?? 0) / MICROS_PER_USD,
       models: modelRows
@@ -791,9 +828,10 @@ admin.get("/renders", async (c) => {
 admin.get("/renders/:id", async (c) => {
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
+  const settings = await getSettings(db);
   const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
   if (!row) return c.json({ error: "Render not found" }, 404);
-  return c.json({ render: toAdminRender(row) });
+  return c.json({ render: toAdminRender(row, settings.stuckTimeoutMinutes) });
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────────
@@ -828,6 +866,15 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
   return {
     signupBonusCredits: row.signupBonusCredits,
     dailyRenderLimit: row.dailyRenderLimit,
+    dailySegmentLimit: row.dailySegmentLimit,
+    creditsPerImage: row.creditsPerImage,
+    creditsPerSelection: row.creditsPerSelection,
+    maintenanceRenders: row.maintenanceRenders,
+    maintenanceSegments: row.maintenanceSegments,
+    maintenanceMessage: row.maintenanceMessage,
+    budgetWarningPercent: row.budgetWarningPercent,
+    budgetCriticalPercent: row.budgetCriticalPercent,
+    stuckTimeoutMinutes: row.stuckTimeoutMinutes,
     falMode: row.falMode,
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
     effectiveMode: effectiveEngineMode(env, row),
@@ -856,16 +903,42 @@ const updateSettingsSchema = z
   .object({
     signupBonusCredits: z.number().int().min(0).max(1000).optional(),
     dailyRenderLimit: z.number().int().min(1).max(10_000).nullable().optional(),
+    dailySegmentLimit: z.number().int().min(1).max(10_000).nullable().optional(),
+    creditsPerImage: z.number().int().min(0).max(100).optional(),
+    creditsPerSelection: z.number().int().min(0).max(100).optional(),
+    maintenanceRenders: z.boolean().optional(),
+    maintenanceSegments: z.boolean().optional(),
+    maintenanceMessage: z.string().trim().max(280).nullable().optional(),
+    budgetWarningPercent: z.number().int().min(1).max(99).optional(),
+    budgetCriticalPercent: z.number().int().min(2).max(100).optional(),
+    stuckTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
     falMode: z.enum(["mock", "dev", "prod"]).nullable().optional(),
     falBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((body, ctx) => {
+    if (body.budgetWarningPercent !== undefined && body.budgetCriticalPercent !== undefined) {
+      if (body.budgetCriticalPercent <= body.budgetWarningPercent) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Critical percent must be greater than warning percent",
+          path: ["budgetCriticalPercent"],
+        });
+      }
+    }
+  });
 
 admin.put("/settings", async (c) => {
   const db = c.get("db");
   const body = updateSettingsSchema.parse(await c.req.json());
   const adminUser = c.get("admin");
   const before = await getSettings(db); // ensures the row exists
+
+  const warning = body.budgetWarningPercent ?? before.budgetWarningPercent;
+  const critical = body.budgetCriticalPercent ?? before.budgetCriticalPercent;
+  if (critical <= warning) {
+    return c.json({ error: "Critical percent must be greater than warning percent" }, 400);
+  }
 
   const [updated] = await db
     .update(schema.appSettings)
@@ -889,6 +962,15 @@ admin.put("/settings", async (c) => {
       before: {
         signupBonusCredits: before.signupBonusCredits,
         dailyRenderLimit: before.dailyRenderLimit,
+        dailySegmentLimit: before.dailySegmentLimit,
+        creditsPerImage: before.creditsPerImage,
+        creditsPerSelection: before.creditsPerSelection,
+        maintenanceRenders: before.maintenanceRenders,
+        maintenanceSegments: before.maintenanceSegments,
+        maintenanceMessage: before.maintenanceMessage,
+        budgetWarningPercent: before.budgetWarningPercent,
+        budgetCriticalPercent: before.budgetCriticalPercent,
+        stuckTimeoutMinutes: before.stuckTimeoutMinutes,
         falMode: before.falMode,
         falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
       },
@@ -1060,6 +1142,7 @@ admin.get("/projects", async (c) => {
 admin.get("/projects/:id", async (c) => {
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
+  const settings = await getSettings(db);
   const stats = projectRenderStats(db);
   const [row] = await projectSelect(db, stats).where(eq(schema.projects.id, id));
   if (!row) return c.json({ error: "Project not found" }, 404);
@@ -1071,7 +1154,7 @@ admin.get("/projects/:id", async (c) => {
 
   return c.json({
     project: toAdminProject(row),
-    renders: renders.map(toAdminRender),
+    renders: renders.map((render) => toAdminRender(render, settings.stuckTimeoutMinutes)),
   });
 });
 
@@ -1193,12 +1276,11 @@ admin.get("/credits", async (c) => {
 
 // ── Segmentations ────────────────────────────────────────────────────────────────
 
-function isSegStuck(status: SegmentationStatus, createdAt: Date): boolean {
-  if (status !== "pending") return false;
-  return createdAt.getTime() < Date.now() - 15 * 60 * 1000;
-}
-
-function toAdminSegmentation(segmentation: typeof schema.segmentations.$inferSelect, userEmail: string): AdminSegmentation {
+function toAdminSegmentation(
+  segmentation: typeof schema.segmentations.$inferSelect,
+  userEmail: string,
+  stuckMinutes = 15,
+): AdminSegmentation {
   const mode: AdminSegmentationMode = segmentation.prompt ? "prompt" : "click";
   return {
     id: segmentation.id,
@@ -1214,13 +1296,15 @@ function toAdminSegmentation(segmentation: typeof schema.segmentations.$inferSel
     costUsd: segmentation.costMicros / MICROS_PER_USD,
     creditsCharged: segmentation.creditsCharged,
     errorMessage: segmentation.errorMessage,
-    stuck: isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt),
+    stuck: isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt, stuckMinutes),
     createdAt: segmentation.createdAt.toISOString(),
   };
 }
 
 admin.get("/segmentations", async (c) => {
   const db = c.get("db");
+  const settings = await getSettings(db);
+  const stuckMinutes = settings.stuckTimeoutMinutes;
   const { limit, offset } = paging.parse(c.req.query());
   const status = z.enum(["pending", "succeeded", "failed"]).optional().parse(c.req.query("status") || undefined);
   const mode = z.enum(["prompt", "click"]).optional().parse(c.req.query("mode") || undefined) as AdminSegmentationMode | undefined;
@@ -1241,7 +1325,9 @@ admin.get("/segmentations", async (c) => {
   if (mode === "prompt") filters.push(sql`${schema.segmentations.prompt} is not null`);
   if (mode === "click") filters.push(sql`${schema.segmentations.prompt} is null`);
   if (stuck) {
-    filters.push(and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${STUCK_AFTER}`)!);
+    filters.push(
+      and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${stuckBeforeSql(stuckMinutes)}`)!,
+    );
   }
   if (search) {
     const escaped = `%${search.replace(/[%_\\]/g, "\\$&")}%`;
@@ -1283,7 +1369,9 @@ admin.get("/segmentations", async (c) => {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.segmentations)
-      .where(and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${STUCK_AFTER}`)),
+      .where(
+        and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${stuckBeforeSql(stuckMinutes)}`),
+      ),
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}) filter (where ${schema.segmentations.status} <> 'failed'), 0)::bigint`,
@@ -1304,13 +1392,14 @@ admin.get("/segmentations", async (c) => {
   for (const row of statusRows) byStatus[row.status as SegmentationStatus] = row.count;
 
   return c.json({
-    segmentations: rows.map(({ segmentation, userEmail }) => toAdminSegmentation(segmentation, userEmail)),
+    segmentations: rows.map(({ segmentation, userEmail }) => toAdminSegmentation(segmentation, userEmail, stuckMinutes)),
     total: count?.total ?? 0,
     summary: {
       total: byStatus.pending + byStatus.succeeded + byStatus.failed,
       byStatus,
       pending: byStatus.pending,
       stuckCount: stuckRow?.count ?? 0,
+      stuckTimeoutMinutes: stuckMinutes,
       failed: byStatus.failed,
       spentUsd: Number(spendRow?.spentMicros ?? 0) / MICROS_PER_USD,
       models: modelRows.map((row) => ({ model: row.model, count: row.count })),
@@ -1320,6 +1409,7 @@ admin.get("/segmentations", async (c) => {
 
 admin.get("/segmentations/:id", async (c) => {
   const db = c.get("db");
+  const settings = await getSettings(db);
   const id = z.string().uuid().parse(c.req.param("id"));
   const [row] = await db
     .select({
@@ -1330,7 +1420,9 @@ admin.get("/segmentations/:id", async (c) => {
     .innerJoin(schema.users, eq(schema.segmentations.userId, schema.users.id))
     .where(eq(schema.segmentations.id, id));
   if (!row) return c.json({ error: "Segmentation not found" }, 404);
-  return c.json({ segmentation: toAdminSegmentation(row.segmentation, row.userEmail) });
+  return c.json({
+    segmentation: toAdminSegmentation(row.segmentation, row.userEmail, settings.stuckTimeoutMinutes),
+  });
 });
 
 // ── Audit ────────────────────────────────────────────────────────────────────────

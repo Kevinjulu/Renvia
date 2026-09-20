@@ -4,6 +4,7 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, syncUser } from "../lib/users.js";
+import { getSettings } from "../lib/settings.js";
 
 export const me = new Hono<AppContext>();
 
@@ -14,9 +15,14 @@ me.get("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   // Called once per studio load, so it also refreshes the stored email from Clerk.
-  const user = await syncUser(c.env, db, clerkId);
+  const [user, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
 
-  return c.json(user);
+  return c.json({
+    ...user,
+    creditsPerImage: settings.creditsPerImage,
+    maintenanceRenders: settings.maintenanceRenders,
+    maintenanceMessage: settings.maintenanceMessage,
+  });
 });
 
 /** Balance plus the most recent ledger entries, for the studio's credits page. */

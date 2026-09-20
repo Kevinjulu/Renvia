@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { CREDITS_PER_IMAGE, renderRouteFor } from "@renvia/types";
+import { renderRouteFor } from "@renvia/types";
 import { getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { modelFor } from "../lib/models.js";
@@ -68,6 +68,16 @@ renders.post("/", async (c) => {
   const appSettings = await getSettings(db);
   const isAdmin = user.role === "admin";
 
+  if (!isAdmin && appSettings.maintenanceRenders) {
+    return c.json(
+      {
+        error: appSettings.maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance",
+        code: "maintenance",
+      },
+      503,
+    );
+  }
+
   if (!isAdmin && appSettings.dailyRenderLimit !== null) {
     // Failed renders were refunded, so they don't count toward the day's allowance.
     const [today] = await db
@@ -92,7 +102,7 @@ renders.post("/", async (c) => {
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
-  const credits = isAdmin ? 0 : CREDITS_PER_IMAGE;
+  const credits = isAdmin ? 0 : appSettings.creditsPerImage;
   let created;
   try {
     created = await createChargedRender(db, user.id, credits, {

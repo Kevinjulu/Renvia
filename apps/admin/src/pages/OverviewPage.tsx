@@ -124,7 +124,7 @@ export function OverviewPage() {
               accent={data.renders.stuckCount > 0 ? "rose" : "neutral"}
               detail={
                 data.renders.stuckCount > 0
-                  ? `${data.renders.stuckCount} stuck over 15m`
+                  ? `${data.renders.stuckCount} stuck over ${data.renders.stuckTimeoutMinutes}m`
                   : `${data.renders.byStatus.processing} processing · ${data.renders.byStatus.pending} pending`
               }
             />
@@ -144,11 +144,20 @@ export function OverviewPage() {
               className="lg:col-span-2"
               actions={<Pill tone={data.spend.mode === "prod" ? "amber" : "neutral"}>{MODE_LABEL[data.spend.mode]}</Pill>}
             >
-              <BudgetMeter spent={data.spend.spentUsd} budget={data.spend.budgetUsd} />
+              <BudgetMeter
+                spent={data.spend.spentUsd}
+                budget={data.spend.budgetUsd}
+                warningPercent={data.spend.budgetWarningPercent}
+                criticalPercent={data.spend.budgetCriticalPercent}
+              />
             </Card>
 
             <Card title="Pipeline" icon={Activity}>
-              <PipelineHealth byStatus={data.renders.byStatus} stuckCount={data.renders.stuckCount} />
+              <PipelineHealth
+                byStatus={data.renders.byStatus}
+                stuckCount={data.renders.stuckCount}
+                stuckTimeoutMinutes={data.renders.stuckTimeoutMinutes}
+              />
             </Card>
           </div>
 
@@ -300,9 +309,11 @@ function AlertStrip({ alerts }: { alerts: AdminOverviewResponse["alerts"] }) {
 function PipelineHealth({
   byStatus,
   stuckCount,
+  stuckTimeoutMinutes,
 }: {
   byStatus: AdminOverviewResponse["renders"]["byStatus"];
   stuckCount: number;
+  stuckTimeoutMinutes: number;
 }) {
   const total = Object.values(byStatus).reduce((sum, count) => sum + count, 0) || 1;
   const rows: { key: keyof typeof byStatus; label: string; color: string }[] = [
@@ -339,7 +350,7 @@ function PipelineHealth({
       </ul>
       {stuckCount > 0 && (
         <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-          {stuckCount} stuck over 15 minutes
+          {stuckCount} stuck over {stuckTimeoutMinutes} minutes
         </p>
       )}
     </div>
@@ -360,9 +371,20 @@ function QuickAction({ to, label, detail }: { to: string; label: string; detail:
   );
 }
 
-function BudgetMeter({ spent, budget }: { spent: number; budget: number }) {
+function BudgetMeter({
+  spent,
+  budget,
+  warningPercent,
+  criticalPercent,
+}: {
+  spent: number;
+  budget: number;
+  warningPercent: number;
+  criticalPercent: number;
+}) {
   const ratio = budget > 0 ? Math.min(1, spent / budget) : 1;
-  const tone = ratio >= 0.9 ? "bg-rose-500" : ratio >= 0.7 ? "bg-glow" : "bg-accent-sheen";
+  const tone =
+    ratio >= criticalPercent / 100 ? "bg-rose-500" : ratio >= warningPercent / 100 ? "bg-glow" : "bg-accent-sheen";
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
@@ -382,7 +404,8 @@ function BudgetMeter({ spent, budget }: { spent: number; budget: number }) {
         <div className={`h-full rounded-full transition-all duration-500 ${tone}`} style={{ width: `${ratio * 100}%` }} />
       </div>
       <p className="mt-2 text-xs text-faint">
-        Estimated from model prices. Renders stop with “budget used up” once spend reaches the cap.
+        Alerts at {warningPercent}% / {criticalPercent}%. Renders stop with “budget used up” once spend reaches the
+        cap.
       </p>
     </div>
   );

@@ -59,6 +59,12 @@ export interface RenderBudgetResponse {
   pricing: Record<RenderRoute, number>;
   spentUsd: number;
   budgetUsd: number;
+  /** Credits charged per render/edit image (from admin settings). */
+  creditsPerImage: number;
+  /** When true, non-admin renders are paused. */
+  maintenanceRenders: boolean;
+  /** Optional operator message while maintenance is on. */
+  maintenanceMessage: string | null;
 }
 
 /** Optional generation knobs, mapped onto model inputs by the API's model registry. */
@@ -194,6 +200,12 @@ export interface MeResponse {
   /** Spendable credits; 1 credit = 1 image. Admins aren't charged. */
   creditBalance: number;
   disabled: boolean;
+  /** Credits charged per render/edit image (from admin settings). */
+  creditsPerImage: number;
+  /** When true, non-admin renders are paused. */
+  maintenanceRenders: boolean;
+  /** Optional operator message while maintenance is on. */
+  maintenanceMessage: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -332,6 +344,7 @@ export interface AdminRendersResponse {
     byStatus: Record<RenderStatus, number>;
     inFlight: number;
     stuckCount: number;
+    stuckTimeoutMinutes: number;
     failed: number;
     spentUsd: number;
     /** Distinct models with render counts, highest first (for filter chips). */
@@ -367,13 +380,16 @@ export interface AdminOverviewResponse {
     today: number;
     byStatus: Record<RenderStatus, number>;
     failureRate: number;
-    /** Renders stuck in pending/processing longer than 15 minutes (UTC). */
+    /** Renders stuck in pending/processing longer than stuckTimeoutMinutes (UTC). */
     stuckCount: number;
+    stuckTimeoutMinutes: number;
   };
   spend: {
     mode: RenderEngineMode;
     spentUsd: number;
     budgetUsd: number;
+    budgetWarningPercent: number;
+    budgetCriticalPercent: number;
     byModel: { model: string; renders: number; spentUsd: number }[];
   };
   /** Credits currently held by users, and all-time granted/spent. */
@@ -402,7 +418,7 @@ export interface AdminOverviewResponse {
   }[];
   /** Derived operator alerts from live thresholds. */
   alerts: {
-    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode";
+    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode" | "maintenance";
     severity: "warning" | "critical" | "info";
     message: string;
     href: string;
@@ -413,6 +429,16 @@ export interface AdminSettings {
   signupBonusCredits: number;
   /** Max renders per non-admin user per UTC day; null = unlimited. */
   dailyRenderLimit: number | null;
+  /** Max segmentations per non-admin user per UTC day; null = unlimited. */
+  dailySegmentLimit: number | null;
+  creditsPerImage: number;
+  creditsPerSelection: number;
+  maintenanceRenders: boolean;
+  maintenanceSegments: boolean;
+  maintenanceMessage: string | null;
+  budgetWarningPercent: number;
+  budgetCriticalPercent: number;
+  stuckTimeoutMinutes: number;
   /** Null = use the FAL_MODE env var. */
   falMode: RenderEngineMode | null;
   /** Null = use the FAL_BUDGET_USD env var. */
@@ -439,7 +465,22 @@ export interface AdminSettings {
 }
 
 export type AdminUpdateSettingsRequest = Partial<
-  Pick<AdminSettings, "signupBonusCredits" | "dailyRenderLimit" | "falMode" | "falBudgetUsd">
+  Pick<
+    AdminSettings,
+    | "signupBonusCredits"
+    | "dailyRenderLimit"
+    | "dailySegmentLimit"
+    | "creditsPerImage"
+    | "creditsPerSelection"
+    | "maintenanceRenders"
+    | "maintenanceSegments"
+    | "maintenanceMessage"
+    | "budgetWarningPercent"
+    | "budgetCriticalPercent"
+    | "stuckTimeoutMinutes"
+    | "falMode"
+    | "falBudgetUsd"
+  >
 >;
 
 export interface AdminProject {
@@ -544,6 +585,7 @@ export interface AdminSegmentationsResponse {
     byStatus: Record<SegmentationStatus, number>;
     pending: number;
     stuckCount: number;
+    stuckTimeoutMinutes: number;
     failed: number;
     spentUsd: number;
     models: { model: string; count: number }[];

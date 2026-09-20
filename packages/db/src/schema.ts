@@ -149,6 +149,24 @@ export const appSettings = pgTable(
     signupBonusCredits: integer("signup_bonus_credits").notNull().default(25),
     /** Max renders per non-admin user per UTC day; null = unlimited. */
     dailyRenderLimit: integer("daily_render_limit"),
+    /** Max segmentations per non-admin user per UTC day; null = unlimited. */
+    dailySegmentLimit: integer("daily_segment_limit"),
+    /** Credits charged per render/edit image. */
+    creditsPerImage: integer("credits_per_image").notNull().default(1),
+    /** Credits charged per automatic selection. */
+    creditsPerSelection: integer("credits_per_selection").notNull().default(1),
+    /** Pause new renders for non-admins. */
+    maintenanceRenders: boolean("maintenance_renders").notNull().default(false),
+    /** Pause new segmentations for non-admins. */
+    maintenanceSegments: boolean("maintenance_segments").notNull().default(false),
+    /** Optional message shown in studio when maintenance is on. */
+    maintenanceMessage: text("maintenance_message"),
+    /** Overview/settings budget warning threshold (percent of cap). */
+    budgetWarningPercent: integer("budget_warning_percent").notNull().default(70),
+    /** Overview/settings budget critical threshold (percent of cap). */
+    budgetCriticalPercent: integer("budget_critical_percent").notNull().default(90),
+    /** Minutes before pending/processing is considered stuck. */
+    stuckTimeoutMinutes: integer("stuck_timeout_minutes").notNull().default(15),
     falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
     falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -161,6 +179,19 @@ export const appSettings = pgTable(
       "app_settings_daily_limit_range",
       sql`${table.dailyRenderLimit} IS NULL OR ${table.dailyRenderLimit} BETWEEN 1 AND 10000`,
     ),
+    check(
+      "app_settings_daily_segment_limit_range",
+      sql`${table.dailySegmentLimit} IS NULL OR ${table.dailySegmentLimit} BETWEEN 1 AND 10000`,
+    ),
+    check("app_settings_credits_per_image_range", sql`${table.creditsPerImage} BETWEEN 0 AND 100`),
+    check("app_settings_credits_per_selection_range", sql`${table.creditsPerSelection} BETWEEN 0 AND 100`),
+    check("app_settings_budget_warning_range", sql`${table.budgetWarningPercent} BETWEEN 1 AND 99`),
+    check("app_settings_budget_critical_range", sql`${table.budgetCriticalPercent} BETWEEN 2 AND 100`),
+    check(
+      "app_settings_budget_thresholds_order",
+      sql`${table.budgetCriticalPercent} > ${table.budgetWarningPercent}`,
+    ),
+    check("app_settings_stuck_timeout_range", sql`${table.stuckTimeoutMinutes} BETWEEN 1 AND 1440`),
     check("app_settings_fal_mode_values", sql`${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
     check("app_settings_budget_range", sql`${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
   ],

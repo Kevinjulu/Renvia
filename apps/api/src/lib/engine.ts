@@ -50,6 +50,9 @@ export async function getBudget(env: Env, db: Database): Promise<RenderBudgetRes
     pricing: pricingFor(mode),
     spentUsd: (await spentMicros(db)) / MICROS_PER_USD,
     budgetUsd: effectiveBudgetUsd(env, settings),
+    creditsPerImage: settings.creditsPerImage,
+    maintenanceRenders: settings.maintenanceRenders,
+    maintenanceMessage: settings.maintenanceMessage,
   };
 }
 
