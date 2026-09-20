@@ -13,10 +13,12 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton } from "../components/ui";
+import { EmptyState, ErrorNote, Pagination, Pill, Skeleton } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatCreditReason } from "../lib/labels";
 import { formatDateTime, formatDay, formatNumber, formatRelative } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE_SIZE = 30;
@@ -106,7 +108,7 @@ export function CreditsPage() {
 
   return (
     <>
-      <PageHeader title="Credits" description="Money of the product — what’s outstanding, what flowed in, what went out." />
+      <PageHero title={navForPath("/credits").title} description={navForPath("/credits").description} image={navForPath("/credits").banner} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

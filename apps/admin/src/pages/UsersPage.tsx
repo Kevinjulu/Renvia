@@ -14,10 +14,12 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { Button, Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
+import { Button, Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { RoleChangeModal } from "../components/RoleChangeModal";
 import { ApiError, useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 
@@ -137,9 +139,11 @@ export function UsersPage() {
     }
   };
 
+  const nav = navForPath("/users");
+
   return (
     <>
-      <PageHeader title="Users" description="Everyone who has signed in to the studio." />
+      <PageHero title={nav.title} description={nav.description} image={nav.banner} />
 
       {actionError && (
         <div className="mb-4">

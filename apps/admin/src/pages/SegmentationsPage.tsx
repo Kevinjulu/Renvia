@@ -24,9 +24,11 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
+import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE_SIZE = 25;
@@ -131,7 +133,7 @@ export function SegmentationsPage() {
 
   return (
     <>
-      <PageHeader title="Segmentations" description="Automatic selections from edit mode — prompt or click, with cost and failures." />
+      <PageHero title={navForPath("/segmentations").title} description={navForPath("/segmentations").description} image={navForPath("/segmentations").banner} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

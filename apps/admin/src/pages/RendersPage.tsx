@@ -17,9 +17,11 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
+import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatRelative, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE_SIZE = 25;
@@ -126,7 +128,7 @@ export function RendersPage() {
 
   return (
     <>
-      <PageHeader title="Renders" description="Pipeline triage — failures, stuck jobs, spend, and full render detail." />
+      <PageHero title={navForPath("/renders").title} description={navForPath("/renders").description} image={navForPath("/renders").banner} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

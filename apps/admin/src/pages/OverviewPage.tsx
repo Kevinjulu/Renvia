@@ -17,9 +17,11 @@ import {
   Wallet,
 } from "lucide-react";
 import { DailyChart } from "../components/DailyChart";
-import { Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard } from "../components/ui";
+import { Card, EmptyState, ErrorNote, Pill, Skeleton, StatCard } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatModel, formatNumber, formatPercent, formatRelative, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const MODE_LABEL = { mock: "Mock (free)", dev: "Dev (cheap model)", prod: "Production" } as const;
@@ -27,26 +29,28 @@ const MODE_LABEL = { mock: "Mock (free)", dev: "Dev (cheap model)", prod: "Produ
 export function OverviewPage() {
   const api = useAdminApi();
   const { data, error, loading, reload } = useLoad(() => api.getOverview(), [api]);
+  const nav = navForPath("/");
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
 
   return (
     <>
-      <PageHeader
-        title="Overview"
-        description="Usage, spend and pipeline health across the workspace."
+      <PageHero
+        title={nav.title}
+        description={nav.description}
+        image={nav.banner}
         actions={
           data ? (
             <div className="flex flex-wrap gap-2">
               <Link
                 to="/renders?status=failed"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-hairline bg-canvas px-3.5 py-2 text-sm font-medium text-primary shadow-card transition hover:border-hairline-strong hover:bg-surface"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
               >
                 Failed renders
               </Link>
               <Link
                 to="/settings"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-sm font-medium text-white transition hover:bg-ink-800"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2 text-sm font-medium text-ink-950 transition hover:bg-white/90"
               >
                 <Settings size={15} strokeWidth={2} />
                 Settings

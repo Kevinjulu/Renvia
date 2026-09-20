@@ -12,9 +12,11 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton } from "../components/ui";
+import { EmptyState, ErrorNote, Pagination, Pill, Skeleton } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatDay, formatNumber, formatRelative } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE_SIZE = 30;
@@ -113,7 +115,7 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit" description="Who changed what — credit grants, account updates, and settings." />
+      <PageHero title={navForPath("/audit").title} description={navForPath("/audit").description} image={navForPath("/audit").banner} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

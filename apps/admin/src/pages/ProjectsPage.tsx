@@ -17,9 +17,11 @@ import {
   X,
 } from "lucide-react";
 import { RenderTable } from "../components/RenderTable";
-import { Card, EmptyState, ErrorNote, PageHeader, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
+import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE_SIZE = 25;
@@ -112,7 +114,7 @@ export function ProjectsPage() {
 
   return (
     <>
-      <PageHeader title="Projects" description="Studio projects with owner, spend, and render health." />
+      <PageHero title={navForPath("/projects").title} description={navForPath("/projects").description} image={navForPath("/projects").banner} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

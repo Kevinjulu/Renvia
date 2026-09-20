@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Coins, Cpu, Layers, PauseCircle, ScrollText, Settings, Shield, Timer, XCircle } from "lucide-react";
 import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode, RenderRoute } from "@renvia/types";
-import { Button, EmptyState, ErrorNote, PageHeader, Pill, Skeleton } from "../components/ui";
+import { Button, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
+import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/format";
+import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const MODES: { value: RenderEngineMode | ""; label: string; hint: string }[] = [
@@ -228,15 +230,18 @@ export function SettingsPage() {
   const meterTone = ratio >= criticalRatio ? "bg-rose-500" : ratio >= warningRatio ? "bg-[#c45c26]" : "bg-emerald-500";
   const maintenanceOn = data.maintenanceRenders || data.maintenanceSegments;
 
+  const nav = navForPath("/settings");
+
   return (
     <>
-      <PageHeader
-        title="Settings"
-        description="Control credits, limits, maintenance, and spend — changes apply immediately."
+      <PageHero
+        title={nav.title}
+        description={nav.description}
+        image={nav.banner}
         actions={
           <Link
             to="/audit?action=settings.update"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-hairline bg-canvas px-3.5 py-2 text-sm font-medium text-primary shadow-card transition hover:bg-surface"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
           >
             <ScrollText size={15} />
             Audit trail

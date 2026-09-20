@@ -1,11 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { SignIn, useAuth, useClerk, UserButton } from "@clerk/react";
-import type { LucideIcon } from "lucide-react";
-import { FolderKanban, ImageIcon, LayoutDashboard, Menu, Scan, ScrollText, Settings, Users, Wallet, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import type { MeResponse } from "@renvia/types";
+import { Logo } from "./components/brand/Logo";
 import { AppLoader } from "./components/loading/AppLoader";
 import { useAdminApi } from "./lib/api";
+import { ADMIN_NAV, navForPath } from "./lib/nav";
 import { AdminContext } from "./lib/useAdmin";
 import { useLoad } from "./lib/useLoad";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -26,7 +27,7 @@ export default function App() {
     return (
       <div className="grid min-h-screen place-items-center bg-ink-radial px-4">
         <div className="flex flex-col items-center gap-8">
-          <Brand tone="light" />
+          <Logo wordmarkClassName="text-xl text-white" />
           <SignIn routing="hash" />
         </div>
       </div>
@@ -59,7 +60,7 @@ function AdminGate() {
     return (
       <FullScreen>
         <div className="max-w-sm rounded-2xl border border-hairline bg-canvas p-8 text-center shadow-soft">
-          <Brand />
+          <Logo />
           <h1 className="mt-6 text-lg font-semibold">Access denied</h1>
           <p className="mt-2 text-sm text-muted">{me.email} isn't an admin. Sign in with an admin account to continue.</p>
           <button
@@ -94,33 +95,17 @@ function AdminGate() {
   );
 }
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: LucideIcon;
-  end: boolean;
-  title: string;
-}
-
-const NAV: NavItem[] = [
-  { to: "/", label: "Overview", icon: LayoutDashboard, end: true, title: "Overview" },
-  { to: "/users", label: "Users", icon: Users, end: false, title: "Users" },
-  { to: "/projects", label: "Projects", icon: FolderKanban, end: false, title: "Projects" },
-  { to: "/renders", label: "Renders", icon: ImageIcon, end: false, title: "Renders" },
-  { to: "/segmentations", label: "Segmentations", icon: Scan, end: false, title: "Segmentations" },
-  { to: "/credits", label: "Credits", icon: Wallet, end: false, title: "Credits" },
-  { to: "/audit", label: "Audit", icon: ScrollText, end: false, title: "Audit" },
-  { to: "/settings", label: "Settings", icon: Settings, end: false, title: "Settings" },
-];
-
 function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const active = [...NAV].reverse().find((item) => (item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)));
+  const active = navForPath(location.pathname);
+
+  useEffect(() => {
+    document.title = `${active.title} · Renvia Admin`;
+  }, [active.title]);
 
   return (
     <div className="min-h-screen bg-surface lg:flex">
-      {/* Mobile backdrop */}
       {open && <div className="fixed inset-0 z-30 bg-ink-950/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <Sidebar me={me} open={open} onClose={() => setOpen(false)} />
@@ -137,7 +122,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
           </button>
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Renvia Admin</p>
-            <h2 className="truncate text-[15px] font-semibold text-primary">{active?.title ?? "Overview"}</h2>
+            <h2 className="truncate text-[15px] font-semibold text-primary">{active.title}</h2>
           </div>
           <div className="ml-auto flex items-center gap-3 lg:hidden">
             <UserButton />
@@ -155,58 +140,75 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {
   return (
     <aside
-      className={`ink-scroll fixed left-0 top-0 z-40 flex h-screen w-[264px] shrink-0 flex-col overflow-y-auto bg-ink-radial px-4 py-5 transition-transform duration-300 lg:sticky lg:z-0 lg:translate-x-0 ${
+      className={`ink-scroll fixed left-0 top-0 z-40 flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-ink-950 transition-transform duration-300 lg:sticky lg:z-0 lg:translate-x-0 ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex items-center justify-between px-2">
-        <Brand tone="light" />
-        <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-800 hover:text-white lg:hidden" aria-label="Close menu">
-          <X size={18} />
-        </button>
+      {/* Photo header */}
+      <div className="relative shrink-0 overflow-hidden">
+        <img src="/banners/exterior-2.jpg" alt="" className="h-36 w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-ink-950/30 via-ink-950/55 to-ink-950" />
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
+          <Logo wordmarkClassName="text-[15px] text-white tracking-[0.22em]" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 px-5 pb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">Operator console</p>
+          <p className="mt-1 text-sm font-medium text-white">Workspace control</p>
+        </div>
       </div>
 
-      <p className="mb-2 mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Menu</p>
-      <nav className="flex flex-col gap-1" aria-label="Admin sections">
-        {NAV.map((item) => (
+      <p className="mb-2 mt-5 px-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Navigate</p>
+      <nav className="flex flex-1 flex-col gap-0.5 px-3 pb-4" aria-label="Admin sections">
+        {ADMIN_NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
             onClick={onClose}
             className={({ isActive }) =>
-              `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                isActive ? "bg-ink-800 text-white shadow-lift" : "text-ink-300 hover:bg-ink-800/60 hover:text-white"
+              `group relative flex items-start gap-3 rounded-xl px-3 py-2.5 transition ${
+                isActive ? "bg-ink-800 text-white shadow-lift" : "text-ink-300 hover:bg-ink-800/55 hover:text-white"
               }`
             }
           >
             {({ isActive }) => (
               <>
-                {isActive && <span className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-accent-sheen" />}
-                <item.icon size={18} strokeWidth={2} className={isActive ? "text-white" : "text-ink-400 group-hover:text-white"} />
-                {item.label}
+                {isActive && <span className="absolute inset-y-2 left-0 w-1 rounded-full bg-accent-sheen" />}
+                <item.icon
+                  size={18}
+                  strokeWidth={2}
+                  className={`mt-0.5 shrink-0 ${isActive ? "text-white" : "text-ink-400 group-hover:text-white"}`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium leading-tight">{item.label}</span>
+                  <span className={`mt-0.5 block text-[11px] leading-snug ${isActive ? "text-ink-300" : "text-ink-500 group-hover:text-ink-400"}`}>
+                    {item.hint}
+                  </span>
+                </span>
               </>
             )}
           </NavLink>
         ))}
       </nav>
 
-      <div className="mt-auto flex items-center gap-3 border-t border-ink-700/70 pt-4">
-        <UserButton appearance={{ elements: { avatarBox: "h-8 w-8" } }} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-white">{me.email}</p>
-          <p className="text-[10px] text-ink-400">Signed in as admin</p>
+      <div className="mt-auto border-t border-ink-800 bg-ink-950/80 p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-ink-700/80 bg-ink-900/80 px-3 py-2.5">
+          <UserButton appearance={{ elements: { avatarBox: "h-8 w-8" } }} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-white">{me.email}</p>
+            <p className="text-[10px] text-ink-400">Signed in as admin</p>
+          </div>
         </div>
       </div>
     </aside>
-  );
-}
-
-function Brand({ tone = "dark" }: { tone?: "dark" | "light" }) {
-  return (
-    <p className={`text-sm font-semibold tracking-tight ${tone === "light" ? "text-white" : "text-primary"}`}>
-      Renvia <span className={`font-normal ${tone === "light" ? "text-ink-300" : "text-muted"}`}>Admin</span>
-    </p>
   );
 }
 
