@@ -478,9 +478,21 @@ export interface AdminCreditEntry {
   createdAt: string;
 }
 
+export type AdminCreditDirection = "in" | "out";
+export type AdminCreditSort = "createdAt" | "amount";
+export type AdminCreditOrder = "asc" | "desc";
+
 export interface AdminCreditsResponse {
   entries: AdminCreditEntry[];
   total: number;
+  summary: {
+    outstanding: number;
+    granted: number;
+    spent: number;
+    /** Net ledger movement in the last 7 days (grants − spends). */
+    netLast7Days: number;
+    byReason: { reason: CreditLedgerReason; count: number; totalAmount: number }[];
+  };
 }
 
 export type SegmentationStatus = "pending" | "succeeded" | "failed";

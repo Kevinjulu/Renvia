@@ -4,6 +4,9 @@ import type {
   AdminAuditResponse,
   AdminBulkGrantCreditsRequest,
   AdminBulkGrantCreditsResponse,
+  AdminCreditDirection,
+  AdminCreditOrder,
+  AdminCreditSort,
   AdminCreditsResponse,
   AdminGrantCreditsRequest,
   AdminOverviewResponse,
@@ -132,8 +135,16 @@ export function useAdminApi() {
         offset?: number;
       }) => request<AdminProjectsResponse>(getToken, `/admin/projects${query(params)}`),
       getProject: (id: string) => request<AdminProjectDetailResponse>(getToken, `/admin/projects/${id}`),
-      listCredits: (params: { reason?: CreditLedgerReason; userId?: string; limit?: number; offset?: number }) =>
-        request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
+      listCredits: (params: {
+        reason?: CreditLedgerReason;
+        direction?: AdminCreditDirection;
+        search?: string;
+        userId?: string;
+        sort?: AdminCreditSort;
+        order?: AdminCreditOrder;
+        limit?: number;
+        offset?: number;
+      }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       listSegmentations: (params: {
         status?: SegmentationStatus;
         mode?: AdminSegmentationMode;
