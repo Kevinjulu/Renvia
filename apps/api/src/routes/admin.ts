@@ -1324,6 +1324,11 @@ admin.get("/audit", async (c) => {
 
   const actor = schema.users;
   const targetUser = alias(schema.users, "audit_target");
+  /** target_id is text (user uuids or "1" for settings) — compare as text to avoid uuid=text errors. */
+  const targetJoinOn = and(
+    eq(schema.adminEvents.targetType, "user"),
+    sql`${schema.adminEvents.targetId} = ${targetUser.id}::text`,
+  );
 
   const filters: SQL[] = [];
   if (action) filters.push(eq(schema.adminEvents.action, action));
@@ -1341,25 +1346,25 @@ admin.get("/audit", async (c) => {
   }
   const where = filters.length ? and(...filters) : undefined;
 
+  // Only join the target user when searching by email; otherwise keep the list query simple.
+  const listBase = db
+    .select({
+      event: schema.adminEvents,
+      actorEmail: actor.email,
+    })
+    .from(schema.adminEvents)
+    .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id));
+  const listQuery = search ? listBase.leftJoin(targetUser, targetJoinOn) : listBase;
+
+  const countBase = db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(schema.adminEvents)
+    .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id));
+  const countQuery = search ? countBase.leftJoin(targetUser, targetJoinOn) : countBase;
+
   const [rows, [count], [totals], actionRows, actorRows, [lastSettings]] = await Promise.all([
-    db
-      .select({
-        event: schema.adminEvents,
-        actorEmail: actor.email,
-      })
-      .from(schema.adminEvents)
-      .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id))
-      .leftJoin(targetUser, and(eq(schema.adminEvents.targetType, "user"), eq(schema.adminEvents.targetId, targetUser.id)))
-      .where(where)
-      .orderBy(desc(schema.adminEvents.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(schema.adminEvents)
-      .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id))
-      .leftJoin(targetUser, and(eq(schema.adminEvents.targetType, "user"), eq(schema.adminEvents.targetId, targetUser.id)))
-      .where(where),
+    listQuery.where(where).orderBy(desc(schema.adminEvents.createdAt)).limit(limit).offset(offset),
+    countQuery.where(where),
     db
       .select({
         total: sql<number>`count(*)::int`,
