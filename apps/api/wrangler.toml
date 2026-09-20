@@ -13,4 +13,6 @@ bucket_name = "renvia-uploads"
 R2_ACCOUNT_ID = ""
 R2_BUCKET_NAME = "renvia-uploads"
 R2_PUBLIC_BASE_URL = ""
-ALLOWED_ORIGINS = "http://localhost:5173"
+# Comma-separated. Must include every studio/admin origin that calls the API
+# (CORS + Clerk azp). Keep in sync with the Vercel ALLOWED_ORIGINS env var.
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:5174,https://renvia-studio.vercel.app,https://renvia-admin.vercel.app"
