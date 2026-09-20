@@ -2,6 +2,8 @@ import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
   AdminAuditResponse,
+  AdminBulkGrantCreditsRequest,
+  AdminBulkGrantCreditsResponse,
   AdminCreditsResponse,
   AdminGrantCreditsRequest,
   AdminOverviewResponse,
@@ -13,6 +15,8 @@ import type {
   AdminUpdateUserRequest,
   AdminUser,
   AdminUserDetailResponse,
+  AdminUserOrder,
+  AdminUserSort,
   AdminUsersResponse,
   CreditLedgerReason,
   MeResponse,
@@ -69,11 +73,21 @@ export function useAdminApi() {
     () => ({
       getMe: () => request<MeResponse>(getToken, "/me"),
       getOverview: () => request<AdminOverviewResponse>(getToken, "/admin/overview"),
-      listUsers: (params: { search?: string; limit?: number; offset?: number }) =>
-        request<AdminUsersResponse>(getToken, `/admin/users${query(params)}`),
+      listUsers: (params: {
+        search?: string;
+        role?: "user" | "admin";
+        status?: "active" | "disabled";
+        balance?: "low" | "zero";
+        sort?: AdminUserSort;
+        order?: AdminUserOrder;
+        limit?: number;
+        offset?: number;
+      }) => request<AdminUsersResponse>(getToken, `/admin/users${query(params)}`),
       getUser: (id: string) => request<AdminUserDetailResponse>(getToken, `/admin/users/${id}`),
       adjustCredits: (id: string, body: AdminGrantCreditsRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify(body) }),
+      bulkGrantCredits: (body: AdminBulkGrantCreditsRequest) =>
+        request<AdminBulkGrantCreditsResponse>(getToken, "/admin/users/bulk-credits", { method: "POST", body: JSON.stringify(body) }),
       updateUser: (id: string, body: AdminUpdateUserRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
       listRenders: (params: { status?: RenderStatus; userId?: string; limit?: number; offset?: number }) =>

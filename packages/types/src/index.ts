@@ -267,6 +267,27 @@ export interface AdminUser {
 export interface AdminUsersResponse {
   users: AdminUser[];
   total: number;
+  summary: {
+    total: number;
+    admins: number;
+    disabled: number;
+    /** Non-admin users with fewer than 5 credits. */
+    lowBalance: number;
+  };
+}
+
+export type AdminUserSort = "createdAt" | "lastRenderAt" | "creditBalance" | "renderCount" | "spentUsd";
+export type AdminUserOrder = "asc" | "desc";
+
+export interface AdminBulkGrantCreditsRequest {
+  userIds: string[];
+  /** Positive credits to grant to each selected user. */
+  amount: number;
+  note: string;
+}
+
+export interface AdminBulkGrantCreditsResponse {
+  updated: number;
 }
 
 export interface AdminLedgerEntry extends CreditLedgerEntry {

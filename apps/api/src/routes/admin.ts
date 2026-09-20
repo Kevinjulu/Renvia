@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { and, desc, eq, gte, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { createDb, schema, type Database } from "@renvia/db";
 import type {
   AdminAuditAction,
   AdminAuditEvent,
+  AdminBulkGrantCreditsResponse,
   AdminCreditEntry,
   AdminLedgerEntry,
   AdminOverviewResponse,
@@ -15,6 +16,8 @@ import type {
   AdminSegmentation,
   AdminSettings,
   AdminUser,
+  AdminUserOrder,
+  AdminUserSort,
   CreditLedgerReason,
   RenderStatus,
   SegmentationStatus,
@@ -379,13 +382,126 @@ admin.get("/users", async (c) => {
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const search = c.req.query("search")?.trim();
-  const where = search ? ilike(schema.users.email, `%${search.replace(/[%_\\]/g, "\\$&")}%`) : undefined;
+  const role = z.enum(["user", "admin"]).optional().parse(c.req.query("role") || undefined);
+  const status = z.enum(["active", "disabled"]).optional().parse(c.req.query("status") || undefined);
+  const balance = z.enum(["low", "zero"]).optional().parse(c.req.query("balance") || undefined);
+  const sort = z
+    .enum(["createdAt", "lastRenderAt", "creditBalance", "renderCount", "spentUsd"])
+    .default("createdAt")
+    .parse(c.req.query("sort") || "createdAt") as AdminUserSort;
+  const order = z.enum(["asc", "desc"]).default("desc").parse(c.req.query("order") || "desc") as AdminUserOrder;
 
-  const [rows, [count]] = await Promise.all([
-    selectAdminUsers(db).where(where).orderBy(desc(schema.users.createdAt)).limit(limit).offset(offset),
+  const filters: SQL[] = [];
+  if (search) filters.push(ilike(schema.users.email, `%${search.replace(/[%_\\]/g, "\\$&")}%`));
+  if (role) filters.push(eq(schema.users.role, role));
+  if (status === "active") filters.push(eq(schema.users.disabled, false));
+  if (status === "disabled") filters.push(eq(schema.users.disabled, true));
+  if (balance === "low") {
+    filters.push(and(eq(schema.users.role, "user"), sql`${schema.users.creditBalance} < 5`)!);
+  }
+  if (balance === "zero") {
+    filters.push(and(eq(schema.users.role, "user"), eq(schema.users.creditBalance, 0))!);
+  }
+  const where = filters.length ? and(...filters) : undefined;
+
+  const stats = userStats(db);
+  const direction = order === "asc" ? asc : desc;
+  const orderBy =
+    sort === "creditBalance"
+      ? direction(schema.users.creditBalance)
+      : sort === "renderCount"
+        ? direction(sql`coalesce(${stats.renderCount}, 0)`)
+        : sort === "spentUsd"
+          ? direction(sql`coalesce(${stats.spentMicros}, 0)`)
+          : sort === "lastRenderAt"
+            ? direction(stats.lastRenderAt)
+            : direction(schema.users.createdAt);
+
+  const [rows, [count], [summary]] = await Promise.all([
+    db
+      .select({
+        id: schema.users.id,
+        clerkId: schema.users.clerkId,
+        email: schema.users.email,
+        role: schema.users.role,
+        creditBalance: schema.users.creditBalance,
+        disabled: schema.users.disabled,
+        createdAt: schema.users.createdAt,
+        renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
+        spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,
+        lastRenderAt: stats.lastRenderAt,
+      })
+      .from(schema.users)
+      .leftJoin(stats, eq(stats.userId, schema.users.id))
+      .where(where)
+      .orderBy(orderBy)
+      .limit(limit)
+      .offset(offset),
     db.select({ total: sql<number>`count(*)::int` }).from(schema.users).where(where),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        admins: sql<number>`count(*) filter (where ${schema.users.role} = 'admin')::int`,
+        disabled: sql<number>`count(*) filter (where ${schema.users.disabled})::int`,
+        lowBalance: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and ${schema.users.creditBalance} < 5)::int`,
+      })
+      .from(schema.users),
   ]);
-  return c.json({ users: rows.map(toAdminUser), total: count?.total ?? 0 });
+
+  return c.json({
+    users: rows.map(toAdminUser),
+    total: count?.total ?? 0,
+    summary: {
+      total: summary?.total ?? 0,
+      admins: summary?.admins ?? 0,
+      disabled: summary?.disabled ?? 0,
+      lowBalance: summary?.lowBalance ?? 0,
+    },
+  });
+});
+
+admin.post("/users/bulk-credits", async (c) => {
+  const db = c.get("db");
+  const adminUser = c.get("admin");
+  const body = z
+    .object({
+      userIds: z.array(z.string().uuid()).min(1).max(100),
+      amount: z.number().int().min(1).max(10_000),
+      note: z.string().trim().min(1).max(200),
+    })
+    .parse(await c.req.json());
+
+  const uniqueIds = [...new Set(body.userIds)];
+  const existing = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, uniqueIds));
+  if (existing.length === 0) return c.json({ error: "No matching users" }, 404);
+
+  for (const user of existing) {
+    await db.batch([
+      db
+        .update(schema.users)
+        .set({ creditBalance: sql`${schema.users.creditBalance} + ${body.amount}` })
+        .where(eq(schema.users.id, user.id)),
+      db.insert(schema.creditLedger).values({
+        userId: user.id,
+        amount: body.amount,
+        reason: "admin_grant",
+        note: body.note,
+        actorId: adminUser.id,
+      }),
+    ]);
+  }
+
+  await recordAdminEvent(db, {
+    actorId: adminUser.id,
+    action: "credits.adjust",
+    targetType: "users",
+    targetId: null,
+    summary: `Granted ${body.amount} credits to ${existing.length} users`,
+    detail: { amount: body.amount, note: body.note, userIds: existing.map((user) => user.id), emails: existing.map((user) => user.email) },
+  });
+
+  const response: AdminBulkGrantCreditsResponse = { updated: existing.length };
+  return c.json(response);
 });
 
 admin.get("/users/:id", async (c) => {
