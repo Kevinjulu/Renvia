@@ -317,7 +317,14 @@ export interface AdminUpdateUserRequest {
 
 export interface AdminOverviewResponse {
   users: { total: number; newLast7Days: number; disabled: number };
-  renders: { total: number; today: number; byStatus: Record<RenderStatus, number>; failureRate: number };
+  renders: {
+    total: number;
+    today: number;
+    byStatus: Record<RenderStatus, number>;
+    failureRate: number;
+    /** Renders stuck in pending/processing longer than 15 minutes (UTC). */
+    stuckCount: number;
+  };
   spend: {
     mode: RenderEngineMode;
     spentUsd: number;
@@ -329,6 +336,32 @@ export interface AdminOverviewResponse {
   /** Last 14 UTC days, oldest first. */
   daily: { date: string; renders: number; spentUsd: number }[];
   topUsers: { id: string; email: string; renders: number; spentUsd: number }[];
+  projects: { total: number; activeLast7Days: number };
+  segmentations: {
+    total: number;
+    today: number;
+    byStatus: Record<"pending" | "succeeded" | "failed", number>;
+    failureRate: number;
+    spentUsd: number;
+  };
+  /** Newest failed renders first — for triage on the Overview. */
+  recentFailures: {
+    id: string;
+    kind: "render" | "edit";
+    userId: string;
+    userEmail: string;
+    projectName: string;
+    errorMessage: string | null;
+    sourceImageUrl: string;
+    createdAt: string;
+  }[];
+  /** Derived operator alerts from live thresholds. */
+  alerts: {
+    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode";
+    severity: "warning" | "critical" | "info";
+    message: string;
+    href: string;
+  }[];
 }
 
 export interface AdminSettings {

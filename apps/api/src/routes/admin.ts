@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { and, desc, eq, gte, ilike, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { createDb, schema, type Database } from "@renvia/db";
@@ -146,7 +146,21 @@ admin.get("/overview", async (c) => {
   const settings = await getSettings(db);
   const startOfToday = sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`;
 
-  const [[users], statusRows, [today], modelRows, [credits], dailyRows, topRows] = await Promise.all([
+  const [
+    [users],
+    statusRows,
+    [today],
+    modelRows,
+    [credits],
+    dailyRows,
+    topRows,
+    [stuck],
+    [projects],
+    segStatusRows,
+    [segToday],
+    [segSpend],
+    failureRows,
+  ] = await Promise.all([
     db
       .select({
         total: sql<number>`count(*)::int`,
@@ -200,13 +214,102 @@ admin.get("/overview", async (c) => {
       .groupBy(schema.users.id, schema.users.email)
       .orderBy(desc(sql`count(${schema.renders.id})`))
       .limit(5),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.renders)
+      .where(
+        and(
+          inArray(schema.renders.status, ["pending", "processing"]),
+          sql`${schema.renders.updatedAt} < now() - interval '15 minutes'`,
+        ),
+      ),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        activeLast7Days: sql<number>`count(*) filter (where ${schema.projects.updatedAt} >= now() - interval '7 days')::int`,
+      })
+      .from(schema.projects),
+    db
+      .select({ status: schema.segmentations.status, count: sql<number>`count(*)::int` })
+      .from(schema.segmentations)
+      .groupBy(schema.segmentations.status),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.segmentations)
+      .where(gte(schema.segmentations.createdAt, startOfToday)),
+    db
+      .select({
+        spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint`,
+      })
+      .from(schema.segmentations)
+      .where(ne(schema.segmentations.status, "failed")),
+    selectAdminRenders(db)
+      .where(eq(schema.renders.status, "failed"))
+      .orderBy(desc(schema.renders.createdAt))
+      .limit(8),
   ]);
 
   const byStatus: Record<RenderStatus, number> = { pending: 0, processing: 0, succeeded: 0, failed: 0 };
   for (const row of statusRows) byStatus[row.status] = row.count;
   const totalRenders = Object.values(byStatus).reduce((sum, count) => sum + count, 0);
   const finished = byStatus.succeeded + byStatus.failed;
+  const failureRate = finished > 0 ? byStatus.failed / finished : 0;
   const spentMicros = modelRows.reduce((sum, row) => sum + Number(row.spentMicros), 0);
+  const mode = effectiveEngineMode(c.env, settings);
+  const spentUsd = spentMicros / MICROS_PER_USD;
+  const budgetUsd = effectiveBudgetUsd(c.env, settings);
+  const budgetRatio = budgetUsd > 0 ? spentUsd / budgetUsd : 0;
+  const stuckCount = stuck?.count ?? 0;
+
+  const segByStatus: Record<"pending" | "succeeded" | "failed", number> = { pending: 0, succeeded: 0, failed: 0 };
+  for (const row of segStatusRows) {
+    if (row.status === "pending" || row.status === "succeeded" || row.status === "failed") {
+      segByStatus[row.status] = row.count;
+    }
+  }
+  const segTotal = Object.values(segByStatus).reduce((sum, count) => sum + count, 0);
+  const segFinished = segByStatus.succeeded + segByStatus.failed;
+
+  const alerts: AdminOverviewResponse["alerts"] = [];
+  if (budgetRatio >= 0.9) {
+    alerts.push({
+      id: "budget_critical",
+      severity: "critical",
+      message: `Budget nearly exhausted — ${formatUsdAlert(spentUsd)} of ${formatUsdAlert(budgetUsd)} used.`,
+      href: "/settings",
+    });
+  } else if (budgetRatio >= 0.7) {
+    alerts.push({
+      id: "budget_warning",
+      severity: "warning",
+      message: `Budget at ${Math.round(budgetRatio * 100)}% — ${formatUsdAlert(Math.max(0, budgetUsd - spentUsd))} remaining.`,
+      href: "/settings",
+    });
+  }
+  if (failureRate >= 0.1 && finished >= 5) {
+    alerts.push({
+      id: "failure_rate",
+      severity: "warning",
+      message: `Failure rate is ${Math.round(failureRate * 100)}% across ${finished} finished renders.`,
+      href: "/renders?status=failed",
+    });
+  }
+  if (stuckCount > 0) {
+    alerts.push({
+      id: "stuck_renders",
+      severity: "critical",
+      message: `${stuckCount} ${stuckCount === 1 ? "render has" : "renders have"} been pending or processing for over 15 minutes.`,
+      href: "/renders?status=processing",
+    });
+  }
+  if (mode !== "prod") {
+    alerts.push({
+      id: "engine_mode",
+      severity: "info",
+      message: `Render engine is in ${mode} mode — not charging production models.`,
+      href: "/settings",
+    });
+  }
 
   const response: AdminOverviewResponse = {
     users: { total: users!.total, newLast7Days: users!.newLast7Days, disabled: users!.disabled },
@@ -214,12 +317,13 @@ admin.get("/overview", async (c) => {
       total: totalRenders,
       today: today?.count ?? 0,
       byStatus,
-      failureRate: finished > 0 ? byStatus.failed / finished : 0,
+      failureRate,
+      stuckCount,
     },
     spend: {
-      mode: effectiveEngineMode(c.env, settings),
-      spentUsd: spentMicros / MICROS_PER_USD,
-      budgetUsd: effectiveBudgetUsd(c.env, settings),
+      mode,
+      spentUsd,
+      budgetUsd,
       byModel: modelRows.map((row) => ({
         model: row.model,
         renders: row.renders,
@@ -238,9 +342,36 @@ admin.get("/overview", async (c) => {
       renders: row.renders,
       spentUsd: Number(row.spentMicros) / MICROS_PER_USD,
     })),
+    projects: { total: projects?.total ?? 0, activeLast7Days: projects?.activeLast7Days ?? 0 },
+    segmentations: {
+      total: segTotal,
+      today: segToday?.count ?? 0,
+      byStatus: segByStatus,
+      failureRate: segFinished > 0 ? segByStatus.failed / segFinished : 0,
+      spentUsd: Number(segSpend?.spentMicros ?? 0) / MICROS_PER_USD,
+    },
+    recentFailures: failureRows.map((row) => {
+      const render = toAdminRender(row);
+      return {
+        id: render.id,
+        kind: render.kind,
+        userId: render.userId,
+        userEmail: render.userEmail,
+        projectName: render.projectName,
+        errorMessage: render.errorMessage,
+        sourceImageUrl: render.sourceImageUrl,
+        createdAt: render.createdAt,
+      };
+    }),
+    alerts,
   };
   return c.json(response);
 });
+
+/** Tiny formatter for alert copy — avoids pulling admin format helpers into the API. */
+function formatUsdAlert(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
 
 // ── Users ────────────────────────────────────────────────────────────────────────
 
