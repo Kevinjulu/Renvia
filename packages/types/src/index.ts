@@ -304,19 +304,43 @@ export interface AdminRender {
   creditsCharged: number;
   prompt: string;
   style: string;
+  resolution: string;
   viewLabel: string | null;
   sourceImageUrl: string;
   resultImageUrl: string | null;
   errorMessage: string | null;
+  falRequestId: string | null;
+  /** True when pending/processing longer than 15 minutes. */
+  stuck: boolean;
   createdAt: string;
+  updatedAt: string;
+  projectId: string;
   projectName: string;
   userId: string;
   userEmail: string;
 }
 
+export type AdminRenderKind = "render" | "edit";
+export type AdminRenderSort = "createdAt" | "costUsd" | "creditsCharged";
+export type AdminRenderOrder = "asc" | "desc";
+
 export interface AdminRendersResponse {
   renders: AdminRender[];
   total: number;
+  summary: {
+    total: number;
+    byStatus: Record<RenderStatus, number>;
+    inFlight: number;
+    stuckCount: number;
+    failed: number;
+    spentUsd: number;
+    /** Distinct models with render counts, highest first (for filter chips). */
+    models: { model: string; count: number }[];
+  };
+}
+
+export interface AdminRenderDetailResponse {
+  render: AdminRender;
 }
 
 export interface AdminUserDetailResponse {

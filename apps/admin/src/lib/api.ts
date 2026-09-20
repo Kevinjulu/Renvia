@@ -12,6 +12,10 @@ import type {
   AdminProjectOrder,
   AdminProjectSort,
   AdminProjectsResponse,
+  AdminRenderDetailResponse,
+  AdminRenderKind,
+  AdminRenderOrder,
+  AdminRenderSort,
   AdminRendersResponse,
   AdminSegmentationsResponse,
   AdminSettings,
@@ -94,8 +98,27 @@ export function useAdminApi() {
         request<AdminBulkGrantCreditsResponse>(getToken, "/admin/users/bulk-credits", { method: "POST", body: JSON.stringify(body) }),
       updateUser: (id: string, body: AdminUpdateUserRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-      listRenders: (params: { status?: RenderStatus; userId?: string; projectId?: string; limit?: number; offset?: number }) =>
-        request<AdminRendersResponse>(getToken, `/admin/renders${query(params)}`),
+      listRenders: (params: {
+        status?: RenderStatus;
+        kind?: AdminRenderKind;
+        stuck?: boolean;
+        search?: string;
+        model?: string;
+        userId?: string;
+        projectId?: string;
+        sort?: AdminRenderSort;
+        order?: AdminRenderOrder;
+        limit?: number;
+        offset?: number;
+      }) =>
+        request<AdminRendersResponse>(
+          getToken,
+          `/admin/renders${query({
+            ...params,
+            stuck: params.stuck ? "1" : undefined,
+          })}`,
+        ),
+      getRender: (id: string) => request<AdminRenderDetailResponse>(getToken, `/admin/renders/${id}`),
       listProjects: (params: {
         search?: string;
         health?: AdminProjectHealth;
