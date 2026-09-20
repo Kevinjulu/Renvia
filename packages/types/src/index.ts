@@ -540,6 +540,7 @@ export interface AdminSegmentationDetailResponse {
 }
 
 export type AdminAuditAction = "credits.adjust" | "user.update" | "settings.update";
+export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
   id: string;
@@ -556,4 +557,12 @@ export interface AdminAuditEvent {
 export interface AdminAuditResponse {
   events: AdminAuditEvent[];
   total: number;
+  summary: {
+    total: number;
+    last7Days: number;
+    byAction: Record<AdminAuditAction, number>;
+    uniqueActors: number;
+    lastSettingsAt: string | null;
+    actors: { id: string; email: string; count: number }[];
+  };
 }

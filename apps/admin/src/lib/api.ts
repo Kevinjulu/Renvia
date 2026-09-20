@@ -1,6 +1,8 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminAuditAction,
+  AdminAuditRange,
   AdminAuditResponse,
   AdminBulkGrantCreditsRequest,
   AdminBulkGrantCreditsResponse,
@@ -165,8 +167,14 @@ export function useAdminApi() {
           })}`,
         ),
       getSegmentation: (id: string) => request<AdminSegmentationDetailResponse>(getToken, `/admin/segmentations/${id}`),
-      listAudit: (params: { action?: string; limit?: number; offset?: number }) =>
-        request<AdminAuditResponse>(getToken, `/admin/audit${query(params)}`),
+      listAudit: (params: {
+        action?: AdminAuditAction;
+        actorId?: string;
+        range?: AdminAuditRange;
+        search?: string;
+        limit?: number;
+        offset?: number;
+      }) => request<AdminAuditResponse>(getToken, `/admin/audit${query(params)}`),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

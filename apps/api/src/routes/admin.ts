@@ -7,6 +7,7 @@ import { createDb, schema, type Database } from "@renvia/db";
 import type {
   AdminAuditAction,
   AdminAuditEvent,
+  AdminAuditRange,
   AdminBulkGrantCreditsResponse,
   AdminCreditDirection,
   AdminCreditEntry,
@@ -1296,32 +1297,8 @@ admin.get("/segmentations/:id", async (c) => {
 
 // ── Audit ────────────────────────────────────────────────────────────────────────
 
-admin.get("/audit", async (c) => {
-  const db = c.get("db");
-  const { limit, offset } = paging.parse(c.req.query());
-  const action = z
-    .enum(["credits.adjust", "user.update", "settings.update"])
-    .optional()
-    .parse(c.req.query("action") || undefined);
-
-  const where = action ? eq(schema.adminEvents.action, action) : undefined;
-
-  const [rows, [count]] = await Promise.all([
-    db
-      .select({
-        event: schema.adminEvents,
-        actorEmail: schema.users.email,
-      })
-      .from(schema.adminEvents)
-      .innerJoin(schema.users, eq(schema.adminEvents.actorId, schema.users.id))
-      .where(where)
-      .orderBy(desc(schema.adminEvents.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db.select({ total: sql<number>`count(*)::int` }).from(schema.adminEvents).where(where),
-  ]);
-
-  const events: AdminAuditEvent[] = rows.map(({ event, actorEmail }) => ({
+function toAdminAuditEvent(event: typeof schema.adminEvents.$inferSelect, actorEmail: string): AdminAuditEvent {
+  return {
     id: event.id,
     actorId: event.actorId,
     actorEmail,
@@ -1331,7 +1308,110 @@ admin.get("/audit", async (c) => {
     summary: event.summary,
     detail: event.detail,
     createdAt: event.createdAt.toISOString(),
-  }));
+  };
+}
 
-  return c.json({ events, total: count?.total ?? 0 });
+admin.get("/audit", async (c) => {
+  const db = c.get("db");
+  const { limit, offset } = paging.parse(c.req.query());
+  const action = z
+    .enum(["credits.adjust", "user.update", "settings.update"])
+    .optional()
+    .parse(c.req.query("action") || undefined) as AdminAuditAction | undefined;
+  const actorId = z.string().uuid().optional().parse(c.req.query("actorId") || undefined);
+  const range = z.enum(["today", "7d", "30d"]).optional().parse(c.req.query("range") || undefined) as AdminAuditRange | undefined;
+  const search = c.req.query("search")?.trim();
+
+  const actor = schema.users;
+  const targetUser = alias(schema.users, "audit_target");
+
+  const filters: SQL[] = [];
+  if (action) filters.push(eq(schema.adminEvents.action, action));
+  if (actorId) filters.push(eq(schema.adminEvents.actorId, actorId));
+  if (range === "today") {
+    filters.push(gte(schema.adminEvents.createdAt, sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`));
+  } else if (range === "7d") {
+    filters.push(gte(schema.adminEvents.createdAt, sql`now() - interval '7 days'`));
+  } else if (range === "30d") {
+    filters.push(gte(schema.adminEvents.createdAt, sql`now() - interval '30 days'`));
+  }
+  if (search) {
+    const escaped = `%${search.replace(/[%_\\]/g, "\\$&")}%`;
+    filters.push(or(ilike(schema.adminEvents.summary, escaped), ilike(actor.email, escaped), ilike(targetUser.email, escaped))!);
+  }
+  const where = filters.length ? and(...filters) : undefined;
+
+  const [rows, [count], [totals], actionRows, actorRows, [lastSettings]] = await Promise.all([
+    db
+      .select({
+        event: schema.adminEvents,
+        actorEmail: actor.email,
+      })
+      .from(schema.adminEvents)
+      .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id))
+      .leftJoin(targetUser, and(eq(schema.adminEvents.targetType, "user"), eq(schema.adminEvents.targetId, targetUser.id)))
+      .where(where)
+      .orderBy(desc(schema.adminEvents.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(schema.adminEvents)
+      .innerJoin(actor, eq(schema.adminEvents.actorId, actor.id))
+      .leftJoin(targetUser, and(eq(schema.adminEvents.targetType, "user"), eq(schema.adminEvents.targetId, targetUser.id)))
+      .where(where),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        last7Days: sql<number>`count(*) filter (where ${schema.adminEvents.createdAt} >= now() - interval '7 days')::int`,
+        uniqueActors: sql<number>`count(distinct ${schema.adminEvents.actorId})::int`,
+      })
+      .from(schema.adminEvents),
+    db
+      .select({
+        action: schema.adminEvents.action,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.adminEvents)
+      .groupBy(schema.adminEvents.action),
+    db
+      .select({
+        id: schema.users.id,
+        email: schema.users.email,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.adminEvents)
+      .innerJoin(schema.users, eq(schema.adminEvents.actorId, schema.users.id))
+      .groupBy(schema.users.id, schema.users.email)
+      .orderBy(desc(sql`count(*)`))
+      .limit(20),
+    db
+      .select({ createdAt: schema.adminEvents.createdAt })
+      .from(schema.adminEvents)
+      .where(eq(schema.adminEvents.action, "settings.update"))
+      .orderBy(desc(schema.adminEvents.createdAt))
+      .limit(1),
+  ]);
+
+  const byAction: Record<AdminAuditAction, number> = {
+    "credits.adjust": 0,
+    "user.update": 0,
+    "settings.update": 0,
+  };
+  for (const row of actionRows) {
+    if (row.action in byAction) byAction[row.action as AdminAuditAction] = row.count;
+  }
+
+  return c.json({
+    events: rows.map(({ event, actorEmail }) => toAdminAuditEvent(event, actorEmail)),
+    total: count?.total ?? 0,
+    summary: {
+      total: totals?.total ?? 0,
+      last7Days: totals?.last7Days ?? 0,
+      byAction,
+      uniqueActors: totals?.uniqueActors ?? 0,
+      lastSettingsAt: lastSettings?.createdAt ? lastSettings.createdAt.toISOString() : null,
+      actors: actorRows.map((row) => ({ id: row.id, email: row.email, count: row.count })),
+    },
+  });
 });
