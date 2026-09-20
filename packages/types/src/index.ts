@@ -420,7 +420,22 @@ export interface AdminSettings {
   /** What's actually in force after env fallbacks. */
   effectiveMode: RenderEngineMode;
   effectiveBudgetUsd: number;
+  /** Non-failed render spend against the fal budget. */
+  spentUsd: number;
+  /** Raw FAL_MODE env (no secrets) — used when falMode is null. */
+  envMode: string | null;
+  /** Raw FAL_BUDGET_USD env parsed as a number, or null if unset/invalid. */
+  envBudgetUsd: number | null;
   updatedAt: string;
+  updatedByEmail: string | null;
+  /** Newest settings.update audit events. */
+  recentChanges: {
+    id: string;
+    actorEmail: string;
+    summary: string;
+    detail: Record<string, unknown> | null;
+    createdAt: string;
+  }[];
 }
 
 export type AdminUpdateSettingsRequest = Partial<

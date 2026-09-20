@@ -798,7 +798,33 @@ admin.get("/renders/:id", async (c) => {
 
 // ── Settings ─────────────────────────────────────────────────────────────────────
 
-function toAdminSettings(env: Env, row: AppSettingsRow): AdminSettings {
+async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
+  const [[spend], updaterRows, changeRows] = await Promise.all([
+    db
+      .select({
+        spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
+      })
+      .from(schema.renders)
+      .where(ne(schema.renders.status, "failed")),
+    row.updatedBy
+      ? db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, row.updatedBy))
+      : Promise.resolve([] as { email: string }[]),
+    db
+      .select({
+        event: schema.adminEvents,
+        actorEmail: schema.users.email,
+      })
+      .from(schema.adminEvents)
+      .innerJoin(schema.users, eq(schema.adminEvents.actorId, schema.users.id))
+      .where(eq(schema.adminEvents.action, "settings.update"))
+      .orderBy(desc(schema.adminEvents.createdAt))
+      .limit(8),
+  ]);
+
+  const envMode = env.FAL_MODE?.trim() || null;
+  const envBudgetRaw = Number(env.FAL_BUDGET_USD);
+  const envBudgetUsd = Number.isFinite(envBudgetRaw) && envBudgetRaw > 0 ? envBudgetRaw : null;
+
   return {
     signupBonusCredits: row.signupBonusCredits,
     dailyRenderLimit: row.dailyRenderLimit,
@@ -806,12 +832,24 @@ function toAdminSettings(env: Env, row: AppSettingsRow): AdminSettings {
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
     effectiveMode: effectiveEngineMode(env, row),
     effectiveBudgetUsd: effectiveBudgetUsd(env, row),
+    spentUsd: Number(spend?.spentMicros ?? 0) / MICROS_PER_USD,
+    envMode,
+    envBudgetUsd,
     updatedAt: row.updatedAt.toISOString(),
+    updatedByEmail: updaterRows[0]?.email ?? null,
+    recentChanges: changeRows.map(({ event, actorEmail }) => ({
+      id: event.id,
+      actorEmail,
+      summary: event.summary,
+      detail: event.detail,
+      createdAt: event.createdAt.toISOString(),
+    })),
   };
 }
 
 admin.get("/settings", async (c) => {
-  return c.json(toAdminSettings(c.env, await getSettings(c.get("db"))));
+  const db = c.get("db");
+  return c.json(await toAdminSettings(c.env, db, await getSettings(db)));
 });
 
 const updateSettingsSchema = z
@@ -858,7 +896,7 @@ admin.put("/settings", async (c) => {
     },
   });
 
-  return c.json(toAdminSettings(c.env, updated!));
+  return c.json(await toAdminSettings(c.env, db, updated!));
 });
 
 // ── Projects ─────────────────────────────────────────────────────────────────────
