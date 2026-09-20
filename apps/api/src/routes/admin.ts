@@ -38,6 +38,7 @@ import type {
 import type { AuthVariables, Env } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
+import { modelsFor } from "../lib/models.js";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsRow } from "../lib/settings.js";
 
 type UserRow = typeof schema.users.$inferSelect;
@@ -837,13 +838,19 @@ admin.get("/renders/:id", async (c) => {
 // ── Settings ─────────────────────────────────────────────────────────────────────
 
 async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
-  const [[spend], updaterRows, changeRows] = await Promise.all([
+  const [[renderSpend], [segSpend], updaterRows, changeRows] = await Promise.all([
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
       })
       .from(schema.renders)
       .where(ne(schema.renders.status, "failed")),
+    db
+      .select({
+        spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint`,
+      })
+      .from(schema.segmentations)
+      .where(ne(schema.segmentations.status, "failed")),
     row.updatedBy
       ? db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, row.updatedBy))
       : Promise.resolve([] as { email: string }[]),
@@ -862,6 +869,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
   const envMode = env.FAL_MODE?.trim() || null;
   const envBudgetRaw = Number(env.FAL_BUDGET_USD);
   const envBudgetUsd = Number.isFinite(envBudgetRaw) && envBudgetRaw > 0 ? envBudgetRaw : null;
+  const effectiveMode = effectiveEngineMode(env, row);
 
   return {
     signupBonusCredits: row.signupBonusCredits,
@@ -877,11 +885,21 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     stuckTimeoutMinutes: row.stuckTimeoutMinutes,
     falMode: row.falMode,
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
-    effectiveMode: effectiveEngineMode(env, row),
+    effectiveMode,
     effectiveBudgetUsd: effectiveBudgetUsd(env, row),
-    spentUsd: Number(spend?.spentMicros ?? 0) / MICROS_PER_USD,
+    spentUsd: (Number(renderSpend?.spentMicros ?? 0) + Number(segSpend?.spentMicros ?? 0)) / MICROS_PER_USD,
     envMode,
     envBudgetUsd,
+    health: {
+      falKeyConfigured: Boolean(env.FAL_KEY?.trim()),
+      storageConfigured: Boolean(
+        env.NEON_STORAGE_ACCESS_KEY_ID?.trim() &&
+          env.NEON_STORAGE_SECRET_ACCESS_KEY?.trim() &&
+          env.NEON_STORAGE_ENDPOINT?.trim() &&
+          env.NEON_STORAGE_BUCKET?.trim(),
+      ),
+    },
+    models: modelsFor(effectiveMode),
     updatedAt: row.updatedAt.toISOString(),
     updatedByEmail: updaterRows[0]?.email ?? null,
     recentChanges: changeRows.map(({ event, actorEmail }) => ({

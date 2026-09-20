@@ -101,3 +101,11 @@ export function pricingFor(mode: RenderEngineMode): Record<RenderRoute, number> 
   const entries = Object.entries(MODELS[mode]).map(([route, model]) => [route, model.costMicros / 1_000_000]);
   return Object.fromEntries(entries) as Record<RenderRoute, number>;
 }
+
+/** Read-only model map for the admin Settings console. */
+export function modelsFor(mode: RenderEngineMode): { route: RenderRoute; modelId: string; costUsd: number }[] {
+  return (Object.keys(MODELS[mode]) as RenderRoute[]).map((route) => {
+    const model = MODELS[mode][route];
+    return { route, modelId: model.id, costUsd: model.costMicros / 1_000_000 };
+  });
+}

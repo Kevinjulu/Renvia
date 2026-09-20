@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import { renders } from "./routes/renders.js";
+import { segmentations } from "./routes/segmentations.js";
 import { uploads } from "./routes/uploads.js";
 import { falWebhook } from "./routes/webhooks/fal.js";
 import { me } from "./routes/me.js";
@@ -63,6 +64,7 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.get("/health", (c) => c.json({ status: "ok" }));
 
 app.route("/renders", renders);
+app.route("/segmentations", segmentations);
 app.route("/uploads", uploads);
 app.route("/webhooks/fal", falWebhook);
 app.route("/me", me);

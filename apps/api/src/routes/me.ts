@@ -20,7 +20,9 @@ me.get("/", async (c) => {
   return c.json({
     ...user,
     creditsPerImage: settings.creditsPerImage,
+    creditsPerSelection: settings.creditsPerSelection,
     maintenanceRenders: settings.maintenanceRenders,
+    maintenanceSegments: settings.maintenanceSegments,
     maintenanceMessage: settings.maintenanceMessage,
   });
 });

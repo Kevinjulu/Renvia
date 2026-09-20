@@ -32,14 +32,20 @@ function falClient(env: Env): FalClient {
 
 /**
  * Spend is global, not per user — it tracks the single fal account's credit.
- * Failed renders are excluded since fal doesn't bill requests that error out.
+ * Failed jobs are excluded since fal doesn't bill requests that error out.
  */
 async function spentMicros(db: Database): Promise<number> {
-  const [row] = await db
-    .select({ total: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::int` })
-    .from(schema.renders)
-    .where(ne(schema.renders.status, "failed"));
-  return row?.total ?? 0;
+  const [[renders], [segments]] = await Promise.all([
+    db
+      .select({ total: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::int` })
+      .from(schema.renders)
+      .where(ne(schema.renders.status, "failed")),
+    db
+      .select({ total: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::int` })
+      .from(schema.segmentations)
+      .where(ne(schema.segmentations.status, "failed")),
+  ]);
+  return (renders?.total ?? 0) + (segments?.total ?? 0);
 }
 
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {

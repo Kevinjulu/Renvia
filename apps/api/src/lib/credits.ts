@@ -54,6 +54,71 @@ export async function createChargedRender(
   }
 }
 
+type SegmentationRow = typeof schema.segmentations.$inferSelect;
+type SegmentationInsert = typeof schema.segmentations.$inferInsert;
+
+/**
+ * Creates a segmentation and charges for it in one transaction — same pattern as renders.
+ */
+export async function createChargedSegmentation(
+  db: Database,
+  userId: string,
+  credits: number,
+  values: Omit<SegmentationInsert, "id" | "creditsCharged" | "userId">,
+): Promise<SegmentationRow> {
+  const id = crypto.randomUUID();
+  if (credits === 0) {
+    const [created] = await db.insert(schema.segmentations).values({ ...values, id, userId }).returning();
+    return created!;
+  }
+
+  try {
+    const [, [created]] = await db.batch([
+      db
+        .update(schema.users)
+        .set({ creditBalance: sql`${schema.users.creditBalance} - ${credits}` })
+        .where(eq(schema.users.id, userId)),
+      db.insert(schema.segmentations).values({ ...values, id, userId, creditsCharged: credits }).returning(),
+      db.insert(schema.creditLedger).values({ userId, amount: -credits, reason: "segment", segmentationId: id }),
+    ]);
+    return created!;
+  } catch (error) {
+    if (isCheckViolation(error)) throw new InsufficientCreditsError();
+    throw error;
+  }
+}
+
+/**
+ * Returns a failed/empty segmentation's credits. Unique (segmentation_id, reason) keeps it idempotent.
+ */
+export async function refundSegmentationIfNeeded(
+  db: Database,
+  segmentation: SegmentationRow,
+): Promise<SegmentationRow> {
+  if (segmentation.creditsCharged <= 0) return segmentation;
+  if (segmentation.status !== "failed" && !(segmentation.status === "succeeded" && (segmentation.objectCount ?? 0) === 0)) {
+    return segmentation;
+  }
+
+  const [refund] = await db
+    .insert(schema.creditLedger)
+    .values({
+      userId: segmentation.userId,
+      amount: segmentation.creditsCharged,
+      reason: "segment_refund",
+      segmentationId: segmentation.id,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.creditLedger.id });
+  if (refund) {
+    await db
+      .update(schema.users)
+      .set({ creditBalance: sql`${schema.users.creditBalance} + ${segmentation.creditsCharged}` })
+      .where(eq(schema.users.id, segmentation.userId));
+  }
+  return segmentation;
+}
+
 /**
  * Returns a failed render's credits. The ledger's unique (render_id, reason) index makes
  * this idempotent: racing refreshes and the fal webhook can all call it, but only the

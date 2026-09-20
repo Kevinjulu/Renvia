@@ -31,8 +31,9 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "insufficient_credits") return "You're out of credits.";
   if (code === "budget_exhausted") return "Rendering is paused — the demo budget is used up.";
   if (code === "account_disabled") return "Your account is disabled. Contact support.";
-  if (code === "daily_limit_reached") return "You've reached today's render limit. Try again tomorrow.";
+  if (code === "daily_limit_reached") return "You've reached today's render or selection limit. Try again tomorrow.";
   if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
+  if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
   return null;
 }
 
@@ -122,6 +123,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
+  const isSegMaintenance = Boolean(me?.maintenanceSegments) && !isAdmin;
   const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
   const canSubmit = hasTarget && !isSubmitting && !isOverBudget && !isOutOfCredits && !isDisabled && !isMaintenance;
 
@@ -198,21 +200,48 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       setStatus(editRender ? "Paint over the area to change first, or switch to Auto select." : "Draw a selection on the image first, or switch to Auto select.");
       return;
     }
+    if (selectionMode === "auto" && !editPrompt.trim()) {
+      setStatus("Describe what to select (e.g. windows), or switch to Manual.");
+      return;
+    }
+    if (selectionMode === "auto" && isSegMaintenance) {
+      setStatus(me?.maintenanceMessage?.trim() || "Automatic selections are temporarily paused for maintenance.");
+      return;
+    }
 
     setIsSubmitting(true);
     setStatus(null);
     try {
       const edit: RenderEditSettings = { mode: editMode, action };
-      const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
-      const mask = !naturalSize
-        ? null
-        : editRender
-          ? await buildStrokeMask(renderStrokes, naturalSize)
-          : editSelection && editNode
-            ? await buildSelectionMask(editSelection, editNode, naturalSize)
-            : null;
-      if (mask) {
-        const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }));
+      let maskFile: File | null = null;
+
+      if (selectionMode === "auto") {
+        const segment = await apiClient.createSegmentation({
+          imageUrl: sourceImageUrl,
+          prompt: editPrompt.trim(),
+        });
+        void refreshAccount(apiClient.getMe);
+        if (!segment.objectCount || !segment.maskDataUrl) {
+          setStatus("Nothing matched that selection. Try a clearer description or switch to Manual.");
+          return;
+        }
+        const response = await fetch(segment.maskDataUrl);
+        const blob = await response.blob();
+        maskFile = new File([blob], "mask.png", { type: "image/png" });
+      } else {
+        const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
+        const mask = !naturalSize
+          ? null
+          : editRender
+            ? await buildStrokeMask(renderStrokes, naturalSize)
+            : editSelection && editNode
+              ? await buildSelectionMask(editSelection, editNode, naturalSize)
+              : null;
+        if (mask) maskFile = new File([mask], "mask.png", { type: "image/png" });
+      }
+
+      if (maskFile) {
+        const { publicUrl } = await apiClient.uploadImage(maskFile);
         edit.maskImageUrl = publicUrl;
       }
 

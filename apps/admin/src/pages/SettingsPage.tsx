@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Coins, Cpu, PauseCircle, ScrollText, Settings, Timer } from "lucide-react";
-import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode } from "@renvia/types";
+import { AlertTriangle, CheckCircle2, Coins, Cpu, Layers, PauseCircle, ScrollText, Settings, Shield, Timer, XCircle } from "lucide-react";
+import type { AdminSettings, AdminUpdateSettingsRequest, RenderEngineMode, RenderRoute } from "@renvia/types";
 import { Button, EmptyState, ErrorNote, PageHeader, Pill, Skeleton } from "../components/ui";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/format";
@@ -18,6 +18,14 @@ const MODE_LABEL: Record<RenderEngineMode, string> = {
   mock: "Mock (free)",
   dev: "Dev (cheap)",
   prod: "Production",
+};
+
+const ROUTE_LABEL: Record<RenderRoute, string> = {
+  photo: "Photo",
+  drawing: "Drawing",
+  references: "References",
+  edit: "Edit",
+  "edit-references": "Edit + references",
 };
 
 interface Draft {
@@ -348,7 +356,7 @@ export function SettingsPage() {
                 </Field>
                 <Field
                   label="Credits per selection"
-                  hint="Stored for automatic selection when that API ships."
+                  hint="Charged for each automatic selection (Auto select in studio)."
                   error={fieldErrors.creditsPerSelection}
                 >
                   <input
@@ -378,7 +386,7 @@ export function SettingsPage() {
               </Field>
               <Field
                 label="Daily segment limit per user"
-                hint="Leave blank for unlimited. Applied when segment create is wired."
+                hint="Leave blank for unlimited. Admins are exempt; failed selections don’t count."
                 error={fieldErrors.dailySegmentLimit}
               >
                 <input
@@ -407,7 +415,33 @@ export function SettingsPage() {
             <div className="space-y-5">
               <fieldset>
                 <legend className="text-sm font-medium text-primary">Render mode</legend>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2 mb-3 flex flex-wrap gap-2">
+                  {(
+                    [
+                      { id: "safe", label: "Safe", mode: "mock" as const, budget: "" },
+                      { id: "dev", label: "Dev", mode: "dev" as const, budget: "5" },
+                      { id: "prod", label: "Prod", mode: "prod" as const, budget: "50" },
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        update({
+                          falMode: preset.mode,
+                          falBudgetUsd: preset.budget,
+                          ...(preset.id === "safe"
+                            ? { maintenanceRenders: false, maintenanceSegments: false }
+                            : {}),
+                        })
+                      }
+                      className="rounded-lg border border-hairline bg-surface px-2.5 py-1 text-xs font-medium text-primary transition hover:border-blueprint hover:bg-blueprint-soft/40"
+                    >
+                      Preset: {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-2">
                   {MODES.map((mode) => (
                     <label
                       key={mode.label}
@@ -500,7 +534,7 @@ export function SettingsPage() {
               />
               <ToggleRow
                 label="Pause segmentations"
-                hint="Stored now; enforced when segment create is wired."
+                hint="Blocks automatic selections for non-admins."
                 checked={draft.maintenanceSegments}
                 onChange={(maintenanceSegments) => update({ maintenanceSegments })}
               />
@@ -545,6 +579,82 @@ export function SettingsPage() {
                 className={inputClass(fieldErrors.stuckTimeoutMinutes)}
               />
             </Field>
+          </section>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-4 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                <Shield size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">System health</h2>
+                <p className="text-xs text-muted">Read-only — no secrets shown</p>
+              </div>
+            </div>
+            <ul className="space-y-2.5">
+              <HealthRow ok={data.health.falKeyConfigured} label="fal API key" detail={data.health.falKeyConfigured ? "Configured" : "Missing FAL_KEY"} />
+              <HealthRow
+                ok={data.health.storageConfigured}
+                label="Object storage"
+                detail={data.health.storageConfigured ? "Neon storage configured" : "Missing storage env"}
+              />
+              <HealthRow
+                ok={Boolean(data.envMode)}
+                label="Env mode"
+                detail={data.envMode ?? "FAL_MODE unset (falls back to mock)"}
+              />
+              <HealthRow
+                ok={data.envBudgetUsd !== null}
+                label="Env budget"
+                detail={data.envBudgetUsd !== null ? formatUsd(data.envBudgetUsd) : "FAL_BUDGET_USD unset"}
+              />
+            </ul>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-4 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-surface-muted text-muted">
+                <Layers size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Models · {MODE_LABEL[data.effectiveMode]}</h2>
+                <p className="text-xs text-muted">Current mode pricing (read-only)</p>
+              </div>
+            </div>
+            <ul className="divide-y divide-hairline rounded-xl border border-hairline">
+              {data.models.map((model) => (
+                <li key={model.route} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
+                  <span>
+                    <span className="block font-medium text-primary">{ROUTE_LABEL[model.route]}</span>
+                    <span className="block truncate text-xs text-faint">{model.modelId}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted">{formatUsd(model.costUsd)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-faint">Automatic selections use fal SAM 3 at ~$0.005 when not in mock mode.</p>
+          </section>
+
+          <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
+            <div className="mb-4 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
+                <Shield size={17} />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Exemptions</h2>
+                <p className="text-xs text-muted">Who skips limits and charges</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-hairline bg-surface px-3.5 py-3 text-sm text-secondary">
+              <p className="font-medium text-primary">Admins</p>
+              <p className="mt-1 text-xs text-muted">
+                Exempt from daily render/segment limits, maintenance pauses, and credit charges. Their jobs still count
+                toward the global fal budget.
+              </p>
+            </div>
+            <p className="mt-3 text-xs text-faint">Per-role overrides aren’t editable yet — admins only for now.</p>
           </section>
         </div>
 
@@ -683,6 +793,22 @@ function ToggleRow({
         className="mt-1 size-4 accent-[#2F6FED]"
       />
     </label>
+  );
+}
+
+function HealthRow({ ok, label, detail }: { ok: boolean; label: string; detail: string }) {
+  return (
+    <li className="flex items-start gap-2.5 text-sm">
+      {ok ? (
+        <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
+      ) : (
+        <XCircle size={15} className="mt-0.5 shrink-0 text-rose-500" />
+      )}
+      <span>
+        <span className="block font-medium text-primary">{label}</span>
+        <span className="block text-xs text-muted">{detail}</span>
+      </span>
+    </li>
   );
 }
 

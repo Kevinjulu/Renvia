@@ -202,8 +202,12 @@ export interface MeResponse {
   disabled: boolean;
   /** Credits charged per render/edit image (from admin settings). */
   creditsPerImage: number;
+  /** Credits charged per automatic selection (from admin settings). */
+  creditsPerSelection: number;
   /** When true, non-admin renders are paused. */
   maintenanceRenders: boolean;
+  /** When true, non-admin automatic selections are paused. */
+  maintenanceSegments: boolean;
   /** Optional operator message while maintenance is on. */
   maintenanceMessage: string | null;
   createdAt: string;
@@ -446,12 +450,19 @@ export interface AdminSettings {
   /** What's actually in force after env fallbacks. */
   effectiveMode: RenderEngineMode;
   effectiveBudgetUsd: number;
-  /** Non-failed render spend against the fal budget. */
+  /** Non-failed render+segment spend against the fal budget. */
   spentUsd: number;
   /** Raw FAL_MODE env (no secrets) — used when falMode is null. */
   envMode: string | null;
   /** Raw FAL_BUDGET_USD env parsed as a number, or null if unset/invalid. */
   envBudgetUsd: number | null;
+  /** Read-only ops health — no secrets. */
+  health: {
+    falKeyConfigured: boolean;
+    storageConfigured: boolean;
+  };
+  /** Effective mode's model id + USD price per render route. */
+  models: { route: RenderRoute; modelId: string; costUsd: number }[];
   updatedAt: string;
   updatedByEmail: string | null;
   /** Newest settings.update audit events. */
