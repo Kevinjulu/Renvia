@@ -485,6 +485,10 @@ export interface AdminCreditsResponse {
 
 export type SegmentationStatus = "pending" | "succeeded" | "failed";
 
+export type AdminSegmentationMode = "prompt" | "click";
+export type AdminSegmentationSort = "createdAt" | "costUsd" | "creditsCharged" | "objectCount";
+export type AdminSegmentationOrder = "asc" | "desc";
+
 export interface AdminSegmentation {
   id: string;
   userId: string;
@@ -492,18 +496,35 @@ export interface AdminSegmentation {
   imageUrl: string;
   prompt: string | null;
   point: { x: number; y: number } | null;
+  /** prompt text selection vs click selection. */
+  mode: AdminSegmentationMode;
   status: SegmentationStatus;
   objectCount: number | null;
   model: string;
   costUsd: number;
   creditsCharged: number;
   errorMessage: string | null;
+  /** True when pending longer than 15 minutes. */
+  stuck: boolean;
   createdAt: string;
 }
 
 export interface AdminSegmentationsResponse {
   segmentations: AdminSegmentation[];
   total: number;
+  summary: {
+    total: number;
+    byStatus: Record<SegmentationStatus, number>;
+    pending: number;
+    stuckCount: number;
+    failed: number;
+    spentUsd: number;
+    models: { model: string; count: number }[];
+  };
+}
+
+export interface AdminSegmentationDetailResponse {
+  segmentation: AdminSegmentation;
 }
 
 export type AdminAuditAction = "credits.adjust" | "user.update" | "settings.update";

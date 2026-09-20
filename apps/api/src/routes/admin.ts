@@ -20,6 +20,9 @@ import type {
   AdminRenderOrder,
   AdminRenderSort,
   AdminSegmentation,
+  AdminSegmentationMode,
+  AdminSegmentationOrder,
+  AdminSegmentationSort,
   AdminSettings,
   AdminUser,
   AdminUserOrder,
@@ -1090,18 +1093,73 @@ admin.get("/credits", async (c) => {
 
 // ── Segmentations ────────────────────────────────────────────────────────────────
 
+function isSegStuck(status: SegmentationStatus, createdAt: Date): boolean {
+  if (status !== "pending") return false;
+  return createdAt.getTime() < Date.now() - 15 * 60 * 1000;
+}
+
+function toAdminSegmentation(segmentation: typeof schema.segmentations.$inferSelect, userEmail: string): AdminSegmentation {
+  const mode: AdminSegmentationMode = segmentation.prompt ? "prompt" : "click";
+  return {
+    id: segmentation.id,
+    userId: segmentation.userId,
+    userEmail,
+    imageUrl: segmentation.imageUrl,
+    prompt: segmentation.prompt,
+    point: segmentation.point,
+    mode,
+    status: segmentation.status as SegmentationStatus,
+    objectCount: segmentation.objectCount,
+    model: segmentation.model,
+    costUsd: segmentation.costMicros / MICROS_PER_USD,
+    creditsCharged: segmentation.creditsCharged,
+    errorMessage: segmentation.errorMessage,
+    stuck: isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt),
+    createdAt: segmentation.createdAt.toISOString(),
+  };
+}
+
 admin.get("/segmentations", async (c) => {
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const status = z.enum(["pending", "succeeded", "failed"]).optional().parse(c.req.query("status") || undefined);
+  const mode = z.enum(["prompt", "click"]).optional().parse(c.req.query("mode") || undefined) as AdminSegmentationMode | undefined;
+  const stuck = c.req.query("stuck") === "1" || c.req.query("stuck") === "true";
   const userId = z.string().uuid().optional().parse(c.req.query("userId") || undefined);
+  const model = c.req.query("model")?.trim() || undefined;
+  const search = c.req.query("search")?.trim();
+  const sort = z
+    .enum(["createdAt", "costUsd", "creditsCharged", "objectCount"])
+    .default("createdAt")
+    .parse(c.req.query("sort") || "createdAt") as AdminSegmentationSort;
+  const order = z.enum(["asc", "desc"]).default("desc").parse(c.req.query("order") || "desc") as AdminSegmentationOrder;
 
   const filters: SQL[] = [];
   if (status) filters.push(eq(schema.segmentations.status, status));
   if (userId) filters.push(eq(schema.segmentations.userId, userId));
+  if (model) filters.push(eq(schema.segmentations.model, model));
+  if (mode === "prompt") filters.push(sql`${schema.segmentations.prompt} is not null`);
+  if (mode === "click") filters.push(sql`${schema.segmentations.prompt} is null`);
+  if (stuck) {
+    filters.push(and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${STUCK_AFTER}`)!);
+  }
+  if (search) {
+    const escaped = `%${search.replace(/[%_\\]/g, "\\$&")}%`;
+    filters.push(or(ilike(schema.users.email, escaped), ilike(schema.segmentations.prompt, escaped), ilike(schema.segmentations.model, escaped))!);
+  }
   const where = filters.length ? and(...filters) : undefined;
 
-  const [rows, [count]] = await Promise.all([
+  const direction = order === "asc" ? asc : desc;
+  const orderBy =
+    sort === "costUsd"
+      ? direction(schema.segmentations.costMicros)
+      : sort === "creditsCharged"
+        ? direction(schema.segmentations.creditsCharged)
+        : sort === "objectCount"
+          ? direction(schema.segmentations.objectCount)
+          : direction(schema.segmentations.createdAt);
+
+  const [rows, [count], statusRows, [stuckRow], [spendRow], modelRows] = await Promise.all([
     db
       .select({
         segmentation: schema.segmentations,
@@ -1110,29 +1168,69 @@ admin.get("/segmentations", async (c) => {
       .from(schema.segmentations)
       .innerJoin(schema.users, eq(schema.segmentations.userId, schema.users.id))
       .where(where)
-      .orderBy(desc(schema.segmentations.createdAt))
+      .orderBy(orderBy)
       .limit(limit)
       .offset(offset),
-    db.select({ total: sql<number>`count(*)::int` }).from(schema.segmentations).where(where),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(schema.segmentations)
+      .innerJoin(schema.users, eq(schema.segmentations.userId, schema.users.id))
+      .where(where),
+    db
+      .select({ status: schema.segmentations.status, count: sql<number>`count(*)::int` })
+      .from(schema.segmentations)
+      .groupBy(schema.segmentations.status),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.segmentations)
+      .where(and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${STUCK_AFTER}`)),
+    db
+      .select({
+        spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}) filter (where ${schema.segmentations.status} <> 'failed'), 0)::bigint`,
+      })
+      .from(schema.segmentations),
+    db
+      .select({
+        model: schema.segmentations.model,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.segmentations)
+      .groupBy(schema.segmentations.model)
+      .orderBy(desc(sql`count(*)`))
+      .limit(10),
   ]);
 
-  const segmentations: AdminSegmentation[] = rows.map(({ segmentation, userEmail }) => ({
-    id: segmentation.id,
-    userId: segmentation.userId,
-    userEmail,
-    imageUrl: segmentation.imageUrl,
-    prompt: segmentation.prompt,
-    point: segmentation.point,
-    status: segmentation.status as SegmentationStatus,
-    objectCount: segmentation.objectCount,
-    model: segmentation.model,
-    costUsd: segmentation.costMicros / MICROS_PER_USD,
-    creditsCharged: segmentation.creditsCharged,
-    errorMessage: segmentation.errorMessage,
-    createdAt: segmentation.createdAt.toISOString(),
-  }));
+  const byStatus: Record<SegmentationStatus, number> = { pending: 0, succeeded: 0, failed: 0 };
+  for (const row of statusRows) byStatus[row.status as SegmentationStatus] = row.count;
 
-  return c.json({ segmentations, total: count?.total ?? 0 });
+  return c.json({
+    segmentations: rows.map(({ segmentation, userEmail }) => toAdminSegmentation(segmentation, userEmail)),
+    total: count?.total ?? 0,
+    summary: {
+      total: byStatus.pending + byStatus.succeeded + byStatus.failed,
+      byStatus,
+      pending: byStatus.pending,
+      stuckCount: stuckRow?.count ?? 0,
+      failed: byStatus.failed,
+      spentUsd: Number(spendRow?.spentMicros ?? 0) / MICROS_PER_USD,
+      models: modelRows.map((row) => ({ model: row.model, count: row.count })),
+    },
+  });
+});
+
+admin.get("/segmentations/:id", async (c) => {
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [row] = await db
+    .select({
+      segmentation: schema.segmentations,
+      userEmail: schema.users.email,
+    })
+    .from(schema.segmentations)
+    .innerJoin(schema.users, eq(schema.segmentations.userId, schema.users.id))
+    .where(eq(schema.segmentations.id, id));
+  if (!row) return c.json({ error: "Segmentation not found" }, 404);
+  return c.json({ segmentation: toAdminSegmentation(row.segmentation, row.userEmail) });
 });
 
 // ── Audit ────────────────────────────────────────────────────────────────────────

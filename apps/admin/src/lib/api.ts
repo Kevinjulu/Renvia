@@ -17,6 +17,10 @@ import type {
   AdminRenderOrder,
   AdminRenderSort,
   AdminRendersResponse,
+  AdminSegmentationDetailResponse,
+  AdminSegmentationMode,
+  AdminSegmentationOrder,
+  AdminSegmentationSort,
   AdminSegmentationsResponse,
   AdminSettings,
   AdminUpdateSettingsRequest,
@@ -130,8 +134,26 @@ export function useAdminApi() {
       getProject: (id: string) => request<AdminProjectDetailResponse>(getToken, `/admin/projects/${id}`),
       listCredits: (params: { reason?: CreditLedgerReason; userId?: string; limit?: number; offset?: number }) =>
         request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
-      listSegmentations: (params: { status?: SegmentationStatus; userId?: string; limit?: number; offset?: number }) =>
-        request<AdminSegmentationsResponse>(getToken, `/admin/segmentations${query(params)}`),
+      listSegmentations: (params: {
+        status?: SegmentationStatus;
+        mode?: AdminSegmentationMode;
+        stuck?: boolean;
+        search?: string;
+        model?: string;
+        userId?: string;
+        sort?: AdminSegmentationSort;
+        order?: AdminSegmentationOrder;
+        limit?: number;
+        offset?: number;
+      }) =>
+        request<AdminSegmentationsResponse>(
+          getToken,
+          `/admin/segmentations${query({
+            ...params,
+            stuck: params.stuck ? "1" : undefined,
+          })}`,
+        ),
+      getSegmentation: (id: string) => request<AdminSegmentationDetailResponse>(getToken, `/admin/segmentations/${id}`),
       listAudit: (params: { action?: string; limit?: number; offset?: number }) =>
         request<AdminAuditResponse>(getToken, `/admin/audit${query(params)}`),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
