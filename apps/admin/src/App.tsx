@@ -4,6 +4,7 @@ import { SignIn, useAuth, useClerk, UserButton } from "@clerk/react";
 import type { LucideIcon } from "lucide-react";
 import { FolderKanban, ImageIcon, LayoutDashboard, Menu, Scan, ScrollText, Settings, Users, Wallet, X } from "lucide-react";
 import type { MeResponse } from "@renvia/types";
+import { AppLoader } from "./components/loading/AppLoader";
 import { useAdminApi } from "./lib/api";
 import { AdminContext } from "./lib/useAdmin";
 import { useLoad } from "./lib/useLoad";
@@ -20,7 +21,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
 
-  if (!isLoaded) return <FullScreen>Loading…</FullScreen>;
+  if (!isLoaded) return <AppLoader message="Preparing admin" />;
   if (!isSignedIn) {
     return (
       <div className="grid min-h-screen place-items-center bg-ink-radial px-4">
@@ -53,7 +54,7 @@ function AdminGate() {
       </FullScreen>
     );
   }
-  if (!me) return <FullScreen>Checking access…</FullScreen>;
+  if (!me) return <AppLoader message="Checking access" />;
   if (me.role !== "admin" || me.disabled) {
     return (
       <FullScreen>

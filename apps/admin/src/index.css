@@ -61,4 +61,128 @@
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
     animation: shimmer 1.5s ease-in-out infinite;
   }
+
+  /* Branded startup state — same mark + draw animation as studio. */
+  .app-loader {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    overflow: hidden;
+    background: #fbfaf8;
+    color: #171717;
+  }
+  .app-loader-content {
+    display: flex;
+    min-width: 260px;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px;
+    text-align: center;
+  }
+  .app-loader-brand {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+  .app-loader-wordmark {
+    font-size: 22px;
+    letter-spacing: 0.29em;
+  }
+  .app-loader-mark {
+    width: 54px;
+    height: 54px;
+    overflow: visible;
+    color: #4265f5;
+    filter: drop-shadow(0 7px 14px rgba(66, 101, 245, 0.12));
+  }
+  .app-loader-mark path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-dasharray: 32;
+    stroke-dashoffset: 32;
+    animation: app-loader-draw 1.65s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+  .app-loader-mark path:nth-child(2) {
+    animation-delay: 0.13s;
+  }
+  .app-loader-mark path:nth-child(3) {
+    animation-delay: 0.26s;
+  }
+  .app-loader-content > p {
+    margin: 3px 0 0;
+    color: #6f6d69;
+    font-size: 13px;
+  }
+  .app-loader-dots::after {
+    display: inline-block;
+    width: 18px;
+    content: "";
+    text-align: left;
+    animation: app-loader-dots 1.4s steps(4, end) infinite;
+  }
+  .app-loader-delay {
+    min-height: 18px;
+    padding-top: 8px;
+    color: #9a9792 !important;
+    font-size: 11px !important;
+    opacity: 0;
+    transform: translateY(3px);
+    transition:
+      opacity 0.3s ease,
+      transform 0.3s ease;
+  }
+  .app-loader-delay.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-loader-draw {
+  0% {
+    stroke-dashoffset: 32;
+    opacity: 0.2;
+  }
+  38%,
+  68% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -32;
+    opacity: 0.2;
+  }
+}
+
+@keyframes app-loader-dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75%,
+  100% {
+    content: "...";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-loader-mark path,
+  .app-loader-dots::after {
+    animation: none;
+  }
+  .app-loader-mark path {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  .app-loader-dots::after {
+    content: "...";
+  }
 }
