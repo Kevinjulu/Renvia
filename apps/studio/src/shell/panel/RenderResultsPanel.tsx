@@ -3,8 +3,9 @@ import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { useRenderJobsStore, type ClientRenderJob } from "../../canvas/hooks/useRenderJobsStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/placeImageNode";
-import { useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
+import { useAutoShowFinishedRender, useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
 import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
+import { viewImage } from "../../canvas/utils/viewImage";
 import { useApiClient } from "../../lib/apiClient";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 import { useGuideStore } from "../../guide/useGuideStore";
@@ -32,6 +33,7 @@ function downloadImage(url: string) {
 
 export function RenderResultsPanel() {
   useRenderJobsPolling();
+  useAutoShowFinishedRender();
   const apiClient = useApiClient();
 
   const nodes = useCanvasStore((state) => state.nodes);
@@ -117,7 +119,14 @@ export function RenderResultsPanel() {
             <button
               key={job.id}
               type="button"
-              onClick={() => (job.status === "succeeded" && job.resultImageUrl ? setPreviewJob(job.id) : setActiveJob(job.id))}
+              onClick={() => {
+                if (job.status === "succeeded" && job.resultImageUrl) {
+                  setPreviewJob(job.id);
+                  return;
+                }
+                setActiveJob(job.id);
+                viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined);
+              }}
               title={[job.viewLabel, job.prompt].filter(Boolean).join(": ") || "Render"}
               className={`relative aspect-square shrink-0 overflow-hidden rounded-lg border bg-white ${
                 job.id === activeJob?.id ? "border-blueprint" : "border-hairline hover:border-hairline-strong"
@@ -209,9 +218,14 @@ export function RenderResultsPanel() {
         ) : !activeJob ? (
           <>
             {previewUrl && (
-              <div className="overflow-hidden rounded-lg border border-hairline">
+              <button
+                type="button"
+                title="View full size on canvas"
+                onClick={() => viewImage(previewUrl, "Uploaded view")}
+                className="block w-full overflow-hidden rounded-lg border border-hairline transition-colors hover:border-blueprint"
+              >
                 <img src={previewUrl} alt="Uploaded elevation" className="aspect-[4/3] w-full object-cover" />
-              </div>
+              </button>
             )}
             <p className="text-xs text-muted">
               {filled.length === 1
@@ -229,6 +243,14 @@ export function RenderResultsPanel() {
                   activeJob.status !== "succeeded" ? "opacity-40 blur-[1px]" : ""
                 }`}
               />
+              {!(activeJob.status === "succeeded" && activeJob.resultImageUrl) && (
+                <button
+                  type="button"
+                  onClick={() => viewImage(activeJob.sourceImageUrl, "Source image", activeJob.viewLabel ?? undefined)}
+                  aria-label="View the source image full size"
+                  className="absolute inset-0 focus-visible:outline-none"
+                />
+              )}
               {activeJob.status === "succeeded" && activeJob.resultImageUrl && (
                 <button
                   type="button"
@@ -245,7 +267,7 @@ export function RenderResultsPanel() {
                 </button>
               )}
               {(activeJob.status === "pending" || activeJob.status === "processing") && (
-                <div className="absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/60 to-transparent p-3">
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/60 to-transparent p-3">
                   <p className="text-xs font-medium text-white">Generating render…</p>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/30">
                     <div
@@ -256,7 +278,7 @@ export function RenderResultsPanel() {
                 </div>
               )}
               {activeJob.status === "failed" && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/80">
                   <p className="text-xs font-medium text-red-500">
                     {activeJob.errorMessage ?? "Render failed"}
                   </p>
@@ -322,7 +344,14 @@ export function RenderResultsPanel() {
                       {thumb}
                     </button>
                   ) : (
-                    <div className="mt-1.5 h-14 w-14 overflow-hidden rounded-md border border-hairline">{thumb}</div>
+                    <button
+                      type="button"
+                      title="View the source image full size"
+                      onClick={() => viewImage(activeJob.sourceImageUrl, "Source image", activeJob.viewLabel ?? undefined)}
+                      className="mt-1.5 block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
+                    >
+                      {thumb}
+                    </button>
                   )}
                 </div>
               );
@@ -333,9 +362,15 @@ export function RenderResultsPanel() {
                 <p className="text-xs font-medium text-muted">References</p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {activeJob.settings!.referenceImageUrls!.map((url) => (
-                    <div key={url} className="h-14 w-14 overflow-hidden rounded-md border border-hairline">
+                    <button
+                      key={url}
+                      type="button"
+                      title="View this reference full size"
+                      onClick={() => viewImage(url, "Reference image")}
+                      className="block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
+                    >
                       <img src={url} alt="" className="h-full w-full object-cover" />
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>

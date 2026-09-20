@@ -396,6 +396,23 @@
   border: 1px solid #e4e7ec;
 }
 
+.reference-attached-thumb .reference-attached-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+  cursor: zoom-in;
+  position: static;
+  width: auto;
+  height: auto;
+}
+
+.reference-attached-thumb .reference-attached-open:hover img {
+  border-color: #4265f5;
+}
+
 .reference-attached-thumb button {
   position: absolute;
   top: -5px;
@@ -1252,6 +1269,9 @@
 .render-edit-pending:before{width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;content:"";animation:render-preview-spin .8s linear infinite}
 .edit-target-card{display:flex;gap:11px;border:1px solid #dfe5fb;border-radius:11px;padding:10px;background:#f5f7ff}
 .edit-target-card>img{width:64px;height:64px;flex:none;border-radius:7px;object-fit:cover}
+.edit-target-card .edit-target-thumb{flex:none;margin:0;padding:0;border:0;border-radius:7px;background:none;line-height:0;cursor:zoom-in}
+.edit-target-card .edit-target-thumb img{display:block;width:64px;height:64px;border-radius:7px;object-fit:cover;box-shadow:0 0 0 1px transparent;transition:box-shadow .15s}
+.edit-target-card .edit-target-thumb:hover img{box-shadow:0 0 0 2px #4265f5}
 .edit-target-card>div{display:flex;min-width:0;flex-direction:column}
 .edit-target-card p{margin:0;color:#4265f5;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .edit-target-card strong{margin-top:2px;overflow:hidden;color:#1f2329;font-size:13px;text-overflow:ellipsis;white-space:nowrap}

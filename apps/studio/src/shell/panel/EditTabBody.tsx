@@ -6,6 +6,7 @@ import {
   type EditMode,
   type SelectionMode,
 } from "../../canvas/hooks/useGenerationSettingsStore";
+import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
 
 const EDIT_MODES: { id: EditMode; icon: string; title: string; subtitle: string }[] = [
@@ -106,7 +107,14 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
       <div className="mt-3 flex flex-1 flex-col rounded-lg border border-hairline">
         {showImageChip && (
           <div className="relative w-fit p-2.5 pb-0">
-            <img src={currentImageUrl!} alt="" className="h-20 w-20 rounded-md object-cover" />
+            <button
+              type="button"
+              title="View this image full size"
+              onClick={() => viewImage(currentImageUrl, "Image being edited")}
+              className="block overflow-hidden rounded-md border border-transparent transition-colors hover:border-blueprint"
+            >
+              <img src={currentImageUrl!} alt="" className="h-20 w-20 object-cover" />
+            </button>
             <span className="absolute bottom-1 left-3 flex h-4 w-4 items-center justify-center rounded bg-primary/80 text-[10px] font-medium text-white">
               1
             </span>

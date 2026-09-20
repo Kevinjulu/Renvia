@@ -2,6 +2,7 @@ import type { RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
 
 interface RenderTabBodyProps {
@@ -32,6 +33,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
 
   const jobs = useRenderJobsStore((state) => state.jobs);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
+  const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
   const recentJobs = jobs.filter((job) => job.resultImageUrl).slice(0, 3);
 
   return (
@@ -146,7 +148,14 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
               <button
                 key={job.id}
                 type="button"
-                onClick={() => setActiveJob(job.id)}
+                onClick={() => {
+                  if (job.status === "succeeded" && job.resultImageUrl) {
+                    setPreviewJob(job.id);
+                    return;
+                  }
+                  setActiveJob(job.id);
+                  viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined);
+                }}
                 title={job.viewLabel ?? "Open render"}
               >
                 <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />

@@ -38,8 +38,10 @@ export function CanvasStage() {
   const commitSelection = useSelectionToolStore((state) => state.commitSelection);
 
   const visibleNode = nodes.find((node) => node.elevationId === activeViewId && node.imageUrl) ?? null;
-  // A render open full-size covers the canvas, so the upload prompt must not show through it.
-  const isPreviewingRender = useRenderJobsStore((state) => state.previewJobId !== null);
+  // An image open full-size covers the canvas, so the upload prompt must not show through it.
+  const isPreviewingRender = useRenderJobsStore(
+    (state) => state.previewJobId !== null || state.previewImage !== null,
+  );
   const targetNode = visibleNode;
   const isDrawing = activeTab === "edit" && activeTool !== null;
 

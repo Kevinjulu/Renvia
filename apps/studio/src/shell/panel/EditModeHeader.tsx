@@ -1,14 +1,23 @@
 import type { RenderJob } from "@renvia/types";
 import { useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
+import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 
 /** Top of the Edit tab: explains the tools, or names the render being edited in the viewer. */
 export function EditModeHeader({ render }: { render: RenderJob | null }) {
   const stopEditing = useRenderEditStore((state) => state.stopEditing);
+  const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
 
   if (render?.resultImageUrl) {
     return (
       <div className="edit-target-card">
-        <img src={render.resultImageUrl} alt="" />
+        <button
+          type="button"
+          className="edit-target-thumb"
+          title="View this render full size"
+          onClick={() => setPreviewJob(render.id)}
+        >
+          <img src={render.resultImageUrl} alt="" />
+        </button>
         <div>
           <p>Editing a render</p>
           <strong>{[render.settings?.edit ? "Edit" : "Render", render.viewLabel].filter(Boolean).join(" · ")}</strong>

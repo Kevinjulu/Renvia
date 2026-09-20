@@ -3,6 +3,7 @@ import type { ReferenceImage } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
+import { viewImage } from "../../canvas/utils/viewImage";
 
 type Panel = "library" | "unsplash" | "more" | null;
 
@@ -190,7 +191,14 @@ export function ReferenceBar() {
           <div className="reference-attached">
             {attachedUrls.map((url) => (
               <div key={url} className="reference-attached-thumb">
-                <img src={url} alt="" />
+                <button
+                  type="button"
+                  className="reference-attached-open"
+                  title="View this reference full size"
+                  onClick={() => viewImage(url, "Reference image")}
+                >
+                  <img src={url} alt="" />
+                </button>
                 <button type="button" onClick={() => detach(url)} aria-label="Remove reference">
                   <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                     <path d="m2 2 6 6M8 2 2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
