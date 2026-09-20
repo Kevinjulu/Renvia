@@ -15,10 +15,14 @@ interface RenderEditSurfaceProps {
   imageUrl: string;
   /** Leaves edit mode — called on Escape when there's nothing left to cancel. */
   onExit: () => void;
+  /** Click-to-select: the clicked point, in image pixels. */
+  onMagicSelect: (point: { x: number; y: number }) => void;
+  /** True while an automatic selection is running, so clicks are ignored. */
+  isSelecting?: boolean;
 }
 
 /** The render shown full-size with a paintable selection layer on top (render edit mode). */
-export function RenderEditSurface({ imageUrl, onExit }: RenderEditSurfaceProps) {
+export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting = false }: RenderEditSurfaceProps) {
   const tool = useRenderEditStore((state) => state.tool);
   const brushSize = useRenderEditStore((state) => state.brushSize);
   const strokes = useRenderEditStore((state) => state.strokes);
@@ -111,7 +115,13 @@ export function RenderEditSurface({ imageUrl, onExit }: RenderEditSurfaceProps) 
       }
     }
 
-    if (pointer && (tool === "brush" || tool === "eraser")) {
+    if (pointer && tool === "magic") {
+      context.beginPath();
+      context.arc(pointer.x, pointer.y, 7 * scale, 0, Math.PI * 2);
+      context.strokeStyle = SELECTION_COLOUR;
+      context.lineWidth = 1.5 * scale;
+      context.stroke();
+    } else if (pointer && (tool === "brush" || tool === "eraser")) {
       context.beginPath();
       context.arc(pointer.x, pointer.y, (brushSize * scale) / 2, 0, Math.PI * 2);
       context.strokeStyle = tool === "eraser" ? "#e5484d" : SELECTION_COLOUR;
@@ -138,7 +148,7 @@ export function RenderEditSurface({ imageUrl, onExit }: RenderEditSurfaceProps) 
       } else if (event.key === "Enter" && polygon.length > 0) {
         closePolygon();
       } else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-        const shortcut = ({ b: "brush", e: "eraser", r: "rectangle", p: "polygon" } as const)[event.key.toLowerCase() as "b"];
+        const shortcut = ({ b: "brush", e: "eraser", r: "rectangle", p: "polygon", a: "magic" } as const)[event.key.toLowerCase() as "b"];
         if (shortcut) setTool(shortcut);
       }
     };
@@ -152,6 +162,10 @@ export function RenderEditSurface({ imageUrl, onExit }: RenderEditSurfaceProps) 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 || !box) return;
     const point = toImage(event);
+    if (tool === "magic") {
+      if (!isSelecting) onMagicSelect(point);
+      return;
+    }
     if (tool === "polygon") {
       if (polygon.length >= 6) {
         const distance = Math.hypot(point.x - polygon[0]!, point.y - polygon[1]!) / scale;
@@ -202,7 +216,7 @@ export function RenderEditSurface({ imageUrl, onExit }: RenderEditSurfaceProps) 
           <img src={imageUrl} alt="Render being edited" draggable={false} />
           <canvas
             ref={canvasRef}
-            className={`is-${tool}`}
+            className={`is-${tool}${isSelecting ? " is-busy" : ""}`}
             style={box}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}

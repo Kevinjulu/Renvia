@@ -23,6 +23,8 @@ const LEDGER_LABEL: Record<CreditLedgerReason, string> = {
   admin_grant: "Credits added by Renvia",
   render: "Render",
   render_refund: "Refund for a failed render",
+  segment: "Automatic selection",
+  segment_refund: "Refund — selection found nothing",
   purchase: "Credit purchase",
 };
 

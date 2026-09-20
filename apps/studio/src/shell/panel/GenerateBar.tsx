@@ -200,11 +200,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       setStatus(editRender ? "Paint over the area to change first, or switch to Auto select." : "Draw a selection on the image first, or switch to Auto select.");
       return;
     }
-    if (selectionMode === "auto" && !editPrompt.trim()) {
+    if (selectionMode === "auto" && !(editRender && hasEditSelection) && !editPrompt.trim()) {
       setStatus("Describe what to select (e.g. windows), or switch to Manual.");
       return;
     }
-    if (selectionMode === "auto" && isSegMaintenance) {
+    if (selectionMode === "auto" && !(editRender && hasEditSelection) && isSegMaintenance) {
       setStatus(me?.maintenanceMessage?.trim() || "Automatic selections are temporarily paused for maintenance.");
       return;
     }
@@ -215,7 +215,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       const edit: RenderEditSettings = { mode: editMode, action };
       let maskFile: File | null = null;
 
-      if (selectionMode === "auto") {
+      if (selectionMode === "auto" && !(editRender && hasEditSelection)) {
         const segment = await apiClient.createSegmentation({
           imageUrl: sourceImageUrl,
           prompt: editPrompt.trim(),

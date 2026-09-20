@@ -1259,3 +1259,12 @@
 .edit-target-card button{align-self:flex-start;margin-top:5px;border:0;padding:0;background:none;color:#4265f5;font-size:11px;font-weight:500;cursor:pointer}
 .edit-target-card button:hover{text-decoration:underline}
 @media(max-width:1440px){.render-edit-tools button span{display:none}.render-edit-tools button{padding:6px 8px}}
+.render-edit-tools button:disabled{opacity:.4;cursor:not-allowed}
+.render-edit-auto{display:flex;align-items:center;gap:6px}
+.render-edit-auto input{width:180px;height:30px;border:1px solid #e2e5ea;border-radius:8px;padding:0 9px;background:#fff;color:#1f2329;font-size:12px;outline:0}
+.render-edit-auto input:focus{border-color:#7fa2eb;box-shadow:0 0 0 3px rgba(66,101,245,.15)}
+.render-edit-auto button{border:0;border-radius:8px;padding:6px 11px;background:#eef2ff;color:#254ee8;font-size:12px;font-weight:600;cursor:pointer}
+.render-edit-auto button:disabled{opacity:.5;cursor:default}
+.render-edit-surface>canvas.is-magic{cursor:crosshair}
+.render-edit-surface>canvas.is-busy{cursor:progress}
+@media(max-width:1600px){.render-edit-auto input{width:132px}}

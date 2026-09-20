@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { useRenderJobsStore, type PreviewMode } from "./hooks/useRenderJobsStore";
 import { useCanvasStore } from "./hooks/useCanvasStore";
 import { useFittedBox, type Size } from "./hooks/useFittedBox";
-import { hasSelection, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
+import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
+import { useApiClient } from "../lib/apiClient";
+import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
 
 function downloadImage(url: string) {
@@ -93,9 +95,19 @@ const EDIT_TOOLS: { id: RenderEditTool; label: string; key: string; icon: ReactN
   { id: "eraser", label: "Eraser", key: "E", icon: <><path d="m9.5 3 3.5 3.5-6 6H4L2.5 11Z" /><path d="M7 13.5h6.5" /></> },
   { id: "rectangle", label: "Rectangle", key: "R", icon: <rect x="2.5" y="3.5" width="11" height="9" rx="1" strokeDasharray="2.2 1.8" /> },
   { id: "polygon", label: "Polygon", key: "P", icon: <path d="M4.5 2.5 13 5l-2 8.5-8.5-3Z" /> },
+  { id: "magic", label: "Auto", key: "A", icon: <><path d="M8 1.5 9 5l3.5 1L9 7l-1 3.5L7 7 3.5 6 7 5Z" /><path d="M12.5 10.5 13 12l1.5.5L13 13l-.5 1.5-.5-1.5L10.5 12.5 12 12Z" /></> },
 ];
 
-function EditToolbar({ onDone }: { onDone: () => void }) {
+interface EditToolbarProps {
+  onDone: () => void;
+  onTextSelect: (text: string) => void;
+  isSelecting: boolean;
+  /** Reason automatic selection is unavailable, or null when it can be used. */
+  autoDisabled: string | null;
+}
+
+function EditToolbar({ onDone, onTextSelect, isSelecting, autoDisabled }: EditToolbarProps) {
+  const [text, setText] = useState("");
   const tool = useRenderEditStore((state) => state.tool);
   const setTool = useRenderEditStore((state) => state.setTool);
   const brushSize = useRenderEditStore((state) => state.brushSize);
@@ -113,7 +125,8 @@ function EditToolbar({ onDone }: { onDone: () => void }) {
             type="button"
             className={tool === item.id ? "is-active" : ""}
             aria-pressed={tool === item.id}
-            title={`${item.label} (${item.key})`}
+            disabled={item.id === "magic" && autoDisabled !== null}
+            title={item.id === "magic" ? (autoDisabled ?? `Auto select — click an object (1 credit) (${item.key})`) : `${item.label} (${item.key})`}
             onClick={() => setTool(item.id)}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">{item.icon}</svg>
@@ -121,6 +134,26 @@ function EditToolbar({ onDone }: { onDone: () => void }) {
           </button>
         ))}
       </div>
+      {tool === "magic" ? (
+        <form
+          className="render-edit-auto"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (text.trim()) onTextSelect(text.trim());
+          }}
+        >
+          <input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="or type what to select…"
+            aria-label="Describe what to select"
+            disabled={isSelecting}
+          />
+          <button type="submit" disabled={isSelecting || !text.trim()}>
+            {isSelecting ? "Selecting…" : "Select"}
+          </button>
+        </form>
+      ) : null}
       {(tool === "brush" || tool === "eraser") && (
         <label className="render-edit-size" title="Brush size">
           <span className="sr-only">Brush size</span>
@@ -155,7 +188,13 @@ export function RenderPreview() {
   const strokes = useRenderEditStore((state) => state.strokes);
   const awaitingJobId = useRenderEditStore((state) => state.awaitingJobId);
   const stopEditing = useRenderEditStore((state) => state.stopEditing);
+  const addStroke = useRenderEditStore((state) => state.addStroke);
+  const apiClient = useApiClient();
   const [loaded, setLoaded] = useState(false);
+  const me = useAccountStore((state) => state.me);
+  const tool = useRenderEditStore((state) => state.tool);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectNotice, setSelectNotice] = useState<string | null>(null);
 
   const viewable = jobs.filter((job) => job.status === "succeeded" && job.resultImageUrl);
   const index = viewable.findIndex((job) => job.id === previewJobId);
@@ -204,12 +243,40 @@ export function RenderPreview() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [job, isEditing, index, viewable, setPreviewJob]);
 
+  const runAutoSelect = async (request: { prompt?: string; point?: { x: number; y: number } }) => {
+    if (!job?.resultImageUrl || isSelecting) return;
+    setIsSelecting(true);
+    setSelectNotice(null);
+    try {
+      const result = await apiClient.createSegmentation({ imageUrl: job.resultImageUrl, ...request });
+      void refreshAccount(apiClient.getMe);
+      if (!result.objectCount || !result.maskDataUrl) {
+        setSelectNotice("Nothing matched — your credit was refunded. Try another spot or paint it by hand.");
+        return;
+      }
+      addStroke(await maskStrokeFrom(result.maskDataUrl));
+      setSelectNotice(
+        result.objectCount === 1 ? "Selected 1 area — erase or paint to adjust." : `Selected ${result.objectCount} areas — erase or paint to adjust.`,
+      );
+    } catch {
+      setSelectNotice("Automatic selection failed. Try again, or paint the area by hand.");
+    } finally {
+      setIsSelecting(false);
+    }
+  };
+
   if (!job?.resultImageUrl) return null;
 
   const title = [job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
   const shownUrl = mode === "source" ? job.sourceImageUrl : job.resultImageUrl;
   const parent = job.settings?.edit ? jobs.find((item) => item.resultImageUrl === job.sourceImageUrl) : undefined;
   const selected = hasSelection(strokes);
+  const isAdmin = me?.role === "admin";
+  const autoDisabled = (() => {
+    if (me?.maintenanceSegments && !isAdmin) return me.maintenanceMessage?.trim() || "Automatic selection is paused for maintenance.";
+    if (me && !isAdmin && me.creditBalance < 1) return "Out of credits — paint the area by hand instead.";
+    return null;
+  })();
 
   return (
     <div className={`render-preview ${isEditing ? "is-editing" : ""}`} role="dialog" aria-label={`${title} ${isEditing ? "editor" : "preview"}`}>
@@ -228,7 +295,12 @@ export function RenderPreview() {
           )}
         </div>
         {isEditing ? (
-          <EditToolbar onDone={stopEditing} />
+          <EditToolbar
+            onDone={stopEditing}
+            onTextSelect={(prompt) => void runAutoSelect({ prompt })}
+            isSelecting={isSelecting}
+            autoDisabled={autoDisabled}
+          />
         ) : (
           <div className="render-preview-actions">
             <div className="render-preview-modes" role="tablist" aria-label="View">
@@ -262,7 +334,12 @@ export function RenderPreview() {
           </button>
         )}
         {isEditing ? (
-          <RenderEditSurface imageUrl={job.resultImageUrl} onExit={stopEditing} />
+          <RenderEditSurface
+            imageUrl={job.resultImageUrl}
+            onExit={stopEditing}
+            onMagicSelect={(point) => void runAutoSelect({ point })}
+            isSelecting={isSelecting}
+          />
         ) : mode === "compare" ? (
           <CompareView key={job.id} renderUrl={job.resultImageUrl} sourceUrl={job.sourceImageUrl} />
         ) : (
@@ -279,10 +356,15 @@ export function RenderPreview() {
       {isEditing ? (
         <footer className="render-preview-footer is-hint">
           <p>
-            {selected
-              ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
-              : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
+            {selectNotice
+              ? selectNotice
+              : tool === "magic"
+                ? "Click the part you want to change, or type what to select. Each automatic selection costs 1 credit; painting is free."
+                : selected
+                ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
+                : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
           </p>
+          {isSelecting && <span className="render-edit-pending">Finding that area…</span>}
           {awaitingJobId && <span className="render-edit-pending">Edit in progress…</span>}
         </footer>
       ) : (

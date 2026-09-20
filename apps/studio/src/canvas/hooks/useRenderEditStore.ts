@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useCanvasStore } from "./useCanvasStore";
 import { useRenderJobsStore } from "./useRenderJobsStore";
 
-export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon";
+export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon" | "magic";
 
 /**
  * One mark of a render-edit selection, in the render image's natural pixel coordinates so
@@ -12,7 +12,9 @@ export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon";
 export type RenderMaskStroke =
   | { kind: "brush" | "eraser"; size: number; points: number[] }
   | { kind: "rectangle"; x: number; y: number; width: number; height: number }
-  | { kind: "polygon"; points: number[] };
+  | { kind: "polygon"; points: number[] }
+  /** A mask returned by automatic selection, already at the image's natural size. */
+  | { kind: "mask"; image: CanvasImageSource; width: number; height: number; tinted?: Map<string, HTMLCanvasElement> };
 
 interface RenderEditState {
   /** Render being edited in the full-size viewer; null when edits target the canvas image. */
@@ -60,6 +62,48 @@ export function hasSelection(strokes: RenderMaskStroke[]): boolean {
   return strokes.some((stroke) => stroke.kind !== "eraser");
 }
 
+/**
+ * Turns an automatic selection's white-on-black PNG into a stroke. White becomes opaque
+ * and black transparent, so it paints like any other mark and the eraser still works.
+ */
+export async function maskStrokeFrom(dataUrl: string): Promise<RenderMaskStroke> {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d")!;
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    const selected = pixels.data[index]! > 127;
+    pixels.data[index] = 255;
+    pixels.data[index + 1] = 255;
+    pixels.data[index + 2] = 255;
+    pixels.data[index + 3] = selected ? 255 : 0;
+  }
+  context.putImageData(pixels, 0, 0);
+  return { kind: "mask", image: canvas, width: canvas.width, height: canvas.height };
+}
+
+/** The stencil recoloured, cached per colour so redraws while painting stay cheap. */
+function tintedMask(stroke: Extract<RenderMaskStroke, { kind: "mask" }>, colour: string): HTMLCanvasElement {
+  const cache = (stroke.tinted ??= new Map());
+  const existing = cache.get(colour);
+  if (existing) return existing;
+  const canvas = document.createElement("canvas");
+  canvas.width = stroke.width;
+  canvas.height = stroke.height;
+  const context = canvas.getContext("2d")!;
+  context.drawImage(stroke.image, 0, 0, stroke.width, stroke.height);
+  context.globalCompositeOperation = "source-in";
+  context.fillStyle = colour;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  cache.set(colour, canvas);
+  return canvas;
+}
+
 /** Draws the strokes onto a 2D context already scaled to image space; `add`/`remove` are fill colours. */
 export function drawStrokes(context: CanvasRenderingContext2D, strokes: RenderMaskStroke[], add: string, remove: string | null) {
   context.lineCap = "round";
@@ -71,7 +115,9 @@ export function drawStrokes(context: CanvasRenderingContext2D, strokes: RenderMa
     context.fillStyle = colour;
     context.strokeStyle = colour;
 
-    if (stroke.kind === "rectangle") {
+    if (stroke.kind === "mask") {
+      context.drawImage(tintedMask(stroke, colour), 0, 0, stroke.width, stroke.height);
+    } else if (stroke.kind === "rectangle") {
       context.fillRect(stroke.x, stroke.y, stroke.width, stroke.height);
     } else if (stroke.kind === "polygon") {
       context.beginPath();
