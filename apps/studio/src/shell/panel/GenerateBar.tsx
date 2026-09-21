@@ -93,7 +93,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const failedJobCount = useRenderJobsStore((state) => state.jobs.filter((job) => job.status === "failed").length);
   const me = useAccountStore((state) => state.me);
   const isAdmin = me?.role === "admin";
-  const [count, setCount] = useState(2);
+  // One image per elevation unless the user asks for more variations.
+  const [count, setCount] = useState(1);
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
@@ -368,12 +369,13 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           <select
             value={count}
             onChange={(event) => setCount(Number(event.target.value))}
-            aria-label="Number of variations per view"
+            aria-label="Variations per elevation"
+            title="Variations per elevation"
             className="rounded-lg border border-hairline px-2 py-2.5 text-sm text-primary"
           >
             {COUNT_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {option}
+                ×{option}
               </option>
             ))}
           </select>

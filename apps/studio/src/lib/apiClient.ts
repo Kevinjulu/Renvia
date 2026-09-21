@@ -24,6 +24,8 @@ import type {
   UpdateCanvasNodeRequest,
   UpdateCanvasNodeResponse,
   UpdateProjectRequest,
+  UpdateRenderRequest,
+  UpdateRenderResponse,
   UploadImageResponse,
 } from "@renvia/types";
 
@@ -138,6 +140,13 @@ export function useApiClient() {
       }),
     getRenderBudget: () => request<RenderBudgetResponse>(getToken, "/renders/budget"),
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
+    updateRender: (id: string, body: UpdateRenderRequest) =>
+      request<UpdateRenderResponse>(getToken, `/renders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    hideRender: (id: string) => request<{ ok: true }>(getToken, `/renders/${id}`, { method: "DELETE" }),
     listRenders: (projectId: string) =>
       request<ListRendersResponse>(getToken, `/renders?projectId=${projectId}`),
     uploadImage: (file: File, onProgress?: (fraction: number) => void) =>

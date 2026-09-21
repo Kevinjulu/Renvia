@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
@@ -153,7 +153,7 @@ renders.get("/", async (c) => {
   const jobs = await db
     .select()
     .from(schema.renders)
-    .where(eq(schema.renders.projectId, projectId))
+    .where(and(eq(schema.renders.projectId, projectId), isNull(schema.renders.hiddenAt)))
     .orderBy(desc(schema.renders.createdAt));
 
   const origin = new URL(c.req.url).origin;
@@ -178,4 +178,50 @@ renders.get("/:id", async (c) => {
   }
 
   return c.json({ job: await refreshRender(c.env, db, row[0].render, new URL(c.req.url).origin) });
+});
+
+/** The owner's render, or null — hidden renders count as gone. */
+async function findOwnedRender(db: ReturnType<typeof createDb>, id: string, ownerId: string) {
+  const row = await db
+    .select({ render: schema.renders })
+    .from(schema.renders)
+    .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
+    .where(and(eq(schema.renders.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.renders.hiddenAt)))
+    .limit(1);
+  return row[0]?.render ?? null;
+}
+
+const updateRenderSchema = z.object({ isFavorite: z.boolean() });
+
+renders.patch("/:id", async (c) => {
+  const { clerkId } = c.get("auth");
+  const body = updateRenderSchema.parse(await c.req.json());
+  const db = createDb(c.env.DATABASE_URL);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
+  const render = await findOwnedRender(db, c.req.param("id"), ownerId);
+  if (!render) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const [job] = await db
+    .update(schema.renders)
+    .set({ isFavorite: body.isFavorite })
+    .where(eq(schema.renders.id, render.id))
+    .returning();
+  return c.json({ job });
+});
+
+// Hides the render from the owner's history. The row is kept: spend caps, credit history
+// and the admin render log all still count it.
+renders.delete("/:id", async (c) => {
+  const { clerkId } = c.get("auth");
+  const db = createDb(c.env.DATABASE_URL);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
+  const render = await findOwnedRender(db, c.req.param("id"), ownerId);
+  if (!render) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  await db.update(schema.renders).set({ hiddenAt: new Date() }).where(eq(schema.renders.id, render.id));
+  return c.json({ ok: true });
 });

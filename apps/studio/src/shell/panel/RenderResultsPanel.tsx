@@ -11,6 +11,7 @@ import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
+import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
 
 const PROGRESS_CEILING = 92;
 
@@ -20,17 +21,6 @@ function jobProgress(job: ClientRenderJob, now: number): number {
   const elapsedSeconds = Math.max(0, (now - new Date(anchor).getTime()) / 1000);
   const base = job.status === "pending" ? 6 : 15;
   return Math.min(PROGRESS_CEILING, base + (PROGRESS_CEILING - base) * (1 - Math.exp(-elapsedSeconds / 18)));
-}
-
-function downloadImage(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
 }
 
 function timeAgo(iso: string, now: number) {
@@ -57,8 +47,8 @@ export function RenderResultsPanel() {
   const previewJobId = useRenderJobsStore((state) => state.previewJobId);
   const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
   const removeJob = useRenderJobsStore((state) => state.removeJob);
-  const favoriteIds = useRenderJobsStore((state) => state.favoriteIds);
-  const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
+  const updateJob = useRenderJobsStore((state) => state.updateJob);
+  const openDownload = useDownloadDialogStore((state) => state.open);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
   const setSeed = useGenerationSettingsStore((state) => state.setSeed);
 
@@ -68,6 +58,9 @@ export function RenderResultsPanel() {
   const [seedCopied, setSeedCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const activeJob = jobs.find((job) => job.id === activeJobId) ?? jobs[0] ?? null;
@@ -92,6 +85,41 @@ export function RenderResultsPanel() {
   }, [seedCopied]);
 
   const filledCount = filledBuildingViews(views, nodes).length;
+  const favoriteCount = jobs.filter((item) => item.isFavorite).length;
+
+  // Switching renders drops a half-finished remove confirmation.
+  useEffect(() => {
+    setConfirmingRemove(false);
+    setActionError(null);
+  }, [activeJob?.id]);
+
+  const handleToggleFavorite = async () => {
+    if (!activeJob) return;
+    const next = !activeJob.isFavorite;
+    updateJob(activeJob.id, { isFavorite: next });
+    setActionError(null);
+    try {
+      await apiClient.updateRender(activeJob.id, { isFavorite: next });
+    } catch {
+      updateJob(activeJob.id, { isFavorite: !next });
+      setActionError("Couldn't save the star. Try again.");
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!activeJob) return;
+    setIsRemoving(true);
+    setActionError(null);
+    try {
+      await apiClient.hideRender(activeJob.id);
+      removeJob(activeJob.id);
+    } catch {
+      setActionError("Couldn't remove this render. Try again.");
+    } finally {
+      setIsRemoving(false);
+      setConfirmingRemove(false);
+    }
+  };
 
   const handleCopyPrompt = () => {
     if (!activeJob) return;
@@ -181,7 +209,7 @@ export function RenderResultsPanel() {
   const job = activeJob;
   const inFlight = job.status === "pending" || job.status === "processing";
   const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
-  const starred = favoriteIds.has(job.id);
+  const starred = job.isFavorite;
   const progress = Math.round(jobProgress(job, now));
   const parent = job.settings?.edit
     ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
@@ -205,7 +233,7 @@ export function RenderResultsPanel() {
   ]
     .filter(Boolean)
     .join(" · ");
-  const history = starredOnly ? jobs.filter((item) => favoriteIds.has(item.id)) : jobs;
+  const history = starredOnly ? jobs.filter((item) => item.isFavorite) : jobs;
 
   return (
     <aside className="rp-panel" data-guide="results.panel">
@@ -243,7 +271,7 @@ export function RenderResultsPanel() {
               title={starred ? "Unstar" : "Star"}
               aria-label={starred ? "Unstar" : "Star"}
               aria-pressed={starred}
-              onClick={() => toggleFavorite(job.id)}
+              onClick={() => void handleToggleFavorite()}
             >
               <svg viewBox="0 0 14 14" aria-hidden="true">
                 <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" />
@@ -253,18 +281,39 @@ export function RenderResultsPanel() {
               type="button"
               title={job.resultImageUrl ? "Download" : "Download source"}
               aria-label={job.resultImageUrl ? "Download" : "Download source"}
-              onClick={() => downloadImage(job.resultImageUrl ?? job.sourceImageUrl)}
+              onClick={() => openDownload(job.id)}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" />
               </svg>
             </button>
-            <button type="button" className="is-danger" title="Remove from history" aria-label="Remove from history" onClick={() => removeJob(job.id)}>
+            <button
+              type="button"
+              className="is-danger"
+              title="Remove from history"
+              aria-label="Remove from history"
+              aria-expanded={confirmingRemove}
+              disabled={inFlight}
+              onClick={() => setConfirmingRemove((open) => !open)}
+            >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3.5 4.5h9M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M6.5 7.5v4M9.5 7.5v4M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" />
               </svg>
             </button>
           </div>
+          {confirmingRemove && (
+            <div className="rp-confirm" role="alertdialog" aria-label="Remove this render?">
+              <p>Remove this render from your history? This can't be undone.</p>
+              <div>
+                <button type="button" onClick={() => setConfirmingRemove(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="is-danger" disabled={isRemoving} onClick={() => void handleRemove()}>
+                  {isRemoving ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            </div>
+          )}
           {inFlight && (
             <figcaption className="rp-progress">
               <span>
@@ -282,6 +331,8 @@ export function RenderResultsPanel() {
             </figcaption>
           )}
         </figure>
+
+        {actionError && <p className="rp-toast">{actionError}</p>}
 
         <div className="rp-meta">
           <p className="rp-title">
@@ -405,7 +456,7 @@ export function RenderResultsPanel() {
           <section className="rp-history">
             <div className="rp-section-head">
               <strong>History</strong>
-              {favoriteIds.size > 0 && (
+              {favoriteCount > 0 && (
                 <button type="button" className={starredOnly ? "is-on" : ""} aria-pressed={starredOnly} onClick={() => setStarredOnly((on) => !on)}>
                   ★ Starred
                 </button>
@@ -428,7 +479,7 @@ export function RenderResultsPanel() {
                     <img src={item.resultImageUrl ?? item.sourceImageUrl} alt="" />
                     {running && <i className="rp-spinner" aria-label="Rendering" />}
                     {item.status === "failed" && <em>Failed</em>}
-                    {favoriteIds.has(item.id) && <b aria-label="Starred">★</b>}
+                    {item.isFavorite && <b aria-label="Starred">★</b>}
                   </button>
                 );
               })}

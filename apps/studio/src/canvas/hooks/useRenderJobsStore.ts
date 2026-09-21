@@ -20,7 +20,6 @@ interface RenderJobsState {
   /** Plain image shown full-size over the canvas; never set at the same time as `previewJobId`. */
   previewImage: PreviewImage | null;
   previewMode: PreviewMode;
-  favoriteIds: Set<string>;
   setJobs: (jobs: ClientRenderJob[]) => void;
   addJob: (job: ClientRenderJob) => void;
   updateJob: (id: string, patch: Partial<RenderJob>) => void;
@@ -31,7 +30,6 @@ interface RenderJobsState {
   /** Opens any image full-size over the canvas (or closes the viewer with null). */
   setPreviewImage: (image: PreviewImage | null) => void;
   setPreviewMode: (mode: PreviewMode) => void;
-  toggleFavorite: (id: string) => void;
 }
 
 export const useRenderJobsStore = create<RenderJobsState>((set) => ({
@@ -40,7 +38,6 @@ export const useRenderJobsStore = create<RenderJobsState>((set) => ({
   previewJobId: null,
   previewImage: null,
   previewMode: "render",
-  favoriteIds: new Set(),
   setJobs: (jobs) => set({ jobs, previewJobId: null, previewImage: null }),
   addJob: (job) => set((state) => ({ jobs: [job, ...state.jobs], activeJobId: job.id })),
   updateJob: (id, patch) =>
@@ -62,11 +59,4 @@ export const useRenderJobsStore = create<RenderJobsState>((set) => ({
     ),
   setPreviewImage: (previewImage) => set({ previewImage, previewJobId: null, previewMode: "render" }),
   setPreviewMode: (previewMode) => set({ previewMode }),
-  toggleFavorite: (id) =>
-    set((state) => {
-      const next = new Set(state.favoriteIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return { favoriteIds: next };
-    }),
 }));

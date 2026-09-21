@@ -99,6 +99,13 @@ export const renders = pgTable("renders", {
    * requested — that render can't be exactly reproduced.
    */
   seed: integer("seed"),
+  /** Starred by the owner in the studio's results panel. */
+  isFavorite: boolean("is_favorite").notNull().default(false),
+  /**
+   * Set when the owner removes the render from their history. The row stays so spend caps,
+   * credit history and the admin render log still count it.
+   */
+  hiddenAt: timestamp("hidden_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -40,7 +40,8 @@
 .rp-hero-tools button:hover { background: var(--rp-soft); color: var(--rp-ink); }
 .rp-hero-tools button.is-on { color: #f2a51a; }
 .rp-hero-tools button.is-on svg { fill: currentColor; }
-.rp-hero-tools button.is-danger:hover { background: #fdecec; color: #c4331f; }
+.rp-hero-tools button.is-danger:hover:not(:disabled), .rp-hero-tools button.is-danger[aria-expanded="true"] { background: #fdecec; color: #c4331f; }
+.rp-hero-tools button:disabled { opacity: .35; cursor: not-allowed; }
 
 .rp-progress { position: absolute; inset: auto 10px 10px; display: flex; flex-direction: column; gap: 6px; border-radius: 10px; padding: 9px 11px; background: rgba(20, 20, 20, .78); color: #fff; font-size: 11.5px; backdrop-filter: blur(6px); pointer-events: none; }
 .rp-progress span { display: flex; justify-content: space-between; }
@@ -122,3 +123,64 @@
 
 @keyframes rp-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .rp-spinner { animation: none; } }
+
+/* Download dialog — the render large, options beside it, the studio blurred behind. */
+.dl-backdrop { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 28px; background: rgba(15, 17, 21, .38); backdrop-filter: blur(10px) saturate(.9); animation: dl-fade .18s ease; }
+.dl-dialog { display: grid; width: min(1120px, 100%); height: min(720px, 100%); grid-template-columns: minmax(0, 1fr) 320px; overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 40px 90px -30px rgba(10, 12, 16, .55); animation: dl-rise .22s ease; }
+.dl-preview { position: relative; display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: center; gap: 16px; padding: 28px; background: #f3f4f6 radial-gradient(circle at 1px 1px, #dfe3e9 1px, transparent 0) 0 0 / 14px 14px; }
+.dl-preview figure { position: relative; display: flex; min-width: 0; height: 100%; margin: 0; align-items: center; justify-content: center; }
+.dl-preview.is-compare figure { flex: 1; }
+.dl-preview img { max-width: 100%; max-height: 100%; border-radius: 10px; object-fit: contain; box-shadow: 0 18px 40px -18px rgba(16, 24, 40, .45); }
+.dl-preview figcaption { position: absolute; top: 50%; left: 50%; border-radius: 999px; padding: 3px 10px; background: rgba(20, 20, 20, .72); color: #fff; font-size: 11px; font-weight: 600; transform: translate(-50%, -50%); pointer-events: none; opacity: 0; }
+.dl-preview.is-compare figcaption { top: 12px; transform: translateX(-50%); opacity: 1; }
+.dl-loading { position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border: 3px solid #d6dcf8; border-top-color: #3157ef; border-radius: 50%; animation: rp-spin .8s linear infinite; }
+
+.dl-options { display: flex; min-height: 0; flex-direction: column; gap: 18px; overflow-y: auto; border-left: 1px solid #eceef1; padding: 20px; color: #2a2e35; }
+.dl-options header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.dl-options h2 { margin: 0; color: #141414; font-size: 17px; font-weight: 600; }
+.dl-options header p { margin: 2px 0 0; color: #6b7280; font-size: 12px; }
+.dl-close { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border: 1px solid #e6e8ec; border-radius: 10px; background: #fff; color: #6b7280; cursor: pointer; }
+.dl-close:hover { background: #f4f5f7; color: #141414; }
+.dl-close svg, .dl-primary svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.dl-options section { display: flex; flex-direction: column; gap: 7px; }
+.dl-label { margin: 0; color: #6b7280; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.dl-hint { color: #8a909b; font-size: 11.5px; line-height: 1.4; }
+.dl-segmented { display: flex; gap: 3px; border-radius: 11px; padding: 3px; background: #f4f5f7; }
+.dl-segmented button { flex: 1; border: 0; border-radius: 8px; padding: 8px 6px; background: transparent; color: #6b7280; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+.dl-segmented button:hover { color: #141414; }
+.dl-segmented button.is-active { background: #fff; color: #141414; box-shadow: 0 1px 3px rgba(16, 24, 40, .12); }
+.dl-sizes { display: flex; flex-direction: column; gap: 5px; }
+.dl-sizes button { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 1px 10px; border: 1px solid #e6e8ec; border-radius: 11px; padding: 8px 11px; background: #fff; text-align: left; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.dl-sizes button:hover { border-color: #cfd4dc; }
+.dl-sizes button.is-active { border-color: #3157ef; background: #f5f7ff; box-shadow: 0 0 0 1px #3157ef; }
+.dl-sizes strong { color: #141414; font-size: 12.5px; font-weight: 600; }
+.dl-sizes span { justify-self: end; color: #2a2e35; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dl-sizes small { grid-column: 1 / -1; color: #8a909b; font-size: 11px; }
+.dl-name { display: flex; align-items: center; overflow: hidden; border: 1px solid #e6e8ec; border-radius: 11px; background: #fbfbfc; transition: border-color .15s ease, box-shadow .15s ease; }
+.dl-name:focus-within { border-color: #3157ef; background: #fff; box-shadow: 0 0 0 3px rgba(49, 87, 239, .1); }
+.dl-name input { min-width: 0; flex: 1; border: 0; padding: 9px 0 9px 11px; background: transparent; color: #141414; font-size: 12.5px; outline: 0; }
+.dl-name span { padding: 0 11px 0 2px; color: #8a909b; font-size: 12.5px; }
+.dl-actions { position: sticky; bottom: -20px; display: flex; flex-direction: column; gap: 10px; margin: auto -20px -20px; border-top: 1px solid #eceef1; padding: 14px 20px 20px; background: #fff; }
+.dl-summary { display: flex; justify-content: space-between; border-radius: 11px; padding: 10px 12px; background: #f4f5f7; color: #2a2e35; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.dl-notice { margin: 0; border-radius: 10px; padding: 8px 11px; background: #eef2ff; color: #3157ef; font-size: 12px; line-height: 1.4; }
+.dl-error { margin: 0; border-radius: 10px; padding: 10px 12px; background: #fff5f4; color: #b42318; font-size: 12.5px; }
+.dl-options footer { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.dl-options footer button { display: flex; height: 42px; align-items: center; justify-content: center; gap: 8px; border-radius: 11px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
+.dl-secondary { border: 1px solid #e6e8ec; background: #fff; color: #141414; }
+.dl-secondary:hover:not(:disabled) { border-color: #cfd4dc; background: #fafbfc; }
+.dl-primary { border: 0; background: #141414; color: #fff; box-shadow: 0 6px 16px rgba(20, 24, 32, .2); }
+.dl-primary:hover:not(:disabled) { background: #2b2e33; }
+.dl-options footer button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Inline "remove?" confirm on the render's trash button */
+.rp-confirm { position: absolute; inset: auto 10px 10px; z-index: 5; border: 1px solid #e6e8ec; border-radius: 12px; padding: 10px; background: #fff; box-shadow: 0 14px 30px -12px rgba(16, 24, 40, .3); text-align: left; }
+.rp-confirm p { margin: 0 0 8px; color: #2a2e35; font-size: 12px; line-height: 1.4; }
+.rp-confirm div { display: flex; justify-content: flex-end; gap: 6px; }
+.rp-confirm button { width: auto !important; height: 28px !important; border-radius: 8px !important; padding: 0 10px; font-size: 12px; font-weight: 600; }
+.rp-confirm button.is-danger { background: #d92d20 !important; color: #fff !important; }
+.rp-toast { border-radius: 10px; padding: 8px 11px; background: #fff5f4; color: #b42318; font-size: 12px; }
+
+@keyframes dl-fade { from { opacity: 0; } }
+@keyframes dl-rise { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+@media (max-width: 900px) { .dl-dialog { grid-template-columns: 1fr; height: auto; max-height: 100%; } .dl-preview { height: 280px; } }
+@media (prefers-reduced-motion: reduce) { .dl-backdrop, .dl-dialog { animation: none; } }

@@ -27,6 +27,8 @@ export interface RenderJob {
    * result can't be reproduced (currently true for nano-banana/edit's reference route).
    */
   seed: number | null;
+  /** Starred by the owner in the results panel. */
+  isFavorite: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +105,14 @@ export interface CreateRenderRequest {
 }
 
 export interface CreateRenderResponse {
+  job: RenderJob;
+}
+
+export interface UpdateRenderRequest {
+  isFavorite: boolean;
+}
+
+export interface UpdateRenderResponse {
   job: RenderJob;
 }
 

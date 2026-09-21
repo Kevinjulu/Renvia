@@ -8,6 +8,7 @@ import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 import { CanvasStage } from "../canvas/CanvasStage";
 import { RenderPreview } from "../canvas/RenderPreview";
 import { ImagePreview } from "../canvas/ImagePreview";
+import { DownloadDialog } from "../canvas/DownloadDialog";
 import { IconRail } from "./IconRail";
 import { ControlPanel } from "./ControlPanel";
 import { CanvasTopBar } from "./CanvasTopBar";
@@ -158,6 +159,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <RenderResultsPanel />
         </div>
       </main>
+      <DownloadDialog />
       </div>
     </GuideProvider>
   );
