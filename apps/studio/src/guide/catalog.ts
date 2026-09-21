@@ -82,9 +82,9 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
   "control.influence": {
     id: "control.influence",
     title: "Style influence",
-    short: "How far references and style are allowed to push the result.",
-    body: "1 keeps a light material cue. 4 is the closest match to your references. Higher values restyle more of the facade; they still should not invent new openings.",
-    how: "Start at 2. Raise it if the render ignores your references; lower it if the building starts to drift.",
+    short: "How much of your reference images' look the render takes on.",
+    body: "With references attached, 1 borrows only their palette and mood, 2 their main materials and colours, 3 also their details such as window frames, railings and soffits, and 4 their full visual character. At every level the shape and camera angle come from your elevation, not the references.",
+    how: "Use 3 or 4 when you want the render to look like your reference. Without references, the level sets how strongly the chosen style is applied.",
     article: "consistent-results",
     tab: "render",
   },
