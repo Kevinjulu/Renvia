@@ -266,8 +266,8 @@ export function RenderResultsPanel() {
             )}
             <p className="text-xs text-muted">
               {filled.length === 1
-                ? "1 view uploaded → 1 render. Generate to queue it here."
-                : `${filled.length} views uploaded → ${filled.length} renders. Empty sides are skipped.`}
+                ? "1 elevation uploaded → 1 render. Generate to queue it here."
+                : `${filled.length} elevations uploaded. Generate to queue them here.`}
             </p>
           </>
         ) : (

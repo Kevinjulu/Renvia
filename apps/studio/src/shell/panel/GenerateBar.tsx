@@ -15,7 +15,7 @@ import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
 import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
-import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
+import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 import { buildSelectionMask } from "../../canvas/utils/buildSelectionMask";
 import { editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
@@ -67,6 +67,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const apiClient = useApiClient();
   const activeTab = useCanvasStore((state) => state.activeTab);
   const views = useCanvasStore((state) => state.views);
+  const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
   const nodes = useCanvasStore((state) => state.nodes);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
@@ -123,7 +124,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   }, [failedJobCount]);
 
   const isEdit = activeTab === "edit";
-  const filled = filledBuildingViews(views, nodes);
+  const filled = renderableBuildingViews(views, nodes, skippedViewIds);
   const editNode = nodeForView(nodes, activeViewId);
   const editView = views.find((view) => view.id === activeViewId);
   // A selection only applies to the image it was drawn on.

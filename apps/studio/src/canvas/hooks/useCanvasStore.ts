@@ -32,6 +32,8 @@ interface CanvasState {
   projectId: string | null;
   nodes: CanvasNode[];
   views: BuildingView[];
+  /** Uploaded elevations left out of the next Generate. Per session; a new upload opts back in. */
+  skippedViewIds: string[];
   activeViewId: string;
   selectedNodeId: string | null;
   activeTab: PanelTab;
@@ -43,6 +45,7 @@ interface CanvasState {
   selectView: (id: string) => void;
   addBuildingView: (label: string) => string;
   removeBuildingView: (id: string) => string[];
+  toggleViewSkipped: (id: string) => void;
   setActiveTab: (tab: PanelTab) => void;
   setCamera: (camera: CanvasCamera) => void;
   setStageSize: (size: { width: number; height: number }) => void;
@@ -60,6 +63,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   projectId: null,
   nodes: [],
   views: createDefaultBuildingViews(),
+  skippedViewIds: [],
   activeViewId: "front",
   selectedNodeId: null,
   activeTab: "render",
@@ -70,6 +74,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       projectId,
       nodes: [],
       views: createDefaultBuildingViews(),
+      skippedViewIds: [],
       activeViewId: "front",
       selectedNodeId: null,
     }),
@@ -105,12 +110,19 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       return {
         views,
         nodes,
+        skippedViewIds: state.skippedViewIds.filter((viewId) => viewId !== id),
         activeViewId,
         selectedNodeId: selectionForView(nodes, activeViewId),
       };
     });
     return removedNodeIds;
   },
+  toggleViewSkipped: (id) =>
+    set((state) => ({
+      skippedViewIds: state.skippedViewIds.includes(id)
+        ? state.skippedViewIds.filter((viewId) => viewId !== id)
+        : [...state.skippedViewIds, id],
+    })),
   setActiveTab: (activeTab) => set({ activeTab }),
   setCamera: (camera) => set({ camera }),
   setStageSize: (stageSize) => set({ stageSize }),
@@ -132,6 +144,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       return {
         nodes,
         views,
+        skippedViewIds: state.skippedViewIds.filter((viewId) => viewId !== node.elevationId),
         activeViewId,
         selectedNodeId: node.id,
       };

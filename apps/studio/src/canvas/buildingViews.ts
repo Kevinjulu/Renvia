@@ -43,6 +43,15 @@ export function filledBuildingViews<T extends ViewBoundNode>(views: BuildingView
   return views.filter((view) => Boolean(nodeForView(nodes, view.id)));
 }
 
+/** The filled elevations Generate will render: everything uploaded minus what the user skipped. */
+export function renderableBuildingViews<T extends ViewBoundNode>(
+  views: BuildingView[],
+  nodes: T[],
+  skippedViewIds: readonly string[],
+): BuildingView[] {
+  return filledBuildingViews(views, nodes).filter((view) => !skippedViewIds.includes(view.id));
+}
+
 export function hydrateBuildingViews<T extends ViewBoundNode>(nodes: T[]): { views: BuildingView[]; nodes: T[] } {
   const views = createDefaultBuildingViews();
   const occupied = new Set<string>();

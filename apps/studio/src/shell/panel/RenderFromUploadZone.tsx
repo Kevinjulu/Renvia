@@ -1,7 +1,7 @@
 import { AddViewMenu } from "./AddViewMenu";
 import { useElevationUpload } from "../../canvas/hooks/useElevationUpload";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
-import { filledBuildingViews, isDefaultViewId, nodeForView } from "../../canvas/buildingViews";
+import { filledBuildingViews, isDefaultViewId, nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import type { BuildingView } from "../../canvas/buildingViews";
 import { focusViewNode } from "../../canvas/utils/placeImageNode";
 
@@ -26,8 +26,11 @@ export function RenderFromUploadZone() {
   const nodes = useCanvasStore((state) => state.nodes);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const selectView = useCanvasStore((state) => state.selectView);
+  const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
+  const toggleViewSkipped = useCanvasStore((state) => state.toggleViewSkipped);
   const { uploadToView, clearViewImage, removeView, isUploading, uploadingViewId } = useElevationUpload();
   const filledCount = filledBuildingViews(views, nodes).length;
+  const renderCount = renderableBuildingViews(views, nodes, skippedViewIds).length;
 
   const pickFile = (viewId: string) => {
     document.getElementById(`elevation-input-${viewId}`)?.click();
@@ -41,9 +44,9 @@ export function RenderFromUploadZone() {
           <small>
             {filledCount === 0
               ? "Upload an elevation to render. Empty sides are skipped."
-              : filledCount === 1
-                ? "1 elevation uploaded → 1 render. Empty sides are skipped."
-                : `${filledCount} elevations uploaded → ${filledCount} renders. Empty sides are skipped.`}
+              : renderCount === filledCount
+                ? `${filledCount} uploaded → ${filledCount} ${filledCount === 1 ? "render" : "renders"}. Untick one to skip it.`
+                : `${renderCount} of ${filledCount} uploaded will render. Unticked elevations are skipped.`}
           </small>
         </div>
         <AddViewMenu />
@@ -65,8 +68,11 @@ export function RenderFromUploadZone() {
             }}
             onUpload={(file) => void uploadToView(view, file)}
             onPick={() => pickFile(view.id)}
-            onClear={() => void clearViewImage(view.id)}
-            onRemove={isDefaultViewId(view.id) ? undefined : () => void removeView(view.id)}
+            skipped={skippedViewIds.includes(view.id)}
+            onToggleSkipped={() => toggleViewSkipped(view.id)}
+            // The four standard sides always keep their slot, so removing one only drops its image.
+            onRemove={isDefaultViewId(view.id) ? () => void clearViewImage(view.id) : () => void removeView(view.id)}
+            removesSlot={!isDefaultViewId(view.id)}
           />
         ))}
       </div>
@@ -84,8 +90,10 @@ function ViewSlot({
   onSelect,
   onUpload,
   onPick,
-  onClear,
+  skipped,
+  onToggleSkipped,
   onRemove,
+  removesSlot,
 }: {
   view: BuildingView;
   index: number;
@@ -96,8 +104,10 @@ function ViewSlot({
   onSelect: () => void;
   onUpload: (file: File) => void;
   onPick: () => void;
-  onClear: () => void;
-  onRemove?: () => void;
+  skipped: boolean;
+  onToggleSkipped: () => void;
+  onRemove: () => void;
+  removesSlot: boolean;
 }) {
   const inputId = `elevation-input-${view.id}`;
 
@@ -112,7 +122,7 @@ function ViewSlot({
             <small>{uploading ? "Uploading…" : "Add elevation"}</small>
           </p>
         </button>
-        {onRemove && (
+        {removesSlot && (
           <button type="button" className="view-slot-remove" onClick={onRemove} aria-label={`Remove ${view.label}`}>
             ×
           </button>
@@ -122,8 +132,11 @@ function ViewSlot({
   }
 
   return (
-    <div className={`view-upload-card ${active ? "active" : ""}`}>
+    <div className={`view-upload-card ${active ? "active" : ""} ${skipped ? "is-skipped" : ""}`}>
       {hiddenFileInput(inputId, onUpload)}
+      <label className="view-upload-include" title={skipped ? "Skipped — tick to render it" : "Will render — untick to skip"}>
+        <input type="checkbox" checked={!skipped} onChange={onToggleSkipped} aria-label={`Render ${view.label}`} />
+      </label>
       <b>{index + 1}</b>
       <button type="button" className="view-upload-thumb" onClick={onSelect}>
         <img src={imageUrl} alt="" />
@@ -131,22 +144,23 @@ function ViewSlot({
       <div>
         <button type="button" className="view-upload-title" onClick={onSelect}>
           <strong>{view.label}</strong>
+          {skipped && <small className="view-upload-skipped">Skipped</small>}
         </button>
         <span className="view-upload-actions">
           <button type="button" onClick={onPick} disabled={disabled}>
             {uploading ? "Uploading…" : "Replace"}
           </button>
-          <button type="button" onClick={onClear} disabled={disabled}>
-            Clear
+          <button
+            type="button"
+            className="view-upload-remove"
+            onClick={onRemove}
+            disabled={disabled}
+            title={removesSlot ? `Remove ${view.label} and its image` : `Remove this image; the ${view.label} slot stays empty`}
+          >
+            Remove
           </button>
-          {onRemove && (
-            <button type="button" onClick={onRemove} disabled={disabled}>
-              Remove
-            </button>
-          )}
         </span>
       </div>
-      <span>✓</span>
     </div>
   );
 }

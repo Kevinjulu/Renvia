@@ -23,6 +23,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const views = useCanvasStore((state) => state.views);
   const nodes = useCanvasStore((state) => state.nodes);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
+  const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
   const setProjectId = useCanvasStore((state) => state.setProjectId);
   const setNodes = useCanvasStore((state) => state.setNodes);
   const selectView = useCanvasStore((state) => state.selectView);
@@ -107,11 +108,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
             <div className="elevation-filmstrip" data-guide="canvas.filmstrip" style={{ gridTemplateColumns: `repeat(${views.length + 1}, minmax(88px, 1fr))` }}>
               {views.map((view, index) => {
                 const node = nodeForView(nodes, view.id);
+                const skipped = Boolean(node) && skippedViewIds.includes(view.id);
                 return (
                   <button
                     key={view.id}
                     type="button"
-                    className={view.id === activeViewId ? "active" : ""}
+                    className={`${view.id === activeViewId ? "active" : ""} ${skipped ? "is-skipped" : ""}`}
+                    title={skipped ? `${view.label} — skipped on Generate` : undefined}
                     onClick={() => {
                       selectView(view.id);
                       focusViewNode(view.id);

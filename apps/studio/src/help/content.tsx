@@ -85,7 +85,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <H2>The four elevation slots</H2>
           <P>
             Front, right, back, and left are always available. Upload only the sides you have — Generate
-            renders each uploaded elevation and skips empty slots. You can add extra views such as a roof or
+            renders each uploaded elevation and skips empty slots. Untick an elevation to leave it out of the
+            next Generate, or Remove its image altogether. You can add extra views such as a roof or
             isometric if you need them.
           </P>
 
