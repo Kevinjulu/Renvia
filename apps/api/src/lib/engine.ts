@@ -167,7 +167,8 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const isEdit = Boolean(settings.edit);
     // Edit strength is its own control (Edit tab), never whatever the Render tab's slider
     // last happened to be set to — the two routes shouldn't share invisible state.
-    const influence = (isEdit ? settings.editInfluence : settings.styleInfluence) ?? 2;
+    // Defaults match the studio: Strong for renders, Balanced for edits.
+    const influence = (isEdit ? settings.editInfluence ?? 2 : settings.styleInfluence ?? 3);
     // A targeted edit already keeps everything outside the mask untouched by compositing;
     // the crop sent to the model can afford to change more freely, so it's always unlocked.
     const preserveStructure = isEdit ? false : (settings.preserveStructure ?? true);

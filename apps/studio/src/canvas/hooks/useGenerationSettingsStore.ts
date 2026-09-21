@@ -84,7 +84,8 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   aspectRatio: "auto",
   style: "Photorealistic",
   sourceType: "photo",
-  styleInfluence: 2,
+  // Strong by default — Balanced gave weak results in testing.
+  styleInfluence: 3,
   editInfluence: 2,
   preserveStructure: true,
   referenceImageUrls: [],
