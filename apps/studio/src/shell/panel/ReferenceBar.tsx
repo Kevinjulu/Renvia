@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReferenceImage } from "@renvia/types";
-import { useApiClient } from "../../lib/apiClient";
+import { ApiError, useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
@@ -181,8 +181,13 @@ export function ReferenceBar() {
       attach(reference);
       setPasteUrl("");
       setOpenPanel(null);
-    } catch {
-      setPasteError("Couldn't save that link. Check the URL and try again.");
+    } catch (error) {
+      // The server explains why a link couldn't be imported (a page with no image, a blocked site…).
+      setPasteError(
+        error instanceof ApiError && error.status === 422 && error.detail
+          ? error.detail
+          : "Couldn't add that link. Check the URL and try again.",
+      );
     } finally {
       setIsPasting(false);
     }
@@ -420,7 +425,7 @@ export function ReferenceBar() {
       {openPanel === "more" && (
         <ReferenceModal title="Browse other sites" titleId="reference-more-title" onClose={() => setOpenPanel(null)}>
           <p className="reference-modal-lead">
-            Open Pinterest or Google Images in a new tab, then paste the image link below to attach it as a reference.
+            Open Pinterest or Google Images in a new tab, find an image, then paste its link below. A page link works too; we pick up its main image.
           </p>
 
           <div className="reference-source-list">
