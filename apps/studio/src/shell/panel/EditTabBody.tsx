@@ -1,22 +1,21 @@
+import { useEffect, useState } from "react";
 import { ReferenceBar } from "./ReferenceBar";
 import { SeedControl } from "./SeedControl";
-import { hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
+import { hasSelection, maskStrokeFrom, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
   STYLE_INFLUENCE_LABELS,
+  inferEditMode,
   useGenerationSettingsStore,
   type EditAction,
   type EditMode,
   type SelectionMode,
 } from "../../canvas/hooks/useGenerationSettingsStore";
-import { useAccountStore } from "../../lib/useAccountStore";
+import { EDIT_PARTS, editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
+import { selectPart } from "../../canvas/utils/partSelection";
+import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
+import { useApiClient } from "../../lib/apiClient";
 import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
-
-const EDIT_MODES: { id: EditMode; icon: string; title: string; subtitle: string }[] = [
-  { id: "element", icon: "◫", title: "Element / texture", subtitle: "Borrow a finish or material" },
-  { id: "building", icon: "▧", title: "Whole building", subtitle: "Reference architectural style" },
-  { id: "prompt", icon: "✦", title: "Prompt edit", subtitle: "Describe the transformation" },
-];
 
 const ACTIONS: { id: EditAction; label: string }[] = [
   { id: "add", label: "Add" },
@@ -31,57 +30,125 @@ const SELECTION_MODES: { id: SelectionMode; label: string }[] = [
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
-/** Matches app_settings.max_selection_prompt_chars's default. */
-const DEFAULT_MAX_SELECTION_CHARS = 200;
+
+/** What the edit will do, in one line, so the panel needn't ask for a mode up front. */
+function modeSentence(hasReferences: boolean, mode: EditMode, partLabel: string | null): string {
+  if (hasReferences) {
+    return mode === "building"
+      ? "The reference restyles the whole building."
+      : `The reference sets the material and colour of ${partLabel ? `the ${partLabel.toLowerCase()}` : "the selected area"}.`;
+  }
+  return partLabel
+    ? `Your description is applied to the ${partLabel.toLowerCase()} only.`
+    : "Your description is applied to the whole image.";
+}
 
 interface EditTabBodyProps {
   currentImageUrl: string | null;
 }
 
 export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
+  const apiClient = useApiClient();
   const editMode = useGenerationSettingsStore((state) => state.editMode);
-  const setEditMode = useGenerationSettingsStore((state) => state.setEditMode);
+  const applyInferredEditMode = useGenerationSettingsStore((state) => state.applyInferredEditMode);
   const editAction = useGenerationSettingsStore((state) => state.editAction);
   const setEditAction = useGenerationSettingsStore((state) => state.setEditAction);
   const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
   const setSelectionMode = useGenerationSettingsStore((state) => state.setSelectionMode);
+  const selectedPart = useGenerationSettingsStore((state) => state.selectedPart);
+  const setSelectedPart = useGenerationSettingsStore((state) => state.setSelectedPart);
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const setEditPrompt = useGenerationSettingsStore((state) => state.setEditPrompt);
   const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const setEditInfluence = useGenerationSettingsStore((state) => state.setEditInfluence);
+  const referenceCount = useGenerationSettingsStore((state) => state.referenceImageUrls.length);
   const me = useAccountStore((state) => state.me);
 
-  const isEditingRender = useRenderEditStore((state) => state.targetJobId !== null);
+  const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
+  const isEditingRender = editTargetJobId !== null;
   const renderAreaSelected = useRenderEditStore((state) => hasSelection(state.strokes));
-  const showImageChip = Boolean(currentImageUrl);
+  const addStroke = useRenderEditStore((state) => state.addStroke);
+  const clearStrokes = useRenderEditStore((state) => state.clearStrokes);
 
-  // The edit prompt doubles as the auto-select query when that's the active selection mode,
-  // so the true limit is whichever cap is tighter — send more than the segmentation endpoint
-  // allows and the request bounces even though the edit prompt itself was within range.
-  const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
-  const maxSelectionChars = me?.limits.maxSelectionPromptChars ?? DEFAULT_MAX_SELECTION_CHARS;
-  const maxChars = selectionMode === "auto" ? Math.min(maxPromptChars, maxSelectionChars) : maxPromptChars;
+  const [busyPart, setBusyPart] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const part = editPartById(selectedPart);
+  const wholeImage = selectedPart === WHOLE_IMAGE;
+  const targeted = selectionMode === "manual" ? renderAreaSelected : Boolean(part);
+  const hasReferences = referenceCount > 0;
+
+  // The mode follows the inputs unless the user has overridden it.
+  useEffect(() => {
+    applyInferredEditMode(inferEditMode({ hasReferences, hasSelection: targeted, hasAction: editAction !== null }));
+  }, [hasReferences, targeted, editAction, applyInferredEditMode]);
+
+  // A part chip's own fixed term is what's sent to segmentation now, not this prompt, so
+  // the edit prompt only needs the plain prompt cap regardless of selection mode.
+  const maxChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+
+  const isAdmin = me?.role === "admin";
+  const autoDisabled = (() => {
+    if (me?.maintenanceSegments && !isAdmin) {
+      return me.maintenanceMessage?.trim() || "Automatic selection is paused for maintenance.";
+    }
+    if (me && !isAdmin && me.creditBalance < 1) return "Out of credits — paint the area by hand instead.";
+    return null;
+  })();
+
+  const handlePart = async (id: string) => {
+    if (busyPart) return;
+    if (id === WHOLE_IMAGE) {
+      setSelectedPart(selectedPart === WHOLE_IMAGE ? null : WHOLE_IMAGE);
+      clearStrokes();
+      setNotice(null);
+      return;
+    }
+    const chosen = editPartById(id);
+    if (!chosen) return;
+    if (selectedPart === id) {
+      setSelectedPart(null);
+      clearStrokes();
+      setNotice(null);
+      return;
+    }
+    setSelectedPart(id);
+    setNotice(null);
+
+    // With a render open in the viewer the selection can be shown and adjusted right away;
+    // otherwise it's made server-side when the edit is applied, so nothing is spent yet.
+    if (!isEditingRender || !currentImageUrl) return;
+    if (autoDisabled) {
+      setNotice(autoDisabled);
+      return;
+    }
+
+    setBusyPart(id);
+    try {
+      const result = await selectPart(apiClient.createSegmentation, currentImageUrl, chosen.term);
+      if (!result.cached) void refreshAccount(apiClient.getMe);
+      if (!result.maskDataUrl || !result.objectCount) {
+        setSelectedPart(null);
+        setNotice(`No ${chosen.label.toLowerCase()} found here — your credit was refunded. Paint the area instead.`);
+        return;
+      }
+      clearStrokes();
+      addStroke(await maskStrokeFrom(result.maskDataUrl));
+      setNotice(
+        result.cached
+          ? `${chosen.label} selected again — no credit used. Paint or erase to adjust.`
+          : `${chosen.label} selected. Paint or erase in the viewer to adjust.`,
+      );
+    } catch {
+      setSelectedPart(null);
+      setNotice("Automatic selection failed. Try again, or paint the area by hand.");
+    } finally {
+      setBusyPart(null);
+    }
+  };
 
   return (
     <div className="edit-panel-body flex flex-1 flex-col">
-      <div className="edit-mode-cards" data-guide="edit.modes">
-        {EDIT_MODES.map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className={editMode === mode.id ? "active" : ""}
-            onClick={() => setEditMode(mode.id)}
-            aria-pressed={editMode === mode.id}
-          >
-            <span>{mode.icon}</span>
-            <p>
-              <strong>{mode.title}</strong>
-              <small>{mode.subtitle}</small>
-            </p>
-          </button>
-        ))}
-      </div>
-
       <div className="selection-mode" data-guide="edit.selection">
         <GuideLabel topicId="edit.selection">Selection mode</GuideLabel>
         {SELECTION_MODES.map((mode) => (
@@ -97,7 +164,41 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
         ))}
       </div>
 
-      {editMode !== "prompt" && (
+      {selectionMode === "auto" ? (
+        <div className="edit-parts" data-guide="edit.modes">
+          <p>What do you want to change?</p>
+          <div>
+            {EDIT_PARTS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={selectedPart === item.id ? "active" : ""}
+                aria-pressed={selectedPart === item.id}
+                disabled={busyPart !== null && busyPart !== item.id}
+                onClick={() => void handlePart(item.id)}
+              >
+                {busyPart === item.id ? "Selecting…" : item.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`is-whole ${wholeImage ? "active" : ""}`}
+              aria-pressed={wholeImage}
+              onClick={() => void handlePart(WHOLE_IMAGE)}
+            >
+              Whole image
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="edit-parts-hint">
+          {isEditingRender
+            ? "Paint over the part of the render you want to change — brush, rectangle or polygon in the viewer."
+            : "Draw a rectangle or polygon on the image — only that area is regenerated."}
+        </p>
+      )}
+
+      {!hasReferences && (
         <div className="flex items-center gap-2">
           {ACTIONS.map((action) => (
             <button
@@ -118,7 +219,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
       )}
 
       <div className="mt-3 flex flex-1 flex-col rounded-lg border border-hairline">
-        {showImageChip && (
+        {currentImageUrl && (
           <div className="w-fit p-2.5 pb-0">
             <button
               type="button"
@@ -126,7 +227,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
               onClick={() => viewImage(currentImageUrl, "Image being edited")}
               className="block overflow-hidden rounded-md border border-transparent transition-colors hover:border-blueprint"
             >
-              <img src={currentImageUrl!} alt="" className="h-20 w-20 object-cover" />
+              <img src={currentImageUrl} alt="" className="h-20 w-20 object-cover" />
             </button>
           </div>
         )}
@@ -142,20 +243,19 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
           onChange={(event) => setEditPrompt(event.target.value.slice(0, maxChars))}
           maxLength={maxChars}
           placeholder={
-            editMode === "prompt"
-              ? "Describe the transformation you want…"
-              : "Describe your edits…"
+            part
+              ? `Describe the new ${part.label.toLowerCase()} — material, colour, style…`
+              : "Describe the change you want…"
           }
           className="min-h-[100px] flex-1 resize-none rounded-lg p-3 text-sm text-primary placeholder:text-faint focus:outline-none"
         />
 
         <div className="px-3 pb-3">
           <ReferenceBar />
-          {isEditingRender && renderAreaSelected && (
-            <p className="mt-1.5 text-[11px] text-muted">References only change the area you painted.</p>
-          )}
         </div>
       </div>
+
+      {notice && <p className="edit-parts-notice">{notice}</p>}
 
       <label className="studio-influence-control" data-guide="control.influence">
         <strong>Edit strength</strong>
@@ -173,15 +273,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
 
       <SeedControl />
 
-      <p className="studio-ai-note">
-        {isEditingRender
-          ? renderAreaSelected
-            ? "Only the painted area of the render is regenerated — everything else stays exactly as it is."
-            : "Paint over part of the render to change just that area, or apply to edit the whole render."
-          : selectionMode === "manual"
-            ? "Draw a rectangle or polygon on the image — only that area is regenerated."
-            : "The AI finds what to change from your description. Draw a selection to limit the edit to one area."}
-      </p>
+      <p className="studio-ai-note">{modeSentence(hasReferences, editMode, part?.label ?? null)}</p>
     </div>
   );
 }

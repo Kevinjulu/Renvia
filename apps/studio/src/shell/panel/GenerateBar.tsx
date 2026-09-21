@@ -18,6 +18,8 @@ import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 import { buildSelectionMask } from "../../canvas/utils/buildSelectionMask";
+import { editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
+import { selectPart } from "../../canvas/utils/partSelection";
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
@@ -72,6 +74,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const editAction = useGenerationSettingsStore((state) => state.editAction);
   const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
+  const selectedPart = useGenerationSettingsStore((state) => state.selectedPart);
   const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
   const sourceType = useGenerationSettingsStore((state) => state.sourceType);
@@ -233,6 +236,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     const sourceImageUrl = editRender?.resultImageUrl ?? editNode?.imageUrl;
     if (!sourceImageUrl) return;
     const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
+    // An existing render-viewer selection (a painted or already-chosen part) always wins;
+    // otherwise auto mode needs a part chip or Whole image picked before it can select anything.
+    const needsPartChoice = selectionMode === "auto" && !(editRender && hasEditSelection);
+    const chosenPart = editPartById(selectedPart);
+    const wholeImageChosen = selectedPart === WHOLE_IMAGE;
     if (!editPrompt.trim() && referenceImageUrls.length === 0) {
       setStatus("Describe an edit or attach a reference first.");
       return;
@@ -241,11 +249,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       setStatus(editRender ? "Paint over the area to change first, or switch to Auto select." : "Draw a selection on the image first, or switch to Auto select.");
       return;
     }
-    if (selectionMode === "auto" && !(editRender && hasEditSelection) && !editPrompt.trim()) {
-      setStatus("Describe what to select (e.g. windows), or switch to Manual.");
+    if (needsPartChoice && !chosenPart && !wholeImageChosen) {
+      setStatus("Choose what to change above, or switch to Manual.");
       return;
     }
-    if (selectionMode === "auto" && !(editRender && hasEditSelection) && isSegMaintenance) {
+    if (needsPartChoice && chosenPart && isSegMaintenance) {
       setStatus(me?.maintenanceMessage?.trim() || "Automatic selections are temporarily paused for maintenance.");
       return;
     }
@@ -256,19 +264,18 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       const edit: RenderEditSettings = { mode: editMode, action };
       let maskFile: File | null = null;
 
-      if (selectionMode === "auto" && !(editRender && hasEditSelection)) {
-        const segment = await apiClient.createSegmentation({
-          imageUrl: sourceImageUrl,
-          prompt: editPrompt.trim(),
-        });
-        void refreshAccount(apiClient.getMe);
-        if (!segment.objectCount || !segment.maskDataUrl) {
-          setStatus("Nothing matched that selection. Try a clearer description or switch to Manual.");
+      if (needsPartChoice && chosenPart) {
+        const result = await selectPart(apiClient.createSegmentation, sourceImageUrl, chosenPart.term);
+        if (!result.cached) void refreshAccount(apiClient.getMe);
+        if (!result.maskDataUrl || !result.objectCount) {
+          setStatus(`No ${chosenPart.label.toLowerCase()} found here — your credit was refunded. Try Manual instead.`);
           return;
         }
-        const response = await fetch(segment.maskDataUrl);
+        const response = await fetch(result.maskDataUrl);
         const blob = await response.blob();
         maskFile = new File([blob], "mask.png", { type: "image/png" });
+      } else if (needsPartChoice && wholeImageChosen) {
+        // No mask: the edit is applied to the whole image.
       } else {
         const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
         const mask = !naturalSize

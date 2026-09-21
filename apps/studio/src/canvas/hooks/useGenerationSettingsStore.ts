@@ -5,13 +5,23 @@ export type { EditAction, EditMode };
 export type SelectionMode = "auto" | "manual";
 
 /**
- * Which edit the inputs describe, so the panel doesn't ask. References aimed at a selected
- * part borrow its material; references with nothing selected restyle the building; with no
- * references the prompt speaks for itself.
+ * Which edit the inputs describe, so the panel doesn't ask. A reference aimed at a selected
+ * part borrows its material; a reference with nothing selected restyles the whole building.
+ * Without a reference, picking Add/Remove/Change still needs "element" so the API layer
+ * builds an action verb around the prompt instead of passing it through unchanged — plain
+ * "prompt" is for a sentence with no verb chip picked.
  */
-export function inferEditMode({ hasReferences, hasSelection }: { hasReferences: boolean; hasSelection: boolean }): EditMode {
-  if (!hasReferences) return "prompt";
-  return hasSelection ? "element" : "building";
+export function inferEditMode({
+  hasReferences,
+  hasSelection,
+  hasAction,
+}: {
+  hasReferences: boolean;
+  hasSelection: boolean;
+  hasAction: boolean;
+}): EditMode {
+  if (hasReferences) return hasSelection ? "element" : "building";
+  return hasAction ? "element" : "prompt";
 }
 
 export const STYLE_INFLUENCE_LABELS = ["Minimal", "Balanced", "Strong", "Maximum"] as const;

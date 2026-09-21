@@ -1107,61 +1107,69 @@
   font-weight: 500;
 }
 
-.edit-mode-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+.edit-parts {
   margin-bottom: 10px;
 }
 
-.edit-mode-cards > button {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  border: 1px solid #e2e5e9;
-  border-radius: 8px;
-  padding: 8px;
-  background: #fff;
-  text-align: left;
-  cursor: pointer;
+.edit-parts > p {
+  margin: 0 0 6px;
+  color: #4b5563;
+  font-size: 12px !important;
+  font-weight: 500;
 }
 
-.edit-mode-cards > button.active {
+.edit-parts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.edit-parts button {
+  border: 1px solid #e2e5e9;
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px !important;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.edit-parts button:hover:not(:disabled) {
+  border-color: #c7ccd6;
+}
+
+.edit-parts button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.edit-parts button.active {
   border-color: #4d70f6;
   background: #f7f9ff;
+  color: #3157ef;
 }
 
-.edit-mode-cards > button > span {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border-radius: 6px;
-  background: #f0f2f5;
-  font-size: 12px;
+.edit-parts button.is-whole {
+  border-style: dashed;
 }
 
-.edit-mode-cards p {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
+.edit-parts-hint {
+  margin: 0 0 10px;
+  color: #6b7280;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
-.edit-mode-cards strong {
-  font-size: 12px !important;
-  font-weight: 600;
-  color: #1f2329;
-}
-
-.edit-mode-cards small {
-  display: block !important;
-  color: #6b7280 !important;
-  font-size: 11px !important;
-  line-height: 1.35 !important;
+.edit-parts-notice {
+  margin: 8px 0 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f7f9ff;
+  color: #3157ef;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .edit-panel-body {
