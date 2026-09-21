@@ -105,7 +105,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               <RenderPreview />
               <ImagePreview />
             </div>
-            <div className="elevation-filmstrip" data-guide="canvas.filmstrip" style={{ gridTemplateColumns: `repeat(${views.length + 1}, minmax(88px, 1fr))` }}>
+            <div className="elevation-filmstrip" data-guide="canvas.filmstrip">
               {views.map((view, index) => {
                 const node = nodeForView(nodes, view.id);
                 const skipped = Boolean(node) && skippedViewIds.includes(view.id);
@@ -113,7 +113,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                   <button
                     key={view.id}
                     type="button"
-                    className={`${view.id === activeViewId ? "active" : ""} ${skipped ? "is-skipped" : ""}`}
+                    className={`${view.id === activeViewId ? "active" : ""} ${node ? "is-filled" : "is-empty"} ${skipped ? "is-skipped" : ""}`}
                     title={skipped ? `${view.label} — skipped on Generate` : undefined}
                     onClick={() => {
                       selectView(view.id);
@@ -121,10 +121,20 @@ export function StudioShell({ projectId }: { projectId: string }) {
                       if (!node) pickFile(view);
                     }}
                   >
-                    <span>{node ? <img src={node.imageUrl} alt="" /> : <b>＋</b>}</span>
+                    <span className="filmstrip-thumb">
+                      {node ? (
+                        <img src={node.imageUrl} alt="" draggable={false} />
+                      ) : (
+                        <b>
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14" /></svg>
+                          Upload
+                        </b>
+                      )}
+                      {skipped && <em>Skipped</em>}
+                    </span>
                     <small>
                       <i>{index + 1}</i>
-                      {tabLabel(view)}
+                      <span>{tabLabel(view)}</span>
                     </small>
                   </button>
                 );
