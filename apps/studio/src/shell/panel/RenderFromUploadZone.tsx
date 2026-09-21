@@ -37,13 +37,13 @@ export function RenderFromUploadZone() {
     <div className="building-views-panel" data-guide="control.uploads">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-primary">Building views</p>
+          <p className="text-sm font-semibold text-primary">Elevations</p>
           <small>
             {filledCount === 0
-              ? "Upload a view to render. Empty sides are skipped."
+              ? "Upload an elevation to render. Empty sides are skipped."
               : filledCount === 1
-                ? "1 view uploaded → 1 render. Empty sides are skipped."
-                : `${filledCount} views uploaded → ${filledCount} renders. Empty sides are skipped.`}
+                ? "1 elevation uploaded → 1 render. Empty sides are skipped."
+                : `${filledCount} elevations uploaded → ${filledCount} renders. Empty sides are skipped.`}
           </small>
         </div>
         <AddViewMenu />
@@ -109,7 +109,7 @@ function ViewSlot({
           <b>{index + 1}</b>
           <p>
             <strong>{view.label}</strong>
-            <small>{uploading ? "Uploading…" : "Add view"}</small>
+            <small>{uploading ? "Uploading…" : "Add elevation"}</small>
           </p>
         </button>
         {onRemove && (

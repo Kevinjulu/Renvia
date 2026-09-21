@@ -15,10 +15,10 @@ export interface ViewBoundNode {
 }
 
 export const DEFAULT_BUILDING_VIEWS: BuildingView[] = [
-  { id: "front", key: "front", label: "Front view" },
-  { id: "right", key: "right", label: "Right view" },
-  { id: "back", key: "back", label: "Back view" },
-  { id: "left", key: "left", label: "Left view" },
+  { id: "front", key: "front", label: "Front Elevation" },
+  { id: "right", key: "right", label: "Right Elevation" },
+  { id: "back", key: "back", label: "Back Elevation" },
+  { id: "left", key: "left", label: "Left Elevation" },
 ];
 
 export const EXTRA_VIEW_PRESETS = ["Roof", "Isometric", "Site plan"] as const;
@@ -32,7 +32,7 @@ export function isDefaultViewId(id: string): boolean {
 }
 
 export function tabLabel(view: BuildingView): string {
-  return view.label.replace(/\bview\b/i, "View");
+  return view.label;
 }
 
 export function nodeForView<T extends ViewBoundNode>(nodes: T[], viewId: string): T | undefined {
@@ -68,7 +68,7 @@ export function hydrateBuildingViews<T extends ViewBoundNode>(nodes: T[]): { vie
     const extra: BuildingView = {
       id: node.elevationId,
       key: "extra",
-      label: node.viewLabel?.trim() || "Custom view",
+      label: node.viewLabel?.trim() || "Custom elevation",
     };
     views.push(extra);
     bind(node, extra);
@@ -84,7 +84,7 @@ export function hydrateBuildingViews<T extends ViewBoundNode>(nodes: T[]): { vie
     const extra: BuildingView = {
       id: node.id,
       key: "extra",
-      label: node.viewLabel?.trim() || "Custom view",
+      label: node.viewLabel?.trim() || "Custom elevation",
     };
     views.push(extra);
     bind(node, extra);

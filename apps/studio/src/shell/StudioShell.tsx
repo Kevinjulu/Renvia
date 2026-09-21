@@ -99,7 +99,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               ))}
               <AddViewMenu />
             </div>
-            <div className="studio-stage-wrap" data-guide="canvas.stage" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front View"}`}>
+            <div className="studio-stage-wrap" data-guide="canvas.stage" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front Elevation"}`}>
               <CanvasStage />
               <RenderPreview />
               <ImagePreview />

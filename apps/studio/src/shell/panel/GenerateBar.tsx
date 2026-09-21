@@ -162,7 +162,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           : null;
   const canSubmit = hasTarget && !isSubmitting;
 
-  const viewWord = filled.length === 1 ? "view" : "views";
+  const viewWord = filled.length === 1 ? "elevation" : "elevations";
   const buttonLabel = (() => {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isDisabled) return "Account disabled";

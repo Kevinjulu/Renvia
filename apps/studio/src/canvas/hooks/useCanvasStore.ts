@@ -83,7 +83,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     const view: BuildingView = {
       id: crypto.randomUUID(),
       key: "extra",
-      label: label.trim() || "Custom view",
+      label: label.trim() || "Custom elevation",
     };
     set((state) => ({
       views: [...state.views, view],
@@ -124,7 +124,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
               {
                 id: node.elevationId,
                 key: (node.viewKey ?? "extra") as BuildingView["key"],
-                label: node.viewLabel ?? "Custom view",
+                label: node.viewLabel ?? "Custom elevation",
               },
             ]
           : state.views;

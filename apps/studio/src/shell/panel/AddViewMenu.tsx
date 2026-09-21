@@ -50,10 +50,10 @@ export function AddViewMenu({ className, compact = false }: AddViewMenuProps) {
         {compact ? (
           <>
             <span>＋</span>
-            <small>Add view</small>
+            <small>Add elevation</small>
           </>
         ) : (
-          "＋ Add view"
+          "＋ Add elevation"
         )}
       </button>
       {open && (
@@ -77,7 +77,7 @@ export function AddViewMenu({ className, compact = false }: AddViewMenuProps) {
                 onChange={(event) => setCustomName(event.target.value)}
                 placeholder="Custom name"
                 maxLength={40}
-                aria-label="Custom view name"
+                aria-label="Custom elevation name"
               />
               <button type="submit" disabled={!customName.trim()}>
                 Add

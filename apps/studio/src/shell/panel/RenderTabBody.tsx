@@ -167,7 +167,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
                 title={job.viewLabel ?? "Open render"}
               >
                 <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />
-                <span>{job.viewLabel ?? "View"}</span>
+                <span>{job.viewLabel ?? "Elevation"}</span>
               </button>
             ))}
           </div>

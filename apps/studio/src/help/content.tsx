@@ -78,14 +78,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
       return (
         <>
           <P>
-            The Studio is built around building-view slots and three supporting panels: controls on the left,
+            The Studio is built around elevation slots and three supporting panels: controls on the left,
             the canvas in the centre, and past renders on the right.
           </P>
 
           <H2>The four elevation slots</H2>
           <P>
             Front, right, back, and left are always available. Upload only the sides you have — Generate
-            renders each uploaded view and skips empty slots. You can add extra views such as a roof or
+            renders each uploaded elevation and skips empty slots. You can add extra views such as a roof or
             isometric if you need them.
           </P>
 
@@ -103,13 +103,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
           <H2>Generate</H2>
           <P>
-            Generate renders every uploaded view. The number beside the button is variations per view. Credits
+            Generate renders every uploaded elevation. The number beside the button is variations per elevation. Credits
             are shown underneath. If you only uploaded a front elevation, you get that one render.
           </P>
 
           <H2>The canvas and filmstrip</H2>
           <P>
-            The stage shows the active view. Drop a file onto an empty canvas, or use the filmstrip under the
+            The stage shows the active elevation. Drop a file onto an empty canvas, or use the filmstrip under the
             stage to switch sides and fill missing elevations. Scroll to zoom; Fit in the top bar resets the view.
           </P>
 
