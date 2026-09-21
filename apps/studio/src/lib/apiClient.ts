@@ -71,6 +71,53 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
   return response.json() as Promise<T>;
 }
 
+function apiErrorFromBody(status: number, text: string) {
+  let body: { code?: unknown; error?: unknown; limit?: unknown; used?: unknown } | null = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = null;
+  }
+  return new ApiError(
+    status,
+    typeof body?.code === "string" ? body.code : null,
+    typeof body?.error === "string" ? body.error : null,
+    numberOrNull(body?.limit),
+    numberOrNull(body?.used),
+  );
+}
+
+// fetch() can't report upload progress, so file uploads go through XHR.
+async function uploadWithProgress(
+  getToken: GetToken,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): Promise<UploadImageResponse> {
+  const token = await getToken();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}/api/uploads`);
+    xhr.setRequestHeader("Content-Type", file.type);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(apiErrorFromBody(xhr.status, xhr.responseText));
+        return;
+      }
+      try {
+        resolve(JSON.parse(xhr.responseText) as UploadImageResponse);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    xhr.onerror = () => reject(new TypeError("Upload failed: network error"));
+    xhr.send(file);
+  });
+}
+
 export function useApiClient() {
   const { getToken } = useAuth();
 
@@ -93,12 +140,8 @@ export function useApiClient() {
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
     listRenders: (projectId: string) =>
       request<ListRendersResponse>(getToken, `/renders?projectId=${projectId}`),
-    uploadImage: (file: File) =>
-      request<UploadImageResponse>(getToken, "/uploads", {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      }),
+    uploadImage: (file: File, onProgress?: (fraction: number) => void) =>
+      uploadWithProgress(getToken, file, onProgress),
     listCanvasNodes: (projectId: string) =>
       request<ListCanvasNodesResponse>(getToken, `/canvas-nodes?projectId=${projectId}`),
     createCanvasNode: (body: CreateCanvasNodeRequest) =>
