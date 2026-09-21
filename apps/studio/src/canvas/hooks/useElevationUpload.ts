@@ -68,6 +68,8 @@ export function useElevationUpload() {
   const uploadFiles = useCallback(
     (files: File[]) =>
       runBatch(files.length, async (index, onProgress) => {
+        const file = files[index];
+        if (!file) return;
         const { views, nodes, addBuildingView, selectView } = useCanvasStore.getState();
         let view = views.find((item) => !nodeForView(nodes, item.id));
         if (!view) {
@@ -76,7 +78,7 @@ export function useElevationUpload() {
         }
         if (!view) return;
         selectView(view.id);
-        await uploadOne(view, files[index], onProgress);
+        await uploadOne(view, file, onProgress);
       }),
     [runBatch, uploadOne],
   );
