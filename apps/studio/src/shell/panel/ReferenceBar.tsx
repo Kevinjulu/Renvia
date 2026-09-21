@@ -3,13 +3,14 @@ import type { ReferenceImage } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { useAccountStore } from "../../lib/useAccountStore";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
 import { viewImage } from "../../canvas/utils/viewImage";
 
 type Panel = "library" | "unsplash" | "more" | null;
 
-/** Matches the API's per-render reference limit. */
-const MAX_REFERENCES = 8;
+/** Operator-configured default before /me has loaded — matches app_settings's default. */
+const DEFAULT_MAX_REFERENCES = 8;
 
 function Spinner({ size = 16 }: { size?: number }) {
   return (
@@ -62,6 +63,7 @@ export function ReferenceBar() {
   // list and restoring a previous render's settings shows its references here.
   const attachedUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
+  const maxReferences = useAccountStore((state) => state.me?.limits.maxReferenceImages ?? DEFAULT_MAX_REFERENCES);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [openPanel, setOpenPanel] = useState<Panel>(null);
@@ -93,7 +95,7 @@ export function ReferenceBar() {
 
   const attach = (reference: ReferenceImage) => {
     const current = useGenerationSettingsStore.getState().referenceImageUrls;
-    if (current.includes(reference.url) || current.length >= MAX_REFERENCES) return;
+    if (current.includes(reference.url) || current.length >= maxReferences) return;
     setReferenceImageUrls([...current, reference.url]);
   };
 
@@ -186,11 +188,16 @@ export function ReferenceBar() {
     }
   };
 
+  const atCap = attachedUrls.length >= maxReferences;
+
   return (
     <>
       <div className="reference-bar">
         {attachedUrls.length > 0 && (
           <div className="reference-attached">
+            <span className="reference-attached-count">
+              {attachedUrls.length}/{maxReferences}
+            </span>
             {attachedUrls.map((url) => (
               <div key={url} className="reference-attached-thumb">
                 <button
@@ -216,7 +223,8 @@ export function ReferenceBar() {
             type="button"
             className="reference-action"
             onClick={handleUploadClick}
-            disabled={isUploading}
+            disabled={isUploading || atCap}
+            title={atCap ? `Remove one first — up to ${maxReferences} references per render` : undefined}
           >
             <span className="reference-action-icon" aria-hidden="true">
               {isUploading ? (
@@ -250,6 +258,8 @@ export function ReferenceBar() {
             className={`reference-action ${openPanel === "library" ? "is-active" : ""}`}
             onClick={() => openPanelSafe("library")}
             aria-pressed={openPanel === "library"}
+            disabled={atCap}
+            title={atCap ? `Remove one first — up to ${maxReferences} references per render` : undefined}
           >
             <span className="reference-action-icon" aria-hidden="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
@@ -265,6 +275,8 @@ export function ReferenceBar() {
             className={`reference-action ${openPanel === "unsplash" ? "is-active" : ""}`}
             onClick={() => openPanelSafe("unsplash")}
             aria-pressed={openPanel === "unsplash"}
+            disabled={atCap}
+            title={atCap ? `Remove one first — up to ${maxReferences} references per render` : undefined}
           >
             <span className="reference-action-icon" aria-hidden="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
@@ -281,6 +293,8 @@ export function ReferenceBar() {
             className={`reference-action ${openPanel === "more" ? "is-active" : ""}`}
             onClick={() => openPanelSafe("more")}
             aria-pressed={openPanel === "more"}
+            disabled={atCap}
+            title={atCap ? `Remove one first — up to ${maxReferences} references per render` : undefined}
           >
             <span className="reference-action-icon" aria-hidden="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">

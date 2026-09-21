@@ -1,9 +1,13 @@
 import type { RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
-import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { useAccountStore } from "../../lib/useAccountStore";
 import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
+
+/** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
+const DEFAULT_MAX_PROMPT_CHARS = 2000;
 
 interface RenderTabBodyProps {
   prompt: string;
@@ -30,6 +34,8 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const setPreserveStructure = useGenerationSettingsStore((state) => state.setPreserveStructure);
   const atmospherePreset = useGenerationSettingsStore((state) => state.atmospherePreset);
   const setAtmospherePreset = useGenerationSettingsStore((state) => state.setAtmospherePreset);
+  const me = useAccountStore((state) => state.me);
+  const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
 
   const jobs = useRenderJobsStore((state) => state.jobs);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
@@ -43,15 +49,17 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
         <p>
           Prompt <span>(optional)</span>
         </p>
-        <span>{prompt.length}/500</span>
+        <span>
+          {prompt.length}/{maxPromptChars}
+        </span>
       </div>
       <textarea
         value={prompt}
         onChange={(event) => {
-          onPromptChange(event.target.value);
+          onPromptChange(event.target.value.slice(0, maxPromptChars));
           if (atmospherePreset) setAtmospherePreset(null);
         }}
-        maxLength={500}
+        maxLength={maxPromptChars}
         placeholder="Example: A modern house with wood cladding by the Swedish coast, surrounded by pine trees"
         className="studio-prompt-input resize-none rounded-lg border border-hairline p-3 text-primary placeholder:text-faint focus:border-blueprint focus:outline-none"
       />
@@ -100,7 +108,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
               value={styleInfluence}
               onChange={(event) => setStyleInfluence(Number(event.target.value))}
             />
-            <b>{styleInfluence}</b>
+            <b>{STYLE_INFLUENCE_LABELS[styleInfluence - 1]}</b>
           </div>
         </label>
         <label className="studio-preserve-control" data-guide="control.preserve">

@@ -607,11 +607,14 @@ function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: 
                     <Cpu size={12} /> {formatModel(render.model)}
                   </span>
                 </DetailField>
-                <DetailField label="Resolution">{render.resolution}</DetailField>
+                <DetailField label="Aspect ratio">{render.aspectRatio}</DetailField>
                 <DetailField label="Style">{render.style}</DetailField>
                 <DetailField label="View">{render.viewLabel || "—"}</DetailField>
                 <DetailField label="Cost">{formatUsd(render.costUsd)}</DetailField>
                 <DetailField label="Credits">{formatNumber(render.creditsCharged)}</DetailField>
+                <DetailField label="Seed">
+                  <span className="font-mono text-xs">{render.seed ?? "—"}</span>
+                </DetailField>
                 <DetailField label="Created">{formatDateTime(render.createdAt)}</DetailField>
                 <DetailField label="Updated">{formatRelative(render.updatedAt)}</DetailField>
                 <DetailField label="fal request">

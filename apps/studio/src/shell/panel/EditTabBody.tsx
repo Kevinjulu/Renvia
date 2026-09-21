@@ -1,11 +1,14 @@
 import { ReferenceBar } from "./ReferenceBar";
+import { SeedControl } from "./SeedControl";
 import { hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
+  STYLE_INFLUENCE_LABELS,
   useGenerationSettingsStore,
   type EditAction,
   type EditMode,
   type SelectionMode,
 } from "../../canvas/hooks/useGenerationSettingsStore";
+import { useAccountStore } from "../../lib/useAccountStore";
 import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
 
@@ -15,16 +18,21 @@ const EDIT_MODES: { id: EditMode; icon: string; title: string; subtitle: string 
   { id: "prompt", icon: "✦", title: "Prompt edit", subtitle: "Describe the transformation" },
 ];
 
-const ACTIONS: { id: EditAction; label: string; hasMenu?: boolean }[] = [
+const ACTIONS: { id: EditAction; label: string }[] = [
   { id: "add", label: "Add" },
   { id: "remove", label: "Remove" },
-  { id: "change", label: "Change", hasMenu: true },
+  { id: "change", label: "Change" },
 ];
 
 const SELECTION_MODES: { id: SelectionMode; label: string }[] = [
   { id: "auto", label: "Auto select" },
   { id: "manual", label: "Manual" },
 ];
+
+/** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
+const DEFAULT_MAX_PROMPT_CHARS = 2000;
+/** Matches app_settings.max_selection_prompt_chars's default. */
+const DEFAULT_MAX_SELECTION_CHARS = 200;
 
 interface EditTabBodyProps {
   currentImageUrl: string | null;
@@ -39,10 +47,20 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
   const setSelectionMode = useGenerationSettingsStore((state) => state.setSelectionMode);
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const setEditPrompt = useGenerationSettingsStore((state) => state.setEditPrompt);
+  const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
+  const setEditInfluence = useGenerationSettingsStore((state) => state.setEditInfluence);
+  const me = useAccountStore((state) => state.me);
 
   const isEditingRender = useRenderEditStore((state) => state.targetJobId !== null);
   const renderAreaSelected = useRenderEditStore((state) => hasSelection(state.strokes));
   const showImageChip = Boolean(currentImageUrl);
+
+  // The edit prompt doubles as the auto-select query when that's the active selection mode,
+  // so the true limit is whichever cap is tighter — send more than the segmentation endpoint
+  // allows and the request bounces even though the edit prompt itself was within range.
+  const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const maxSelectionChars = me?.limits.maxSelectionPromptChars ?? DEFAULT_MAX_SELECTION_CHARS;
+  const maxChars = selectionMode === "auto" ? Math.min(maxPromptChars, maxSelectionChars) : maxPromptChars;
 
   return (
     <div className="edit-panel-body flex flex-1 flex-col">
@@ -94,11 +112,6 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
               }`}
             >
               {action.label}
-              {action.hasMenu && (
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                  <path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
             </button>
           ))}
         </div>
@@ -106,7 +119,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
 
       <div className="mt-3 flex flex-1 flex-col rounded-lg border border-hairline">
         {showImageChip && (
-          <div className="relative w-fit p-2.5 pb-0">
+          <div className="w-fit p-2.5 pb-0">
             <button
               type="button"
               title="View this image full size"
@@ -115,16 +128,19 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
             >
               <img src={currentImageUrl!} alt="" className="h-20 w-20 object-cover" />
             </button>
-            <span className="absolute bottom-1 left-3 flex h-4 w-4 items-center justify-center rounded bg-primary/80 text-[10px] font-medium text-white">
-              1
-            </span>
           </div>
         )}
 
+        <div className="flex items-center justify-between px-3 pt-2.5">
+          <span className="text-xs font-medium text-muted">Prompt</span>
+          <span className="text-[11px] text-faint">
+            {editPrompt.length}/{maxChars}
+          </span>
+        </div>
         <textarea
           value={editPrompt}
-          onChange={(event) => setEditPrompt(event.target.value)}
-          maxLength={500}
+          onChange={(event) => setEditPrompt(event.target.value.slice(0, maxChars))}
+          maxLength={maxChars}
           placeholder={
             editMode === "prompt"
               ? "Describe the transformation you want…"
@@ -140,6 +156,22 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
           )}
         </div>
       </div>
+
+      <label className="studio-influence-control" data-guide="control.influence">
+        <strong>Edit strength</strong>
+        <div>
+          <input
+            type="range"
+            min="1"
+            max="4"
+            value={editInfluence}
+            onChange={(event) => setEditInfluence(Number(event.target.value))}
+          />
+          <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
+        </div>
+      </label>
+
+      <SeedControl />
 
       <p className="studio-ai-note">
         {isEditingRender

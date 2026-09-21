@@ -7,7 +7,8 @@ export interface RenderJob {
   sourceImageUrl: string;
   resultImageUrl: string | null;
   prompt: string;
-  resolution: string;
+  /** "auto" (match source) or a fixed W:H ratio — see AspectRatio. */
+  aspectRatio: string;
   style: string;
   viewKey: string | null;
   viewLabel: string | null;
@@ -20,9 +21,18 @@ export interface RenderJob {
   settings: RenderGenerationSettings | null;
   /** Credits debited for this render (refunded if it failed); 0 for admins. */
   creditsCharged: number;
+  /**
+   * The seed actually used — what was requested, or what the model echoed back when none
+   * was. Null when the model doesn't report one and none was requested, so this exact
+   * result can't be reproduced (currently true for nano-banana/edit's reference route).
+   */
+  seed: number | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** "auto" matches the source image; the rest ask the model for a fixed output shape. */
+export type AspectRatio = "auto" | "1:1" | "16:9" | "4:3" | "3:4" | "9:16";
 
 /** mock = free placeholder results; dev = cheapest real model; prod = production model. */
 export type RenderEngineMode = "mock" | "dev" | "prod";
@@ -70,18 +80,22 @@ export interface RenderBudgetResponse {
 /** Optional generation knobs, mapped onto model inputs by the API's model registry. */
 export interface RenderGenerationSettings {
   sourceType?: RenderSourceType;
-  /** 1 (subtle) – 4 (maximum). */
+  /** Render-tab strength, 1 (subtle) – 4 (maximum). Ignored on edit routes — see editInfluence. */
   styleInfluence?: number;
+  /** Edit-tab strength, 1 (subtle) – 4 (maximum). How closely the edit follows the instruction. */
+  editInfluence?: number;
   preserveStructure?: boolean;
   referenceImageUrls?: string[];
   edit?: RenderEditSettings;
+  /** Reuse a previous render's seed to reproduce it, or nudge it with a new prompt/strength. */
+  seed?: number;
 }
 
 export interface CreateRenderRequest {
   projectId: string;
   sourceImageUrl: string;
   prompt: string;
-  resolution: string;
+  aspectRatio: AspectRatio;
   style: string;
   viewKey?: string;
   viewLabel?: string;
@@ -375,12 +389,13 @@ export interface AdminRender {
   creditsCharged: number;
   prompt: string;
   style: string;
-  resolution: string;
+  aspectRatio: string;
   viewLabel: string | null;
   sourceImageUrl: string;
   resultImageUrl: string | null;
   errorMessage: string | null;
   falRequestId: string | null;
+  seed: number | null;
   /** True when pending/processing longer than 15 minutes. */
   stuck: boolean;
   createdAt: string;

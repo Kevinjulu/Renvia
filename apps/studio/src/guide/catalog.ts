@@ -44,9 +44,9 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
   },
   "control.style": {
     id: "control.style",
-    title: "Style and resolution",
-    short: "Photorealistic, sketch, or watercolor — 1K is available on every plan.",
-    body: "Style sets the look of the visualization. Resolution is 1K today; 2K and 4K stay locked until the plan allows them.",
+    title: "Style and aspect ratio",
+    short: "Photorealistic, sketch, or watercolor — plus the shape the render comes out in.",
+    body: "Style sets the look of the visualization. Aspect ratio picks the output's shape — Auto matches your source image; the others ask for a fixed ratio like 16:9 or 3:4.",
     how: "Pick a style before Generate. Changing style later does not rewrite renders already in history.",
     article: "consistent-results",
     tab: "render",

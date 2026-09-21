@@ -6,7 +6,10 @@ import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/plac
 import { useAutoShowFinishedRender, useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
 import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
 import { viewImage } from "../../canvas/utils/viewImage";
+import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
+import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { useApiClient } from "../../lib/apiClient";
+import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
 import { useGuideStore } from "../../guide/useGuideStore";
 
@@ -40,6 +43,7 @@ export function RenderResultsPanel() {
   const views = useCanvasStore((state) => state.views);
   const selectView = useCanvasStore((state) => state.selectView);
   const jobs = useRenderJobsStore((state) => state.jobs);
+  const addJob = useRenderJobsStore((state) => state.addJob);
   const activeJobId = useRenderJobsStore((state) => state.activeJobId);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
   const previewJobId = useRenderJobsStore((state) => state.previewJobId);
@@ -48,11 +52,14 @@ export function RenderResultsPanel() {
   const favoriteIds = useRenderJobsStore((state) => state.favoriteIds);
   const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
+  const setSeed = useGenerationSettingsStore((state) => state.setSeed);
   const guideOpen = useGuideStore((state) => state.mode !== "idle");
 
   const [dismissed, setDismissed] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [seedCopied, setSeedCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const activeJob = jobs.find((job) => job.id === activeJobId) ?? jobs[0] ?? null;
@@ -74,6 +81,12 @@ export function RenderResultsPanel() {
     return () => clearTimeout(timeout);
   }, [copied]);
 
+  useEffect(() => {
+    if (!seedCopied) return;
+    const timeout = setTimeout(() => setSeedCopied(false), 1500);
+    return () => clearTimeout(timeout);
+  }, [seedCopied]);
+
   const filled = filledBuildingViews(views, nodes);
   const previewUrl = nodeForView(nodes, filled[0]?.id ?? "")?.imageUrl ?? nodes[0]?.imageUrl ?? null;
   const isEmpty = filled.length === 0 && jobs.length === 0;
@@ -88,6 +101,30 @@ export function RenderResultsPanel() {
   const handleUsePromptAndSettings = () => {
     if (!activeJob) return;
     applyRenderSettings(activeJob);
+  };
+
+  const handleRetry = async () => {
+    if (!activeJob) return;
+    const projectId = useCanvasStore.getState().projectId;
+    if (!projectId) return;
+    setIsRetrying(true);
+    try {
+      const { job } = await apiClient.createRender(buildRetryRequest(activeJob, projectId));
+      addJob(job);
+    } catch (error) {
+      reportLimit(error);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const handleReuseSeed = () => {
+    if (activeJob?.seed != null) setSeed(activeJob.seed);
+  };
+
+  const handleCopySeed = () => {
+    if (activeJob?.seed == null) return;
+    void navigator.clipboard.writeText(String(activeJob.seed)).then(() => setSeedCopied(true));
   };
 
   const handleSetAsBase = async () => {
@@ -318,13 +355,29 @@ export function RenderResultsPanel() {
                     ? "From drawing"
                     : "From photo",
                 activeJob.style,
-                activeJob.resolution,
+                formatAspectRatio(activeJob.aspectRatio),
               ].filter(Boolean).map((tag) => (
                 <span key={tag} className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-secondary">
                   {tag}
                 </span>
               ))}
             </div>
+
+            {activeJob.seed != null && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-hairline px-2.5 py-1.5">
+                <span className="text-xs text-muted">
+                  Seed <span className="font-medium tabular-nums text-secondary">{activeJob.seed}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={handleCopySeed} className="text-xs font-medium text-blueprint hover:underline">
+                    {seedCopied ? "Copied" : "Copy"}
+                  </button>
+                  <button type="button" onClick={handleReuseSeed} className="text-xs font-medium text-blueprint hover:underline">
+                    Reuse
+                  </button>
+                </div>
+              </div>
+            )}
 
             {(() => {
               const parent = activeJob.settings?.edit
@@ -377,6 +430,19 @@ export function RenderResultsPanel() {
             )}
 
             <div className="mt-auto flex flex-col gap-2 pt-2">
+              {activeJob.status === "failed" && (
+                <button
+                  type="button"
+                  disabled={isRetrying}
+                  onClick={() => void handleRetry()}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M13 8A5 5 0 1 1 11.5 4.4M13 2.5v3.5H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {isRetrying ? "Retrying…" : "Retry with same settings"}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={activeJob.status !== "succeeded" || !activeJob.resultImageUrl}

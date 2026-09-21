@@ -93,8 +93,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <P>
             Direction is optional. A short prompt sets atmosphere and materials. Reference images are stronger:
             the model blends them with your elevation so cladding, landscape, and lighting follow what you show.
-            Style and resolution sit above the prompt. Source type tells the model whether it is looking at a
-            photo / 3D view or a line drawing.
+            Style and aspect ratio sit above the prompt — Auto keeps the source image's own shape. Source type
+            tells the model whether it is looking at a photo / 3D view or a line drawing.
           </P>
           <Callout label="Preserve structure" accent="blueprint">
             Leave this on for client elevations. The model may change finish and colour, but it should not

@@ -72,12 +72,14 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const editAction = useGenerationSettingsStore((state) => state.editAction);
   const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
-  const resolution = useGenerationSettingsStore((state) => state.resolution);
+  const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
   const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
+  const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
+  const seed = useGenerationSettingsStore((state) => state.seed);
   const selection = useSelectionToolStore((state) => state.selection);
   const selectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const addJob = useRenderJobsStore((state) => state.addJob);
@@ -179,8 +181,13 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       styleInfluence,
       preserveStructure,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+      seed: seed ?? undefined,
     };
     try {
+      // A locked seed reproduces the same image for every view/variation it's applied to —
+      // fine for one view, but "×N variations" and a locked seed contradict each other, so
+      // only the first request keeps it and the rest fall back to random.
+      let seedUses = 0;
       const requests = filled.flatMap((view) => {
         const node = nodeForView(nodes, view.id);
         if (!node) return [];
@@ -189,11 +196,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
             projectId,
             sourceImageUrl: node.imageUrl,
             prompt: prompt.trim(),
-            resolution,
+            aspectRatio,
             style,
             viewKey: view.id,
             viewLabel: view.label,
-            generationSettings,
+            generationSettings: { ...generationSettings, seed: seedUses++ === 0 ? generationSettings.seed : undefined },
           }),
         );
       });
@@ -213,6 +220,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         setStatus(`${refusal} ${queued.length} of ${results.length} renders queued.`);
       } else if (rejected.length > 0) {
         setStatus(`Couldn't queue ${rejected.length} of ${results.length} renders. Try again in a moment.`);
+      } else if (seed !== null && results.length > 1) {
+        setStatus("Locked seed applied to the first image; the rest used a new one each.");
       }
     } finally {
       setIsSubmitting(false);
@@ -281,14 +290,16 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         projectId,
         sourceImageUrl,
         prompt: editPrompt.trim(),
-        resolution,
+        aspectRatio,
         style,
         viewKey: editRender ? (editRender.viewKey ?? undefined) : editView?.id,
         viewLabel: editRender ? (editRender.viewLabel ?? undefined) : editView?.label,
         generationSettings: {
-          styleInfluence,
-          preserveStructure,
+          // The Edit tab's own strength control — the Render tab's styleInfluence and
+          // preserveStructure never reach an edit (see engine.ts).
+          editInfluence,
           referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+          seed: seed ?? undefined,
           edit,
         },
       });

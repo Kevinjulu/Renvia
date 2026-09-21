@@ -24,7 +24,7 @@ const createRenderSchema = z.object({
   // Optional — the engine composes the full model prompt from style and settings.
   // The real cap is app_settings.max_prompt_chars; this is only the hard ceiling.
   prompt: z.string().trim().max(8000),
-  resolution: z.string().trim().min(1).max(20),
+  aspectRatio: z.enum(["auto", "1:1", "16:9", "4:3", "3:4", "9:16"]),
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
   viewLabel: z.string().trim().min(1).max(80).optional(),
@@ -32,6 +32,7 @@ const createRenderSchema = z.object({
     .object({
       sourceType: z.enum(["drawing", "photo"]).optional(),
       styleInfluence: z.number().int().min(1).max(4).optional(),
+      editInfluence: z.number().int().min(1).max(4).optional(),
       preserveStructure: z.boolean().optional(),
       // Hard ceiling; app_settings.max_reference_images is the one operators tune.
       referenceImageUrls: z.array(z.string().url()).max(16).optional(),
@@ -42,6 +43,9 @@ const createRenderSchema = z.object({
           maskImageUrl: z.string().url().optional(),
         })
         .optional(),
+      // fal seeds are non-negative 32-bit ints; validated loosely here since an out-of-range
+      // value just gets rejected by fal itself rather than doing anything unsafe.
+      seed: z.number().int().min(0).max(2_147_483_647).optional(),
     })
     .optional(),
 });
@@ -100,7 +104,7 @@ renders.post("/", async (c) => {
       projectId: body.projectId,
       sourceImageUrl: body.sourceImageUrl,
       prompt: body.prompt,
-      resolution: body.resolution,
+      aspectRatio: body.aspectRatio,
       style: body.style,
       viewKey: body.viewKey,
       viewLabel: body.viewLabel,

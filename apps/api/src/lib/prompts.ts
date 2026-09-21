@@ -21,22 +21,36 @@ export interface EnginePromptOptions {
   /** The user's own prompt; may be empty. */
   prompt: string;
   style: string;
-  route: RenderSourceType | "references";
+  /** photo = photo/3D massing, drawing = CAD/line elevation — each gets its own framing, with or without references. */
+  sourceType: RenderSourceType;
+  hasReferences: boolean;
   preserveStructure: boolean;
   /** 1 (subtle) – 4 (maximum). */
   influence: number;
 }
 
 /** Composes the model prompt; the user's raw prompt is stored separately on the render. */
-export function buildEnginePrompt({ prompt, style, route, preserveStructure, influence }: EnginePromptOptions): string {
+export function buildEnginePrompt({
+  prompt,
+  style,
+  sourceType,
+  hasReferences,
+  preserveStructure,
+  influence,
+}: EnginePromptOptions): string {
   const styleText = STYLE_DESCRIPTIONS[style] ?? STYLE_DESCRIPTIONS.Photorealistic!;
-  const lead = {
-    drawing: `Render the building in this architectural elevation drawing as ${styleText}.`,
-    photo: `Re-render this building as ${styleText}.`,
-    references:
-      `Render the building from the first image as ${styleText}, ` +
-      "matching the materials, colours, lighting and surroundings shown in the other images.",
-  }[route];
+  // Drawing keeps the CAD-elevation framing even with references attached — losing it here
+  // was the difference between the model following the drawing's lines and guessing at them.
+  const lead =
+    sourceType === "drawing"
+      ? hasReferences
+        ? `Render the building in this architectural elevation drawing as ${styleText}, ` +
+          "matching the materials, colours, lighting and surroundings shown in the reference images."
+        : `Render the building in this architectural elevation drawing as ${styleText}.`
+      : hasReferences
+        ? `Render the building from the first image as ${styleText}, ` +
+          "matching the materials, colours, lighting and surroundings shown in the other images."
+        : `Re-render this building as ${styleText}.`;
 
   return [lead, preserveStructure ? STRUCTURE_LOCK : null, INFLUENCE_PHRASES[influence], prompt.trim() ? `Scene: ${prompt.trim()}` : null]
     .filter(Boolean)
@@ -48,6 +62,8 @@ export interface EditPromptOptions {
   prompt: string;
   edit: RenderEditSettings;
   hasReferences: boolean;
+  /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
+  style?: string;
 }
 
 const KEEP_THE_REST = "Keep everything else in the image exactly as it is.";
@@ -64,20 +80,29 @@ function asSentence(text: string): string {
  * Composes the model prompt for an Edit-tab job. Selection edits use the same instruction
  * prompt — only the selected area of the result is kept, so the model needn't know about it.
  */
-export function buildEditPrompt({ prompt, edit, hasReferences }: EditPromptOptions): string {
+export function buildEditPrompt({ prompt, edit, hasReferences, style }: EditPromptOptions): string {
   const subject = prompt.trim();
+  // A non-default style on the image being edited would otherwise drift toward photoreal —
+  // these models have no memory of how the source was rendered.
+  const styleHint = style && style !== "Photorealistic" && STYLE_DESCRIPTIONS[style]
+    ? `Keep this in ${STYLE_DESCRIPTIONS[style]}.`
+    : "";
 
   if (edit.mode === "element" && hasReferences) {
     const target = subject || "the matching surfaces of the building";
-    return `Apply the material, texture and colour from the reference images to ${target}. ${KEEP_THE_REST}`;
+    return [`Apply the material, texture and colour from the reference images to ${target}.`, KEEP_THE_REST, styleHint]
+      .filter(Boolean)
+      .join(" ");
   }
 
   if (edit.mode === "building" && hasReferences) {
-    return (
-      "Restyle the building in the architectural style of the reference images" +
-      (subject ? `: ${subject}. ` : ". ") +
-      `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`
-    );
+    return [
+      "Restyle the building in the architectural style of the reference images" + (subject ? `: ${subject}.` : "."),
+      `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`,
+      styleHint,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
   const instruction = {
@@ -86,7 +111,7 @@ export function buildEditPrompt({ prompt, edit, hasReferences }: EditPromptOptio
     change: `Change ${subject}.`,
   }[edit.action ?? "change"];
   const referenceHint = hasReferences ? "Use the reference images as a guide." : "";
-  return [asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction), referenceHint, KEEP_THE_REST]
+  return [asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction), referenceHint, KEEP_THE_REST, styleHint]
     .filter(Boolean)
     .join(" ");
 }

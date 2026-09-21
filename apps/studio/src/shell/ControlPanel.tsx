@@ -1,7 +1,8 @@
 import { ProjectDropdown } from "./panel/ProjectDropdown";
 import { RenderFromUploadZone } from "./panel/RenderFromUploadZone";
 import { StylePicker } from "./panel/StylePicker";
-import { ResolutionPicker } from "./panel/ResolutionPicker";
+import { AspectRatioPicker } from "./panel/AspectRatioPicker";
+import { SeedControl } from "./panel/SeedControl";
 import { RenderEditTabs } from "./panel/RenderEditTabs";
 import { RenderTabBody } from "./panel/RenderTabBody";
 import { EditTabBody } from "./panel/EditTabBody";
@@ -25,8 +26,8 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
   const setPrompt = useGenerationSettingsStore((state) => state.setPrompt);
-  const resolution = useGenerationSettingsStore((state) => state.resolution);
-  const setResolution = useGenerationSettingsStore((state) => state.setResolution);
+  const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
+  const setAspectRatio = useGenerationSettingsStore((state) => state.setAspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
   const setStyle = useGenerationSettingsStore((state) => state.setStyle);
   const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
@@ -41,8 +42,9 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
           <RenderFromUploadZone />
           <div className="studio-settings-row" data-guide="control.style">
             <StylePicker value={style} onChange={setStyle} />
-            <ResolutionPicker value={resolution} onChange={setResolution} />
+            <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
           </div>
+          <SeedControl />
         </>
       ) : (
         <EditModeHeader render={editRender} />

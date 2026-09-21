@@ -6,6 +6,7 @@ import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore, type
 import { useApiClient } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
+import { formatAspectRatio } from "./utils/aspectRatio";
 
 function downloadImage(url: string) {
   const link = document.createElement("a");
@@ -368,11 +369,11 @@ export function RenderPreview() {
           {awaitingJobId && <span className="render-edit-pending">Edit in progress…</span>}
         </footer>
       ) : (
-        (job.prompt || job.style || job.resolution) && (
+        (job.prompt || job.style || formatAspectRatio(job.aspectRatio)) && (
           <footer className="render-preview-footer">
             {job.prompt && <p title={job.prompt}>{job.prompt}</p>}
             <div>
-              {[job.style, job.resolution].filter(Boolean).map((tag) => (
+              {[job.style, formatAspectRatio(job.aspectRatio)].filter(Boolean).map((tag) => (
                 <span key={tag}>{tag}</span>
               ))}
             </div>

@@ -1,7 +1,7 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
-import { renderRouteFor, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
+import type { AspectRatio, RenderBudgetResponse, RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
 import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./composite.js";
 import { refundIfFailed } from "./credits.js";
@@ -164,8 +164,14 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
   try {
     const fal = falClient(env);
     const settings = render.settings ?? {};
-    const influence = settings.styleInfluence ?? 2;
-    const preserveStructure = settings.preserveStructure ?? true;
+    const isEdit = Boolean(settings.edit);
+    // Edit strength is its own control (Edit tab), never whatever the Render tab's slider
+    // last happened to be set to — the two routes shouldn't share invisible state.
+    const influence = (isEdit ? settings.editInfluence : settings.styleInfluence) ?? 2;
+    // A targeted edit already keeps everything outside the mask untouched by compositing;
+    // the crop sent to the model can afford to change more freely, so it's always unlocked.
+    const preserveStructure = isEdit ? false : (settings.preserveStructure ?? true);
+    const aspectRatio: AspectRatio = (render.aspectRatio as AspectRatio) || "auto";
     // A selection edit sends the model a close-up of the selected area (see editCropFor).
     const masked = await maskedEditInputs(env, render, origin);
     const sourceUrlPromise = masked?.crop
@@ -176,13 +182,13 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
       ...(settings.referenceImageUrls ?? []).map((url) => falReachableImageUrl(env, fal, url, origin)),
     ]);
 
-    const route = renderRouteFor(settings);
     const prompt = settings.edit
-      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, hasReferences: referenceUrls.length > 0 })
+      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, hasReferences: referenceUrls.length > 0, style: render.style })
       : buildEnginePrompt({
           prompt: render.prompt,
           style: render.style,
-          route: route === "references" || route === "drawing" ? route : "photo",
+          sourceType: settings.sourceType ?? "photo",
+          hasReferences: referenceUrls.length > 0,
           preserveStructure,
           influence,
         });
@@ -194,6 +200,8 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
         prompt,
         influence,
         preserveStructure,
+        aspectRatio,
+        seed: settings.seed,
       }),
       webhookUrl: webhookUrlFor(origin),
     });
@@ -238,11 +246,15 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
 
   try {
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
-    const imageUrl = (data as { images?: { url?: string }[] }).images?.[0]?.url;
+    const result = data as { images?: { url?: string }[]; seed?: number };
+    const imageUrl = result.images?.[0]?.url;
     if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatch("Render returned no image")));
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
-    return finishRender(db, render, { status: "succeeded", resultImageUrl });
+    // Kontext and lightning-sdxl echo back the seed they actually used (including a random
+    // one we didn't set); nano-banana/edit doesn't, so it falls back to what we asked for.
+    const seed = typeof result.seed === "number" ? result.seed : (render.settings?.seed ?? null);
+    return finishRender(db, render, { status: "succeeded", resultImageUrl, seed });
   } catch (error) {
     // A completed request whose result call errors is a model-side failure (bad input,
     // safety filter, …); storage/network hiccups are left processing and retried.
@@ -268,8 +280,13 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
 
   if (render.model === "mock") {
     if (Date.now() - render.createdAt.getTime() < MOCK_DURATION_MS) return render;
-    // Mock result is the source image itself — enough to exercise every downstream UI path.
-    return finishRender(db, render, { status: "succeeded", resultImageUrl: render.sourceImageUrl });
+    // Mock result is the source image itself — enough to exercise every downstream UI path,
+    // including a seed the user typed, so the Seed control is testable without spending fal credit.
+    return finishRender(db, render, {
+      status: "succeeded",
+      resultImageUrl: render.sourceImageUrl,
+      seed: render.settings?.seed ?? null,
+    });
   }
 
   try {

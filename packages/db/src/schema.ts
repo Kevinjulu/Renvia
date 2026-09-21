@@ -79,7 +79,8 @@ export const renders = pgTable("renders", {
   sourceImageUrl: text("source_image_url").notNull(),
   resultImageUrl: text("result_image_url"),
   prompt: text("prompt").notNull(),
-  resolution: text("resolution").notNull().default("1K"),
+  /** "auto" (match source) or a W:H ratio the model actually supports — see models.ts. */
+  aspectRatio: text("aspect_ratio").notNull().default("auto"),
   style: text("style").notNull().default("Photorealistic"),
   viewKey: text("view_key"),
   viewLabel: text("view_label"),
@@ -92,9 +93,22 @@ export const renders = pgTable("renders", {
   settings: jsonb("settings").$type<RenderGenerationSettings>(),
   /** Credits debited when the render was created; refunded if it fails. */
   creditsCharged: integer("credits_charged").notNull().default(0),
+  /**
+   * The seed actually used: what the caller requested, or what the model echoed back when
+   * none was given. Null when the model doesn't report one (nano-banana/edit) and none was
+   * requested — that render can't be exactly reproduced.
+   */
+  seed: integer("seed"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [
+    check(
+      "renders_aspect_ratio_values",
+      sql`${table.aspectRatio} IN ('auto', '1:1', '16:9', '4:3', '3:4', '9:16')`,
+    ),
+  ],
+);
 
 export const referenceImages = pgTable("reference_images", {
   id: uuid("id").primaryKey().defaultRandom(),
