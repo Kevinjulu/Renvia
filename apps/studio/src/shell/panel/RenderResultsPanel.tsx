@@ -10,8 +10,7 @@ import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
 import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
-import { filledBuildingViews, nodeForView } from "../../canvas/buildingViews";
-import { useGuideStore } from "../../guide/useGuideStore";
+import { filledBuildingViews } from "../../canvas/buildingViews";
 
 const PROGRESS_CEILING = 92;
 
@@ -34,6 +33,15 @@ function downloadImage(url: string) {
   link.remove();
 }
 
+function timeAgo(iso: string, now: number) {
+  const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export function RenderResultsPanel() {
   useRenderJobsPolling();
   useAutoShowFinishedRender();
@@ -53,13 +61,13 @@ export function RenderResultsPanel() {
   const toggleFavorite = useRenderJobsStore((state) => state.toggleFavorite);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
   const setSeed = useGenerationSettingsStore((state) => state.setSeed);
-  const guideOpen = useGuideStore((state) => state.mode !== "idle");
 
-  const [dismissed, setDismissed] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [seedCopied, setSeedCopied] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [starredOnly, setStarredOnly] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const activeJob = jobs.find((job) => job.id === activeJobId) ?? jobs[0] ?? null;
@@ -70,10 +78,6 @@ export function RenderResultsPanel() {
     const interval = setInterval(() => setNow(Date.now()), 400);
     return () => clearInterval(interval);
   }, [hasInFlight]);
-
-  useEffect(() => {
-    if (jobs.length > 0) setDismissed(false);
-  }, [jobs.length]);
 
   useEffect(() => {
     if (!copied) return;
@@ -87,11 +91,7 @@ export function RenderResultsPanel() {
     return () => clearTimeout(timeout);
   }, [seedCopied]);
 
-  const filled = filledBuildingViews(views, nodes);
-  const previewUrl = nodeForView(nodes, filled[0]?.id ?? "")?.imageUrl ?? nodes[0]?.imageUrl ?? null;
-  const isEmpty = filled.length === 0 && jobs.length === 0;
-
-  if ((isEmpty && !guideOpen) || (dismissed && !guideOpen)) return null;
+  const filledCount = filledBuildingViews(views, nodes).length;
 
   const handleCopyPrompt = () => {
     if (!activeJob) return;
@@ -148,331 +148,295 @@ export function RenderResultsPanel() {
     }
   };
 
-  return (
-    <div className="flex h-full shrink-0" data-guide="results.panel">
-      {jobs.length > 1 && (
-        <div className="flex w-16 shrink-0 flex-col gap-2 overflow-y-auto border-l border-hairline bg-surface p-2">
-          {jobs.map((job) => (
-            <button
-              key={job.id}
-              type="button"
-              onClick={() => {
-                if (job.status === "succeeded" && job.resultImageUrl) {
-                  setPreviewJob(job.id);
-                  return;
-                }
-                setActiveJob(job.id);
-                viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined);
-              }}
-              title={[job.viewLabel, job.prompt].filter(Boolean).join(": ") || "Render"}
-              className={`relative aspect-square shrink-0 overflow-hidden rounded-lg border bg-white ${
-                job.id === activeJob?.id ? "border-blueprint" : "border-hairline hover:border-hairline-strong"
-              }`}
-            >
-              {job.resultImageUrl ? (
-                <img src={job.resultImageUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <img src={job.sourceImageUrl} alt="" className="h-full w-full object-cover opacity-40" />
-              )}
-              {(job.status === "pending" || job.status === "processing") && (
-                <span className="absolute inset-0 flex items-center justify-center bg-white/50">
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-blueprint border-t-transparent" />
-                </span>
-              )}
-              {job.status === "failed" && (
-                <span className="absolute inset-0 flex items-center justify-center bg-white/70 text-[10px] font-medium text-red-500">
-                  Failed
-                </span>
-              )}
-              {job.viewLabel && (
-                <span className="absolute bottom-0 inset-x-0 truncate bg-black/55 px-1 py-0.5 text-[8px] font-medium text-white">
-                  {job.viewLabel}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="flex h-full w-[300px] flex-col gap-4 overflow-y-auto border-l border-hairline bg-white p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-primary">
-            {isEmpty
-              ? "Past renders"
-              : activeJob
-              ? [activeJob.settings?.edit ? "Edit" : "Render", activeJob.viewLabel].filter(Boolean).join(" · ")
-              : "Uploaded views"}
+  if (!activeJob) {
+    return (
+      <aside className="rp-panel" data-guide="results.panel">
+        <header className="rp-head">
+          <strong>Renders</strong>
+        </header>
+        <div className="rp-empty">
+          <span className="rp-empty-art" aria-hidden="true">
+            <svg viewBox="0 0 48 48">
+              <rect x="7" y="11" width="34" height="26" rx="4" />
+              <path d="m7 31 9-8 7 6 6-5 12 9" />
+              <circle cx="31" cy="19" r="3" />
+            </svg>
+          </span>
+          <strong>{filledCount ? "Ready when you are" : "No renders yet"}</strong>
+          <p>
+            {filledCount
+              ? `${filledCount} ${filledCount === 1 ? "elevation is" : "elevations are"} ready. Press Generate and your renders will land here.`
+              : "Upload an elevation, then press Generate. Finished renders land here."}
           </p>
-          <div className="flex items-center gap-3 text-faint">
-            {activeJob && (
-              <>
-                <button
-                  type="button"
-                  title={favoriteIds.has(activeJob.id) ? "Unstar" : "Star"}
-                  onClick={() => toggleFavorite(activeJob.id)}
-                  className={favoriteIds.has(activeJob.id) ? "text-blueprint" : "hover:text-primary"}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill={favoriteIds.has(activeJob.id) ? "currentColor" : "none"} aria-hidden="true">
-                    <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  title={activeJob.resultImageUrl ? "Download" : "Download source"}
-                  onClick={() => downloadImage(activeJob.resultImageUrl ?? activeJob.sourceImageUrl)}
-                  className="hover:text-primary"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M8 2v8m0 0 3-3m-3 3L5 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M3 12.5h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  title="Remove from history"
-                  onClick={() => removeJob(activeJob.id)}
-                  className="hover:text-red-500"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M3.5 4.5h9M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M6.5 7.5v4M9.5 7.5v4M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </>
+          <ol>
+            <li className={filledCount ? "is-done" : ""}>Upload an elevation</li>
+            <li>Pick a style and add direction</li>
+            <li>Generate, then edit or download</li>
+          </ol>
+        </div>
+      </aside>
+    );
+  }
+
+  const job = activeJob;
+  const inFlight = job.status === "pending" || job.status === "processing";
+  const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
+  const starred = favoriteIds.has(job.id);
+  const progress = Math.round(jobProgress(job, now));
+  const parent = job.settings?.edit
+    ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
+    : undefined;
+  const references = job.settings?.referenceImageUrls ?? [];
+  const tags = [
+    job.settings?.edit
+      ? job.settings.edit.maskImageUrl
+        ? "Area edit"
+        : "Edit"
+      : job.settings?.sourceType === "drawing"
+        ? "From drawing"
+        : "From photo",
+    job.style,
+    formatAspectRatio(job.aspectRatio),
+  ].filter((tag): tag is string => Boolean(tag));
+  const detailsSummary = [
+    parent ? "Edited from a render" : "Source",
+    references.length ? `${references.length} ${references.length === 1 ? "reference" : "references"}` : null,
+    job.seed != null ? `Seed ${job.seed}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const history = starredOnly ? jobs.filter((item) => favoriteIds.has(item.id)) : jobs;
+
+  return (
+    <aside className="rp-panel" data-guide="results.panel">
+      <header className="rp-head">
+        <strong>Renders</strong>
+        <span>{jobs.length}</span>
+      </header>
+
+      <div className="rp-scroll">
+        <figure className={`rp-hero is-${job.status}`}>
+          <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />
+          <button
+            type="button"
+            className="rp-hero-open"
+            onClick={() =>
+              succeeded
+                ? setPreviewJob(previewJobId === job.id ? null : job.id)
+                : viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined)
+            }
+            aria-label={succeeded ? (previewJobId === job.id ? "Back to canvas" : "View full size") : "View the source image full size"}
+          >
+            {succeeded && (
+              <span>
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" />
+                </svg>
+                {previewJobId === job.id ? "Showing on canvas" : "View full size"}
+              </span>
             )}
-            <button type="button" title="Close panel" onClick={() => setDismissed(true)} className="hover:text-primary">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </button>
+          <div className="rp-hero-tools">
+            <button
+              type="button"
+              className={starred ? "is-on" : ""}
+              title={starred ? "Unstar" : "Star"}
+              aria-label={starred ? "Unstar" : "Star"}
+              aria-pressed={starred}
+              onClick={() => toggleFavorite(job.id)}
+            >
+              <svg viewBox="0 0 14 14" aria-hidden="true">
+                <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              title={job.resultImageUrl ? "Download" : "Download source"}
+              aria-label={job.resultImageUrl ? "Download" : "Download source"}
+              onClick={() => downloadImage(job.resultImageUrl ?? job.sourceImageUrl)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" />
+              </svg>
+            </button>
+            <button type="button" className="is-danger" title="Remove from history" aria-label="Remove from history" onClick={() => removeJob(job.id)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.5 4.5h9M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M6.5 7.5v4M9.5 7.5v4M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" />
               </svg>
             </button>
           </div>
+          {inFlight && (
+            <figcaption className="rp-progress">
+              <span>
+                {job.status === "pending" ? "Queued" : "Rendering"}… <b>{progress}%</b>
+              </span>
+              <i>
+                <em style={{ width: `${progress}%` }} />
+              </i>
+            </figcaption>
+          )}
+          {job.status === "failed" && (
+            <figcaption className="rp-failed">
+              <strong>Render failed</strong>
+              <span>{job.errorMessage ?? "Something went wrong. Try again."}</span>
+            </figcaption>
+          )}
+        </figure>
+
+        <div className="rp-meta">
+          <p className="rp-title">
+            <strong>{[job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ")}</strong>
+            <span>{timeAgo(job.createdAt, now)}</span>
+          </p>
+          <div className="rp-tags">
+            {tags.map((tag) => (
+              <span key={tag}>{tag}</span>
+            ))}
+          </div>
         </div>
 
-        {isEmpty ? (
-          <div className="guide-results-empty">
-            <p>Finished visualizations land here after Generate.</p>
-            <p>Download them, reuse a prompt, set one as the new base, or start a regional edit from a result.</p>
+        <div className="rp-actions">
+          {job.status === "failed" ? (
+            <button type="button" className="rp-btn is-primary" disabled={isRetrying} onClick={() => void handleRetry()}>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M13 8A5 5 0 1 1 11.5 4.4M13 2.5v3.5H9.5" />
+              </svg>
+              {isRetrying ? "Retrying…" : "Retry with same settings"}
+            </button>
+          ) : (
+            <button type="button" className="rp-btn is-primary" disabled={!succeeded} onClick={() => startRenderEdit(job.id)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" />
+              </svg>
+              Edit this render
+            </button>
+          )}
+          <div className="rp-actions-row">
+            <button type="button" className="rp-btn" onClick={handleUsePromptAndSettings} title="Load this render's prompt and settings into the panel">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 8a5 5 0 0 1 8.5-3.5L13 6M13 2.5V6H9.5M13 8a5 5 0 0 1-8.5 3.5L3 10m0 3.5V10h3.5" />
+              </svg>
+              Reuse settings
+            </button>
+            <button
+              type="button"
+              className="rp-btn"
+              disabled={!succeeded || isPromoting}
+              onClick={() => void handleSetAsBase()}
+              title="Put this render on the canvas as the new base image"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 2 14 5 8 8 2 5Z" />
+                <path d="m2 8 6 3 6-3M2 11l6 3 6-3" />
+              </svg>
+              {isPromoting ? "Setting…" : "Set as base"}
+            </button>
           </div>
-        ) : !activeJob ? (
-          <>
-            {previewUrl && (
-              <button
-                type="button"
-                title="View full size on canvas"
-                onClick={() => viewImage(previewUrl, "Uploaded view")}
-                className="block w-full overflow-hidden rounded-lg border border-hairline transition-colors hover:border-blueprint"
-              >
-                <img src={previewUrl} alt="Uploaded elevation" className="aspect-[4/3] w-full object-cover" />
+        </div>
+
+        <section className="rp-prompt">
+          <div className="rp-section-head">
+            <strong>Prompt</strong>
+            {job.prompt && (
+              <button type="button" onClick={handleCopyPrompt}>
+                {copied ? "Copied" : "Copy"}
               </button>
             )}
-            <p className="text-xs text-muted">
-              {filled.length === 1
-                ? "1 elevation uploaded → 1 render. Generate to queue it here."
-                : `${filled.length} elevations uploaded. Generate to queue them here.`}
-            </p>
-          </>
-        ) : (
-          <>
-            <div className="group relative overflow-hidden rounded-lg border border-hairline bg-surface-muted">
-              <img
-                src={activeJob.resultImageUrl ?? activeJob.sourceImageUrl}
-                alt=""
-                className={`aspect-[4/3] w-full object-cover ${
-                  activeJob.status !== "succeeded" ? "opacity-40 blur-[1px]" : ""
-                }`}
-              />
-              {!(activeJob.status === "succeeded" && activeJob.resultImageUrl) && (
-                <button
-                  type="button"
-                  onClick={() => viewImage(activeJob.sourceImageUrl, "Source image", activeJob.viewLabel ?? undefined)}
-                  aria-label="View the source image full size"
-                  className="absolute inset-0 focus-visible:outline-none"
-                />
-              )}
-              {activeJob.status === "succeeded" && activeJob.resultImageUrl && (
-                <button
-                  type="button"
-                  onClick={() => setPreviewJob(previewJobId === activeJob.id ? null : activeJob.id)}
-                  aria-label={previewJobId === activeJob.id ? "Back to canvas" : "View full size on canvas"}
-                  className="absolute inset-0 flex items-end justify-end bg-black/0 p-2 transition-colors hover:bg-black/10 focus-visible:bg-black/10 focus-visible:outline-none"
-                >
-                  <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-medium text-primary opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    {previewJobId === activeJob.id ? "Showing on canvas" : "View full size"}
-                  </span>
-                </button>
-              )}
-              {(activeJob.status === "pending" || activeJob.status === "processing") && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/60 to-transparent p-3">
-                  <p className="text-xs font-medium text-white">Generating render…</p>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/30">
-                    <div
-                      className="h-full rounded-full bg-white transition-[width] duration-500 ease-out"
-                      style={{ width: `${jobProgress(activeJob, now)}%` }}
-                    />
+          </div>
+          <p className={job.prompt ? "" : "is-empty"}>{job.prompt || "No prompt — rendered from style and settings."}</p>
+        </section>
+
+        <section className={`rp-details ${detailsOpen ? "is-open" : ""}`}>
+          <button type="button" className="rp-details-toggle" onClick={() => setDetailsOpen((open) => !open)} aria-expanded={detailsOpen}>
+            <span>
+              <strong>Details</strong>
+              <small>{detailsSummary}</small>
+            </span>
+            <svg className="cp-caret" width="11" height="11" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              <path d="M2 3.5 5 6.5l3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {detailsOpen && (
+            <div className="rp-details-body">
+              <div className="rp-thumbs">
+                <p>{parent ? "Edited from" : "Source"}</p>
+                <div>
+                  <button
+                    type="button"
+                    title={parent ? "Open the render this edit was made from" : "View the source image full size"}
+                    onClick={() =>
+                      parent ? setPreviewJob(parent.id) : viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined)
+                    }
+                  >
+                    <img src={job.sourceImageUrl} alt="" />
+                  </button>
+                </div>
+              </div>
+              {references.length > 0 && (
+                <div className="rp-thumbs">
+                  <p>References</p>
+                  <div>
+                    {references.map((url) => (
+                      <button key={url} type="button" title="View this reference full size" onClick={() => viewImage(url, "Reference image")}>
+                        <img src={url} alt="" />
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
-              {activeJob.status === "failed" && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/80">
-                  <p className="text-xs font-medium text-red-500">
-                    {activeJob.errorMessage ?? "Render failed"}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div>
-              {activeJob.prompt ? (
-                <>
-                  <p className="line-clamp-4 text-sm text-secondary">{activeJob.prompt}</p>
-                  <button
-                    type="button"
-                    onClick={handleCopyPrompt}
-                    className="mt-1.5 flex items-center gap-1 text-xs font-medium text-blueprint hover:underline"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                      <rect x="4.5" y="4.5" width="8" height="8" rx="1.2" stroke="currentColor" strokeWidth="1.1" />
-                      <path d="M2.5 9.5V2.5a1 1 0 0 1 1-1h7" stroke="currentColor" strokeWidth="1.1" />
-                    </svg>
-                    {copied ? "Copied" : "Copy prompt"}
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-muted">No prompt — rendered from style and settings.</p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                activeJob.viewLabel,
-                activeJob.settings?.edit
-                  ? activeJob.settings.edit.maskImageUrl
-                    ? "Area edit"
-                    : "Edit"
-                  : activeJob.settings?.sourceType === "drawing"
-                    ? "From drawing"
-                    : "From photo",
-                activeJob.style,
-                formatAspectRatio(activeJob.aspectRatio),
-              ].filter(Boolean).map((tag) => (
-                <span key={tag} className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-secondary">
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            {activeJob.seed != null && (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-hairline px-2.5 py-1.5">
-                <span className="text-xs text-muted">
-                  Seed <span className="font-medium tabular-nums text-secondary">{activeJob.seed}</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleCopySeed} className="text-xs font-medium text-blueprint hover:underline">
+              {job.seed != null && (
+                <div className="rp-seed">
+                  <span>
+                    Seed <b>{job.seed}</b>
+                  </span>
+                  <button type="button" onClick={handleCopySeed}>
                     {seedCopied ? "Copied" : "Copy"}
                   </button>
-                  <button type="button" onClick={handleReuseSeed} className="text-xs font-medium text-blueprint hover:underline">
+                  <button type="button" onClick={handleReuseSeed} title="Lock this seed for the next render">
                     Reuse
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          )}
+        </section>
 
-            {(() => {
-              const parent = activeJob.settings?.edit
-                ? jobs.find((job) => job.status === "succeeded" && job.resultImageUrl === activeJob.sourceImageUrl)
-                : undefined;
-              const thumb = <img src={activeJob.sourceImageUrl} alt="" className="h-full w-full object-cover" />;
-              return (
-                <div>
-                  <p className="text-xs font-medium text-muted">{parent ? "Edited from" : "Source"}</p>
-                  {parent ? (
-                    <button
-                      type="button"
-                      title="Open the render this edit was made from"
-                      onClick={() => setPreviewJob(parent.id)}
-                      className="mt-1.5 block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
-                    >
-                      {thumb}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      title="View the source image full size"
-                      onClick={() => viewImage(activeJob.sourceImageUrl, "Source image", activeJob.viewLabel ?? undefined)}
-                      className="mt-1.5 block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
-                    >
-                      {thumb}
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-
-            {(activeJob.settings?.referenceImageUrls?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted">References</p>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {activeJob.settings!.referenceImageUrls!.map((url) => (
-                    <button
-                      key={url}
-                      type="button"
-                      title="View this reference full size"
-                      onClick={() => viewImage(url, "Reference image")}
-                      className="block h-14 w-14 overflow-hidden rounded-md border border-hairline transition-colors hover:border-blueprint"
-                    >
-                      <img src={url} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-auto flex flex-col gap-2 pt-2">
-              {activeJob.status === "failed" && (
-                <button
-                  type="button"
-                  disabled={isRetrying}
-                  onClick={() => void handleRetry()}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M13 8A5 5 0 1 1 11.5 4.4M13 2.5v3.5H9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  {isRetrying ? "Retrying…" : "Retry with same settings"}
+        {jobs.length > 1 && (
+          <section className="rp-history">
+            <div className="rp-section-head">
+              <strong>History</strong>
+              {favoriteIds.size > 0 && (
+                <button type="button" className={starredOnly ? "is-on" : ""} aria-pressed={starredOnly} onClick={() => setStarredOnly((on) => !on)}>
+                  ★ Starred
                 </button>
               )}
-              <button
-                type="button"
-                disabled={activeJob.status !== "succeeded" || !activeJob.resultImageUrl}
-                onClick={() => startRenderEdit(activeJob.id)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                </svg>
-                Edit this render
-              </button>
-              <button
-                type="button"
-                onClick={handleUsePromptAndSettings}
-                className="w-full rounded-lg border border-hairline px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-hairline-strong"
-              >
-                Use prompt and settings
-              </button>
-              <button
-                type="button"
-                disabled={activeJob.status !== "succeeded" || isPromoting}
-                onClick={() => void handleSetAsBase()}
-                className="w-full rounded-lg border border-hairline px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-hairline-strong disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isPromoting ? "Setting as base…" : "Set as base for render"}
-              </button>
             </div>
-          </>
+            <div className="rp-grid">
+              {history.map((item) => {
+                const running = item.status === "pending" || item.status === "processing";
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`is-${item.status} ${item.id === job.id ? "is-active" : ""}`}
+                    onClick={() => setActiveJob(item.id)}
+                    onDoubleClick={() => {
+                      if (item.status === "succeeded" && item.resultImageUrl) setPreviewJob(item.id);
+                    }}
+                    title={[item.viewLabel, item.prompt].filter(Boolean).join(": ") || "Render"}
+                  >
+                    <img src={item.resultImageUrl ?? item.sourceImageUrl} alt="" />
+                    {running && <i className="rp-spinner" aria-label="Rendering" />}
+                    {item.status === "failed" && <em>Failed</em>}
+                    {favoriteIds.has(item.id) && <b aria-label="Starred">★</b>}
+                  </button>
+                );
+              })}
+            </div>
+            {history.length === 0 && <p className="rp-grid-empty">No starred renders yet.</p>}
+          </section>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

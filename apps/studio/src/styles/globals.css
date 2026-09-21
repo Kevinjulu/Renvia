@@ -155,8 +155,8 @@ button { color: inherit; }
 .elevation-filmstrip .add-view>span{display:grid;width:28px;height:28px;place-items:center;border-radius:50%;background:#eef1f6;font-size:16px;line-height:1;transition:background .16s ease}
 .elevation-filmstrip .add-view:hover>span{background:#dfe6ff}
 .elevation-filmstrip .add-view small{padding:0;color:inherit;font-size:11px}
-.studio-workbench>div:last-child{min-width:0;background:#fff}.studio-workbench>div:last-child>div:last-child{width:300px;padding:16px}.studio-workbench>div:last-child>div:last-child:before{display:block;margin-bottom:15px;border-bottom:1px solid #ebecef;padding-bottom:12px;content:"Render     Edit     Settings";word-spacing:24px;color:#202329;font-size:11px;font-weight:600}.studio-workbench>div:last-child>div:last-child>div:first-child{margin-top:-42px;margin-bottom:25px}.studio-workbench>div:last-child>div:last-child>div:first-child>p{visibility:hidden}
-@media(max-width:1280px){.studio-shell-v2{min-width:900px}.studio-workbench{grid-template-columns:290px minmax(360px,1fr) 270px}.studio-workbench>div:last-child>div:last-child{width:270px}.elevation-tabs{gap:10px}.studio-mode-switch{display:none}}
+.studio-workbench>.rp-panel{min-width:0}
+@media(max-width:1280px){.studio-shell-v2{min-width:900px}.studio-workbench{grid-template-columns:290px minmax(360px,1fr) 270px}.elevation-tabs{gap:10px}.studio-mode-switch{display:none}}
 
 /* Dashboard — composed to mirror the supplied Renvia workspace reference. */
 .dashboard-shell { display:flex; min-height:100vh; overflow:hidden; background:#fbfaf8; color:#111; }

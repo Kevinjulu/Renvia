@@ -7,6 +7,7 @@ import { AUTH_ROUTES } from "./lib/authRoutes";
 import "./styles/globals.css";
 import "./styles/render-panel.css";
 import "./styles/control-panel.css";
+import "./styles/results-panel.css";
 import "./styles/account.css";
 import "./guide/guide.css";
 
