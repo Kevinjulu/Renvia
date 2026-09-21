@@ -82,7 +82,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <main className="studio-main">
         <CanvasTopBar projectName={projectName} />
         <div className="studio-workbench">
-          <ControlPanel projectId={projectId} projectName={projectName} />
+          <ControlPanel projectId={projectId} />
           <section className="studio-canvas-column">
             <div className="elevation-tabs" data-guide="canvas.tabs">
               {views.map((view) => (

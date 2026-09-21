@@ -34,10 +34,10 @@ export interface GuideTopic {
 export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
   "control.uploads": {
     id: "control.uploads",
-    title: "Elevations",
-    short: "Upload Front, Right, Back, and Left — empty slots are skipped.",
-    body: "Each slot is one elevation of the same building. Upload only the sides you have. Generate renders every filled elevation and ignores empty ones. Untick an uploaded elevation to skip it without deleting it.",
-    how: "Click a slot to upload, or drop a PNG, JPEG, or WebP. Remove drops an image you no longer want. Extra views such as a roof or isometric sit under Add elevation.",
+    title: "Active elevation",
+    short: "The side selected on the canvas — switch sides with the tabs or filmstrip.",
+    body: "Each elevation is one side of the same building. Upload only the sides you have. Generate renders every uploaded elevation and ignores empty ones. Switch one off to skip it without deleting it.",
+    how: "Click the card or drop a PNG, JPEG, or WebP to upload. Replace swaps the image; Remove drops it. Pick another side from the tabs above the canvas or the filmstrip below it.",
     article: "getting-started",
     tab: "render",
     legend: 1,
@@ -46,7 +46,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     id: "control.style",
     title: "Style and aspect ratio",
     short: "Photorealistic, sketch, or watercolor — plus the shape the render comes out in.",
-    body: "Style sets the look of the visualization. Aspect ratio picks the output's shape — Auto matches your source image; the others ask for a fixed ratio like 16:9 or 3:4.",
+    body: "Style sets the look of the visualization. Aspect ratio picks the output's shape — by default it matches your uploaded elevation; open it to force a fixed ratio like 16:9 or 3:4.",
     how: "Pick a style before Generate. Changing style later does not rewrite renders already in history.",
     article: "consistent-results",
     tab: "render",

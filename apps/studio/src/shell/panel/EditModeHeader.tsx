@@ -1,9 +1,10 @@
 import type { RenderJob } from "@renvia/types";
 import { useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
+import { viewImage } from "../../canvas/utils/viewImage";
 
 /** Top of the Edit tab: explains the tools, or names the render being edited in the viewer. */
-export function EditModeHeader({ render }: { render: RenderJob | null }) {
+export function EditModeHeader({ render, currentImageUrl }: { render: RenderJob | null; currentImageUrl: string | null }) {
   const stopEditing = useRenderEditStore((state) => state.stopEditing);
   const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
 
@@ -31,22 +32,23 @@ export function EditModeHeader({ render }: { render: RenderJob | null }) {
   }
 
   return (
-    <div className="flex flex-col items-center px-2 pt-1 text-center">
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-muted text-secondary">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <path
-            d="M11.5 2.5 15 6l-8 8-4 1 1-4Z"
-            stroke="currentColor"
-            strokeWidth="1.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-      <h2 className="mt-3 font-display text-base font-semibold text-primary">Editing mode</h2>
-      <p className="mt-1.5 text-sm leading-relaxed text-muted">
-        Describe the changes you would like to see. To edit a specific part, use the selection tools at the top of
-        the canvas to highlight that area. To edit a render, open it and choose Edit.
+    <div className="cp-edit-target">
+      {currentImageUrl ? (
+        <button type="button" title="View this image full size" onClick={() => viewImage(currentImageUrl, "Image being edited")}>
+          <img src={currentImageUrl} alt="" />
+        </button>
+      ) : (
+        <span aria-hidden="true">
+          <svg viewBox="0 0 18 18"><path d="M11.5 2.5 15 6l-8 8-4 1 1-4Z" /></svg>
+        </span>
+      )}
+      <p>
+        <strong>{currentImageUrl ? "Editing the canvas image" : "Nothing to edit yet"}</strong>
+        <small>
+          {currentImageUrl
+            ? "To edit a render instead, open it and choose Edit."
+            : "Upload an elevation, or open a render and choose Edit."}
+        </small>
       </p>
     </div>
   );

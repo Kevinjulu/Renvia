@@ -19,13 +19,15 @@ export function SeedControl() {
   const locked = seed !== null;
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-hairline px-3 py-2">
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-primary">Seed</p>
-        <p className="truncate text-[11px] text-faint">
-          {locked ? "Locked — reruns reproduce this exact result." : "Random each time. Lock one to reproduce or nudge a result."}
-        </p>
-      </div>
+    <div className="cp-setting cp-seed">
+      <span>
+        <strong>Variation seed</strong>
+        <small>
+          {locked
+            ? "Locked — Generate repeats this exact result, so you can tweak one setting at a time."
+            : "Random, so every render is a new take. Lock it to repeat a result you like."}
+        </small>
+      </span>
       <div className="flex shrink-0 items-center gap-1">
         {locked ? (
           <>

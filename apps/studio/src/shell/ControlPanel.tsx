@@ -1,8 +1,6 @@
-import { ProjectDropdown } from "./panel/ProjectDropdown";
-import { RenderFromUploadZone } from "./panel/RenderFromUploadZone";
+import { ActiveElevationCard } from "./panel/ActiveElevationCard";
 import { StylePicker } from "./panel/StylePicker";
 import { AspectRatioPicker } from "./panel/AspectRatioPicker";
-import { SeedControl } from "./panel/SeedControl";
 import { RenderEditTabs } from "./panel/RenderEditTabs";
 import { RenderTabBody } from "./panel/RenderTabBody";
 import { EditTabBody } from "./panel/EditTabBody";
@@ -16,10 +14,9 @@ import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 
 interface ControlPanelProps {
   projectId: string;
-  projectName: string;
 }
 
-export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
+export function ControlPanel({ projectId }: ControlPanelProps) {
   const activeTab = useCanvasStore((state) => state.activeTab);
   const setActiveTab = useCanvasStore((state) => state.setActiveTab);
   const nodes = useCanvasStore((state) => state.nodes);
@@ -35,30 +32,25 @@ export function ControlPanel({ projectId, projectName }: ControlPanelProps) {
   const currentImageUrl = editRender?.resultImageUrl ?? nodeForView(nodes, activeViewId)?.imageUrl ?? null;
 
   return (
-    <div className="studio-control-panel">
-      {activeTab === "render" ? (
-        <>
-          <ProjectDropdown projectName={projectName} />
-          <RenderFromUploadZone />
-          <div className="studio-settings-row" data-guide="control.style">
-            <StylePicker value={style} onChange={setStyle} />
-            <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
-          </div>
-          <SeedControl />
-        </>
-      ) : (
-        <EditModeHeader render={editRender} />
-      )}
+    <div className="cp-panel">
+      <RenderEditTabs active={activeTab} onChange={setActiveTab} />
 
-      <div className="flex flex-1 flex-col">
-        <RenderEditTabs active={activeTab} onChange={setActiveTab} />
-        <div className="mt-4 flex flex-1 flex-col">
-          {activeTab === "render" ? (
+      <div className="cp-scroll">
+        {activeTab === "render" ? (
+          <>
+            <ActiveElevationCard />
+            <div className="cp-row" data-guide="control.style">
+              <StylePicker value={style} onChange={setStyle} />
+              <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
+            </div>
             <RenderTabBody prompt={prompt} onPromptChange={setPrompt} />
-          ) : (
+          </>
+        ) : (
+          <>
+            <EditModeHeader render={editRender} currentImageUrl={editRender ? null : currentImageUrl} />
             <EditTabBody currentImageUrl={currentImageUrl} />
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       <div className="studio-generate-bar" data-guide="control.generate">

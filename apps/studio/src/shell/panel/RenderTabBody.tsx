@@ -1,9 +1,9 @@
 import type { RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
-import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
-import { viewImage } from "../../canvas/utils/viewImage";
+import { SeedControl } from "./SeedControl";
+import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
@@ -34,54 +34,76 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const setPreserveStructure = useGenerationSettingsStore((state) => state.setPreserveStructure);
   const atmospherePreset = useGenerationSettingsStore((state) => state.atmospherePreset);
   const setAtmospherePreset = useGenerationSettingsStore((state) => state.setAtmospherePreset);
+  const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
 
-  const jobs = useRenderJobsStore((state) => state.jobs);
-  const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
-  const setPreviewJob = useRenderJobsStore((state) => state.setPreviewJob);
-  const recentJobs = jobs.filter((job) => job.resultImageUrl).slice(0, 3);
+  const advancedSummary = [
+    SOURCE_TYPES.find((option) => option.id === sourceType)?.label,
+    `${STYLE_INFLUENCE_LABELS[styleInfluence - 1]} influence`,
+    preserveStructure ? "Structure kept" : "Loose structure",
+    seed === null ? "Random seed" : `Seed ${seed}`,
+  ].join(" · ");
 
   return (
-    <div className="render-panel-body flex flex-1 flex-col">
-      <div data-guide="control.direction">
-      <div className="prompt-heading">
-        <p>
-          Prompt <span>(optional)</span>
-        </p>
-        <span>
-          {prompt.length}/{maxPromptChars}
-        </span>
-      </div>
-      <textarea
-        value={prompt}
-        onChange={(event) => {
-          onPromptChange(event.target.value.slice(0, maxPromptChars));
-          if (atmospherePreset) setAtmospherePreset(null);
-        }}
-        maxLength={maxPromptChars}
-        placeholder="Example: A modern house with wood cladding by the Swedish coast, surrounded by pine trees"
-        className="studio-prompt-input resize-none rounded-lg border border-hairline p-3 text-primary placeholder:text-faint focus:border-blueprint focus:outline-none"
-      />
-
-      <section className="reference-panel">
-        <div className="studio-section-heading">
-          <strong>Reference images</strong>
-          <span>Guides the AI</span>
+    <div className="cp-tab-body">
+      <div className="cp-direction" data-guide="control.direction">
+        <div className="cp-prompt">
+          <div className="cp-prompt-head">
+            <label htmlFor="render-prompt">
+              Prompt <span>optional</span>
+            </label>
+            <span>
+              {prompt.length}/{maxPromptChars}
+            </span>
+          </div>
+          <textarea
+            id="render-prompt"
+            value={prompt}
+            onChange={(event) => {
+              onPromptChange(event.target.value.slice(0, maxPromptChars));
+              if (atmospherePreset) setAtmospherePreset(null);
+            }}
+            maxLength={maxPromptChars}
+            placeholder="A modern house with wood cladding by the Swedish coast, surrounded by pine trees"
+          />
+          <div className="cp-chips" role="group" aria-label="Quick atmosphere">
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className={atmospherePreset === preset.label ? "is-active" : ""}
+                aria-pressed={atmospherePreset === preset.label}
+                title={preset.prompt}
+                onClick={() => {
+                  onPromptChange(preset.prompt);
+                  setAtmospherePreset(preset.label);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="reference-panel-hint">
-          The AI blends these with your uploaded elevation to match materials, lighting and surroundings.
-        </p>
-        <ReferenceBar />
-      </section>
+
+        <section className="cp-card cp-references">
+          <div className="cp-card-head">
+            <strong>Reference images</strong>
+            <span>Guides materials, light and setting</span>
+          </div>
+          <ReferenceBar />
+        </section>
       </div>
 
-      <div className="render-controls">
-        <div className="studio-source-control" data-guide="control.source">
-          <strong>
-            <GuideLabel topicId="control.source">Source</GuideLabel>
-          </strong>
-          <div role="group" aria-label="Source image type">
+      <AdvancedSection summary={advancedSummary}>
+        <div className="cp-setting is-stacked" data-guide="control.source">
+          <span>
+            <strong>
+              <GuideLabel topicId="control.source">Source</GuideLabel>
+            </strong>
+            <small>{SOURCE_TYPES.find((option) => option.id === sourceType)?.hint}</small>
+          </span>
+          <div className="cp-segmented is-small" role="group" aria-label="Source image type">
             {SOURCE_TYPES.map((option) => (
               <button
                 key={option.id}
@@ -96,11 +118,14 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             ))}
           </div>
         </div>
-        <label className="studio-influence-control" data-guide="control.influence">
-          <strong>
-            <GuideLabel topicId="control.influence">Style influence</GuideLabel>
-          </strong>
-          <div>
+        <label className="cp-setting is-stacked" data-guide="control.influence">
+          <span>
+            <strong>
+              <GuideLabel topicId="control.influence">Style influence</GuideLabel>
+            </strong>
+            <small>How much of the references' look carries over</small>
+          </span>
+          <span className="cp-range">
             <input
               type="range"
               min="1"
@@ -109,70 +134,26 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
               onChange={(event) => setStyleInfluence(Number(event.target.value))}
             />
             <b>{STYLE_INFLUENCE_LABELS[styleInfluence - 1]}</b>
-          </div>
+          </span>
         </label>
-        <label className="studio-preserve-control" data-guide="control.preserve">
-          <strong>
-            <GuideLabel topicId="control.preserve">Preserve structure</GuideLabel>
-          </strong>
-          <input
-            type="checkbox"
-            checked={preserveStructure}
-            onChange={(event) => setPreserveStructure(event.target.checked)}
-          />
+        <label className="cp-setting" data-guide="control.preserve">
+          <span>
+            <strong>
+              <GuideLabel topicId="control.preserve">Preserve structure</GuideLabel>
+            </strong>
+            <small>Keep windows, roofs and massing as drawn</small>
+          </span>
+          <span className="cp-switch">
+            <input
+              type="checkbox"
+              checked={preserveStructure}
+              onChange={(event) => setPreserveStructure(event.target.checked)}
+            />
+            <span aria-hidden="true" />
+          </span>
         </label>
-      </div>
-
-      <div className="studio-preset-section">
-        <div className="studio-section-heading">
-          <strong>Quick atmosphere</strong>
-          <span>Optional</span>
-        </div>
-        <div className="studio-preset-chips">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              className={atmospherePreset === preset.label ? "is-active" : ""}
-              onClick={() => {
-                onPromptChange(preset.prompt);
-                setAtmospherePreset(preset.label);
-              }}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {recentJobs.length > 0 && (
-        <div className="studio-context-card">
-          <div className="studio-section-heading">
-            <strong>Recent renders</strong>
-            <span>{recentJobs.length} latest</span>
-          </div>
-          <div className="studio-recent-renders">
-            {recentJobs.map((job) => (
-              <button
-                key={job.id}
-                type="button"
-                onClick={() => {
-                  if (job.status === "succeeded" && job.resultImageUrl) {
-                    setPreviewJob(job.id);
-                    return;
-                  }
-                  setActiveJob(job.id);
-                  viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined);
-                }}
-                title={job.viewLabel ?? "Open render"}
-              >
-                <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" />
-                <span>{job.viewLabel ?? "Elevation"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        <SeedControl />
+      </AdvancedSection>
     </div>
   );
 }

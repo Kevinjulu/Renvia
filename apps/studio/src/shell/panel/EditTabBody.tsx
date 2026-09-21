@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ReferenceBar } from "./ReferenceBar";
 import { SeedControl } from "./SeedControl";
+import { AdvancedSection } from "./AdvancedSection";
 import { hasSelection, maskStrokeFrom, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
   STYLE_INFLUENCE_LABELS,
@@ -14,7 +15,6 @@ import { EDIT_PARTS, editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
 import { selectPart } from "../../canvas/utils/partSelection";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useApiClient } from "../../lib/apiClient";
-import { viewImage } from "../../canvas/utils/viewImage";
 import { GuideLabel } from "../../guide/HelpHotspot";
 
 const ACTIONS: { id: EditAction; label: string }[] = [
@@ -62,6 +62,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
   const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const setEditInfluence = useGenerationSettingsStore((state) => state.setEditInfluence);
   const referenceCount = useGenerationSettingsStore((state) => state.referenceImageUrls.length);
+  const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
 
   const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
@@ -148,31 +149,35 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
   };
 
   return (
-    <div className="edit-panel-body flex flex-1 flex-col">
-      <div className="selection-mode" data-guide="edit.selection">
-        <GuideLabel topicId="edit.selection">Selection mode</GuideLabel>
-        {SELECTION_MODES.map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className={selectionMode === mode.id ? "active" : ""}
-            onClick={() => setSelectionMode(mode.id)}
-            aria-pressed={selectionMode === mode.id}
-          >
-            {mode.label}
-          </button>
-        ))}
+    <div className="cp-tab-body">
+      <div className="cp-field" data-guide="edit.selection">
+        <p className="cp-field-label">
+          <GuideLabel topicId="edit.selection">Select the area</GuideLabel>
+        </p>
+        <div className="cp-segmented" role="group" aria-label="Selection mode">
+          {SELECTION_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              className={selectionMode === mode.id ? "is-active" : ""}
+              onClick={() => setSelectionMode(mode.id)}
+              aria-pressed={selectionMode === mode.id}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {selectionMode === "auto" ? (
-        <div className="edit-parts" data-guide="edit.modes">
-          <p>What do you want to change?</p>
-          <div>
+        <div className="cp-field" data-guide="edit.modes">
+          <p className="cp-field-label">What do you want to change?</p>
+          <div className="cp-chips is-wrap">
             {EDIT_PARTS.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={selectedPart === item.id ? "active" : ""}
+                className={selectedPart === item.id ? "is-active" : ""}
                 aria-pressed={selectedPart === item.id}
                 disabled={busyPart !== null && busyPart !== item.id}
                 onClick={() => void handlePart(item.id)}
@@ -182,7 +187,7 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
             ))}
             <button
               type="button"
-              className={`is-whole ${wholeImage ? "active" : ""}`}
+              className={`is-dashed ${wholeImage ? "is-active" : ""}`}
               aria-pressed={wholeImage}
               onClick={() => void handlePart(WHOLE_IMAGE)}
             >
@@ -191,54 +196,39 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
           </div>
         </div>
       ) : (
-        <p className="edit-parts-hint">
+        <p className="cp-hint">
           {isEditingRender
             ? "Paint over the part of the render you want to change — brush, rectangle or polygon in the viewer."
             : "Draw a rectangle or polygon on the image — only that area is regenerated."}
         </p>
       )}
 
-      {!hasReferences && (
-        <div className="flex items-center gap-2">
-          {ACTIONS.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => setEditAction(editAction === action.id ? null : action.id)}
-              aria-pressed={editAction === action.id}
-              className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                editAction === action.id
-                  ? "border-blueprint bg-blueprint-soft text-blueprint"
-                  : "border-hairline text-secondary hover:border-hairline-strong hover:text-primary"
-              }`}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {notice && <p className="cp-notice">{notice}</p>}
 
-      <div className="mt-3 flex flex-1 flex-col rounded-lg border border-hairline">
-        {currentImageUrl && (
-          <div className="w-fit p-2.5 pb-0">
-            <button
-              type="button"
-              title="View this image full size"
-              onClick={() => viewImage(currentImageUrl, "Image being edited")}
-              className="block overflow-hidden rounded-md border border-transparent transition-colors hover:border-blueprint"
-            >
-              <img src={currentImageUrl} alt="" className="h-20 w-20 object-cover" />
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between px-3 pt-2.5">
-          <span className="text-xs font-medium text-muted">Prompt</span>
-          <span className="text-[11px] text-faint">
+      <div className="cp-prompt">
+        <div className="cp-prompt-head">
+          <label htmlFor="edit-prompt">Describe the change</label>
+          <span>
             {editPrompt.length}/{maxChars}
           </span>
         </div>
+        {!hasReferences && (
+          <div className="cp-segmented is-small is-actions" role="group" aria-label="Edit action">
+            {ACTIONS.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => setEditAction(editAction === action.id ? null : action.id)}
+                aria-pressed={editAction === action.id}
+                className={editAction === action.id ? "is-active" : ""}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
+          id="edit-prompt"
           value={editPrompt}
           onChange={(event) => setEditPrompt(event.target.value.slice(0, maxChars))}
           maxLength={maxChars}
@@ -247,33 +237,38 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
               ? `Describe the new ${part.label.toLowerCase()} — material, colour, style…`
               : "Describe the change you want…"
           }
-          className="min-h-[100px] flex-1 resize-none rounded-lg p-3 text-sm text-primary placeholder:text-faint focus:outline-none"
         />
-
-        <div className="px-3 pb-3">
-          <ReferenceBar />
-        </div>
       </div>
 
-      {notice && <p className="edit-parts-notice">{notice}</p>}
-
-      <label className="studio-influence-control" data-guide="control.influence">
-        <strong>Edit strength</strong>
-        <div>
-          <input
-            type="range"
-            min="1"
-            max="4"
-            value={editInfluence}
-            onChange={(event) => setEditInfluence(Number(event.target.value))}
-          />
-          <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
+      <section className="cp-card cp-references">
+        <div className="cp-card-head">
+          <strong>Reference images</strong>
+          <span>Borrow a material or look</span>
         </div>
-      </label>
+        <ReferenceBar />
+      </section>
 
-      <SeedControl />
+      <p className="cp-ai-note">{modeSentence(hasReferences, editMode, part?.label ?? null)}</p>
 
-      <p className="studio-ai-note">{modeSentence(hasReferences, editMode, part?.label ?? null)}</p>
+      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength · ${seed === null ? "Random seed" : `Seed ${seed}`}`}>
+        <label className="cp-setting is-stacked" data-guide="control.influence">
+          <span>
+            <strong>Edit strength</strong>
+            <small>How far the change may depart from the current image</small>
+          </span>
+          <span className="cp-range">
+            <input
+              type="range"
+              min="1"
+              max="4"
+              value={editInfluence}
+              onChange={(event) => setEditInfluence(Number(event.target.value))}
+            />
+            <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
+          </span>
+        </label>
+        <SeedControl />
+      </AdvancedSection>
     </div>
   );
 }
