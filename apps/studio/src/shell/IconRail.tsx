@@ -26,6 +26,9 @@ function UploadButton() {
   const label =
     status === "uploading" ? `Uploading, ${percent}%` : status === "done" ? "Upload complete" : status === "error" ? "Upload failed" : "Upload elevation";
 
+  const face =
+    status === "uploading" ? `${percent}%` : status === "done" ? "✓" : status === "error" ? "!" : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>;
+
   return <>
     <button
       type="button"
@@ -44,9 +47,8 @@ function UploadButton() {
         <svg className="is-back" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
         <svg className="is-front" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
       </span>
-      <span className="rail-upload-label" aria-hidden="true">
-        {status === "uploading" ? `${percent}%` : status === "done" ? "✓" : status === "error" ? "!" : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>}
-      </span>
+      <span className="rail-upload-label" aria-hidden="true">{face}</span>
+      <span className="rail-upload-label is-submerged" aria-hidden="true">{face}</span>
     </button>
     <span className="sr-only" role="status">{status === "idle" ? "" : label}</span>
     <input

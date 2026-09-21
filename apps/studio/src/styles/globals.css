@@ -97,27 +97,33 @@ button { color: inherit; }
 .rail-bottom{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:auto}
 .studio-rail .guide-trigger{width:40px;height:40px;border-radius:12px}
 .studio-rail .guide-popover{top:auto;right:auto;bottom:0;left:calc(100% + 12px)}
-/* Round upload button: water rises with the upload's progress. */
-.rail-upload{position:relative;display:grid;width:48px;height:48px;padding:0;place-items:center;overflow:visible;border:0;border-radius:50%;background:var(--rail-brand);color:#fff;box-shadow:0 6px 16px rgba(20,20,20,.22);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,background .2s ease}
+/* Round upload button. Idle is brand black; the water deepens from light to brand blue as it fills,
+   turns green when the upload lands and red when it fails. */
+.rail-upload{--water:color-mix(in oklab,#3654d6 calc(var(--fill) * 100%),#9db2ff);position:relative;display:grid;width:48px;height:48px;padding:0;place-items:center;overflow:visible;border:0;border-radius:50%;background:var(--rail-brand);color:#fff;box-shadow:0 6px 16px rgba(20,20,20,.22);cursor:pointer;transition:transform .18s ease,box-shadow .25s ease,background .25s ease}
 .rail-upload:hover:not(:disabled),.rail-upload.is-dragover{transform:scale(1.06);box-shadow:0 8px 22px rgba(20,20,20,.3)}
-.rail-upload.is-dragover{outline:2px dashed var(--rail-brand);outline-offset:4px}
+.rail-upload.is-dragover{background:#3654d6;outline:2px dashed #3654d6;outline-offset:4px}
 .rail-upload:disabled{cursor:progress}
 .rail-upload-water{position:absolute;inset:0;overflow:hidden;border-radius:50%;pointer-events:none}
-.rail-upload-water:before{position:absolute;inset:0;content:"";background:var(--rail-brand);transform:translateY(calc((1 - var(--fill)) * 100%));transition:transform .35s ease-out}
-.rail-upload-water svg{position:absolute;left:0;width:200%;height:8px;fill:var(--rail-brand);bottom:calc(var(--fill) * 100% - 1px);transition:bottom .35s ease-out;animation:rail-wave 1.6s linear infinite}
+.rail-upload-water:before{position:absolute;inset:0;content:"";background:var(--water);transform:translateY(calc((1 - var(--fill)) * 100%));transition:transform .35s ease-out,background .35s ease}
+.rail-upload-water svg{position:absolute;left:0;width:200%;height:8px;fill:var(--water);bottom:calc(var(--fill) * 100% - 1px);transition:bottom .35s ease-out,fill .35s ease;animation:rail-wave 1.6s linear infinite}
 .rail-upload-water svg.is-back{opacity:.35;animation-duration:2.4s;animation-direction:reverse}
 .rail-upload.is-idle .rail-upload-water,.rail-upload.is-error .rail-upload-water,.rail-upload.is-done .rail-upload-water svg{display:none}
-.rail-upload.is-uploading,.rail-upload.is-done{background:var(--rail-well);box-shadow:inset 0 0 0 1.5px var(--rail-brand)}
+.rail-upload.is-uploading{background:#eef1fb;box-shadow:inset 0 0 0 1.5px var(--water),0 6px 16px rgba(54,84,214,.18)}
+.rail-upload.is-done{--water:#16a34a;background:#16a34a;animation:rail-ring .7s ease-out}
 .rail-upload.is-error{background:#fdecec;color:#c4331f;box-shadow:inset 0 0 0 1.5px #e8a39a;animation:rail-shake .4s ease}
 .rail-upload-label{position:relative;display:grid;place-items:center;font-family:var(--font-mono),ui-monospace,monospace;font-size:11px;font-weight:600}
-.rail-upload.is-uploading .rail-upload-label{color:#fff;mix-blend-mode:difference}
+/* Two copies of the label: dark above the waterline, white below it. */
+.rail-upload.is-uploading .rail-upload-label{position:absolute;inset:0;color:#2a3f9e}
+.rail-upload.is-uploading .rail-upload-label.is-submerged{color:#fff;clip-path:inset(calc((1 - var(--fill)) * 100% - 3px) 0 0 0);transition:clip-path .35s ease-out}
+.rail-upload-label.is-submerged{display:none}.rail-upload.is-uploading .rail-upload-label.is-submerged{display:grid}
 .rail-upload.is-done .rail-upload-label{color:#fff;font-size:17px;animation:rail-pop .3s ease}
 .rail-upload.is-error .rail-upload-label{font-size:17px}
 .rail-upload-label svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
 @keyframes rail-wave{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @keyframes rail-pop{0%{transform:scale(.4)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes rail-ring{from{box-shadow:0 0 0 0 rgba(22,163,74,.45)}to{box-shadow:0 0 0 14px rgba(22,163,74,0)}}
 @keyframes rail-shake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
-@media(prefers-reduced-motion:reduce){.rail-upload-water svg{animation:none}.rail-upload-water:before,.rail-upload-water svg{transition:none}}
+@media(prefers-reduced-motion:reduce){.rail-upload-water svg,.rail-upload.is-done{animation:none}.rail-upload-water:before,.rail-upload-water svg{transition:none}}
 .studio-main{display:flex;min-width:0;flex:1;flex-direction:column}.studio-topbar{position:relative;display:flex;height:68px;flex:none;align-items:center;justify-content:space-between;border-bottom:1px solid #e8eaed;background:rgba(255,255,255,.96);padding:0 18px 0 14px}.studio-project-title{display:flex;align-items:center;gap:11px}.studio-project-title>button:first-child{display:grid;width:36px;height:36px;place-items:center;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:19px;box-shadow:0 3px 9px rgba(0,0,0,.04)}.studio-project-title>button:last-child{border:0;background:none}.studio-project-title p{display:flex;flex-direction:column;margin:0}.studio-project-title strong{font-family:var(--font-general-sans);font-size:15px}.studio-project-title span{margin-top:2px;color:#8b9099;font-size:12px}
 .studio-mode-switch{position:absolute;left:50%;display:flex;transform:translateX(-50%);border-radius:13px;padding:4px;background:#f3f4f6}.studio-mode-switch button{min-width:72px;border:0;border-radius:10px;padding:8px 14px;background:transparent;font-size:11px}.studio-mode-switch .active{background:#121316;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.16)}
 .studio-header-actions{display:flex;align-items:center;gap:8px}.studio-header-actions>button{display:grid;min-width:34px;height:34px;place-items:center;border:1px solid #e7e9ed;border-radius:9px;background:#fff;font-size:15px}.studio-header-actions .zoom{min-width:68px;padding:0 10px;font-size:11px}.studio-header-actions>div{margin-left:4px}
