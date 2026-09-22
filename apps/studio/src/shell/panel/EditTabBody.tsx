@@ -47,9 +47,17 @@ interface EditTabBodyProps {
   currentImageUrl: string | null;
   /** A finished render for this view that isn't currently open in the render editor. */
   pendingRenderJobId?: string | null;
+  /** A rectangle/polygon drawn on the original upload (no render exists for this view yet). */
+  hasCanvasSelection?: boolean;
+  onClearCanvasSelection?: () => void;
 }
 
-export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: EditTabBodyProps) {
+export function EditTabBody({
+  currentImageUrl,
+  pendingRenderJobId = null,
+  hasCanvasSelection = false,
+  onClearCanvasSelection,
+}: EditTabBodyProps) {
   const apiClient = useApiClient();
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const applyInferredEditMode = useGenerationSettingsStore((state) => state.applyInferredEditMode);
@@ -78,8 +86,20 @@ export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: Edit
 
   const part = editPartById(selectedPart);
   const wholeImage = selectedPart === WHOLE_IMAGE;
-  const targeted = selectionMode === "manual" ? renderAreaSelected : Boolean(part);
+  const manualAreaSelected = isEditingRender ? renderAreaSelected : hasCanvasSelection;
+  const targeted = selectionMode === "manual" ? manualAreaSelected : Boolean(part);
   const hasReferences = referenceCount > 0;
+
+  // What the prompt is scoped to, shown as a tag on "Describe the change" so it's never
+  // ambiguous what a typed description will apply to.
+  const targetTag =
+    selectionMode === "auto"
+      ? part
+        ? { label: part.label, onClear: () => void handlePart(part.id) }
+        : null
+      : manualAreaSelected
+        ? { label: "Selected area", onClear: isEditingRender ? clearStrokes : onClearCanvasSelection }
+        : null;
 
   // The mode follows the inputs unless the user has overridden it.
   useEffect(() => {
@@ -221,6 +241,17 @@ export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: Edit
             {editPrompt.length}/{maxChars}
           </span>
         </div>
+        {targetTag && (
+          <div className="cp-prompt-tag">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2.5h4L10 6.5l-3.5 3.5L2.5 6.5Z" /><circle cx="4.2" cy="4.2" r="0.7" fill="currentColor" stroke="none" /></svg>
+            <span>Editing: {targetTag.label}</span>
+            {targetTag.onClear && (
+              <button type="button" aria-label={`Stop editing ${targetTag.label.toLowerCase()}`} onClick={targetTag.onClear}>
+                <svg viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6M8 2 2 8" /></svg>
+              </button>
+            )}
+          </div>
+        )}
         {!hasReferences && (
           <div className="cp-segmented is-small is-actions" role="group" aria-label="Edit action">
             {ACTIONS.map((action) => (
@@ -244,7 +275,9 @@ export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: Edit
           placeholder={
             part
               ? `Describe the new ${part.label.toLowerCase()} — material, colour, style…`
-              : "Describe the change you want…"
+              : manualAreaSelected
+                ? "Describe the change for the selected area…"
+                : "Describe the change you want…"
           }
         />
       </div>
@@ -257,7 +290,7 @@ export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: Edit
         <ReferenceBar />
       </section>
 
-      <p className="cp-ai-note">{modeSentence(hasReferences, editMode, part?.label ?? null)}</p>
+      <p className="cp-ai-note">{modeSentence(hasReferences, editMode, targetTag?.label ?? null)}</p>
 
       <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength · ${seed === null ? "Random seed" : `Seed ${seed}`}`}>
         <label className="cp-setting is-stacked" data-guide="control.influence">

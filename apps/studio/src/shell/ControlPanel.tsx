@@ -11,6 +11,7 @@ import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { nodeForView } from "../canvas/buildingViews";
 import { useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
 import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
+import { useSelectionToolStore } from "../canvas/hooks/useSelectionToolStore";
 
 interface ControlPanelProps {
   projectId: string;
@@ -33,6 +34,12 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
   const latestRenderForView = useRenderJobsStore((state) =>
     state.jobs.find((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId) ?? null,
   );
+  // A rectangle/polygon drawn on the original upload, before any render exists for this view.
+  const editNode = nodeForView(nodes, activeViewId);
+  const canvasSelection = useSelectionToolStore((state) => state.selection);
+  const canvasSelectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
+  const clearCanvasSelection = useSelectionToolStore((state) => state.clearSelection);
+  const hasCanvasSelection = Boolean(canvasSelection && editNode && canvasSelectionNodeId === editNode.id);
 
   return (
     <div className="cp-panel">
@@ -51,7 +58,12 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
         ) : (
           <>
             <EditModeHeader render={editRender} currentImageUrl={editRender ? null : currentImageUrl} />
-            <EditTabBody currentImageUrl={currentImageUrl} pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)} />
+            <EditTabBody
+              currentImageUrl={currentImageUrl}
+              pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)}
+              hasCanvasSelection={hasCanvasSelection}
+              onClearCanvasSelection={clearCanvasSelection}
+            />
           </>
         )}
       </div>
