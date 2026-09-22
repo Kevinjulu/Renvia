@@ -269,6 +269,50 @@ button { color: inherit; }
 .studio-prefs-reset:hover{text-decoration:underline}
 @media(max-width:640px){.studio-prefs-style-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.studio-prefs-row{flex-direction:column;align-items:flex-start}}
 
+.assets-page{display:flex;max-width:1120px;flex-direction:column;gap:16px;margin-top:38px}
+.assets-dropzone{display:flex;flex-direction:column;align-items:center;gap:8px;border:1px dashed #cbc7c0;border-radius:14px;padding:26px;text-align:center;background:#fff;transition:border-color .15s ease,background .15s ease}
+.assets-dropzone.is-over{border-color:#171717;background:#f7f6f3}
+.assets-dropzone>div{display:flex;align-items:center;gap:10px}
+.assets-dropzone strong{font-size:13px;font-weight:600}
+.assets-dropzone button{border:0;border-radius:8px;padding:8px 14px;background:#171717;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.assets-dropzone button:disabled{opacity:.6;cursor:default}
+.assets-dropzone small{color:#8b8883;font-size:11.5px}
+.assets-paste{display:flex;flex-direction:column;gap:6px}
+.assets-paste label{color:#3a3733;font-size:12px;font-weight:600}
+.assets-paste-row{display:flex;gap:8px}
+.assets-paste-row input{flex:1;height:38px;border:1px solid #dcd9d4;border-radius:8px;padding:0 12px;outline:0;font-size:13px}
+.assets-paste-row input:focus{border-color:#7fa2eb}
+.assets-paste-row button{border:1px solid #dcd9d4;border-radius:8px;padding:0 15px;background:#fff;color:#171717;font-size:12px;font-weight:600;cursor:pointer}
+.assets-paste-row button:disabled{opacity:.6;cursor:default}
+.assets-paste-error{margin:0;color:#a34a3f;font-size:12px}
+.assets-toolbar{display:flex;gap:6px;border-bottom:1px solid #eeeae4;padding-bottom:12px}
+.assets-toolbar button{display:flex;align-items:center;gap:6px;border:0;border-radius:8px;padding:6px 11px;background:none;color:#77736e;font-size:12.5px;font-weight:600;cursor:pointer}
+.assets-toolbar button span{border-radius:999px;padding:1px 6px;background:#f0eee9;color:#8b8883;font-size:10.5px;font-weight:600}
+.assets-toolbar button.is-active{background:#171717;color:#fff}
+.assets-toolbar button.is-active span{background:rgba(255,255,255,.18);color:#fff}
+.assets-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.asset-tile{position:relative;overflow:hidden;border:1px solid #e4e1dd;border-radius:12px;background:#fff}
+.asset-tile.is-skeleton{aspect-ratio:1;background:#eeece8}
+.asset-tile.is-skeleton::after{position:absolute;inset:0;content:"";transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);animation:dashboard-skeleton-shimmer 1.5s ease-in-out infinite}
+.asset-tile-image{display:block;aspect-ratio:1;background:#f0eee9}
+.asset-tile-image img{width:100%;height:100%;object-fit:cover}
+.asset-tile figcaption{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px}
+.asset-tile figcaption small{color:#8b8883;font-size:10.5px}
+.asset-badge{border-radius:999px;padding:2px 8px;background:#f0eee9;color:#61584d;font-size:10px;font-weight:600}
+.asset-badge.is-unsplash{background:#eef3ff;color:#2f6fed}
+.asset-badge.is-url{background:#fdf3e7;color:#a86a1f}
+.asset-tile-delete{position:absolute;top:7px;right:7px;display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:50%;background:rgba(20,20,20,.55);color:#fff;cursor:pointer;opacity:0;transition:opacity .15s ease}
+.asset-tile:hover .asset-tile-delete{opacity:1}
+.asset-tile-confirm{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;background:rgba(255,255,255,.96);text-align:center}
+.asset-tile-confirm p{margin:0;color:#3a3733;font-size:12px;font-weight:600}
+.asset-tile-confirm div{display:flex;gap:8px}
+.asset-tile-confirm button{border:1px solid #dcd9d4;border-radius:7px;padding:5px 11px;background:#fff;color:#3a3733;font-size:11.5px;font-weight:600;cursor:pointer}
+.asset-tile-confirm button.is-danger{border-color:#c0392b;background:#c0392b;color:#fff}
+.asset-tile-confirm button.is-danger:disabled{opacity:.6;cursor:default}
+.assets-empty{border:1px dashed #dcd9d4;border-radius:14px;padding:34px;text-align:center;color:#77736e}
+.assets-empty-title{margin:0 0 6px;color:#3a3733;font-size:14px;font-weight:600}
+.assets-empty p:not(.assets-empty-title){margin:0;font-size:12.5px;max-width:420px;margin-inline:auto}
+
 @keyframes rise-in {
   from {
     opacity: 0;

@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { DashboardSidebar } from "../dashboard/DashboardSidebar";
 import { DashboardTopBar } from "../dashboard/DashboardTopBar";
+import { AssetsSection } from "../dashboard/AssetsSection";
 import { StudioPreferencesSection } from "../dashboard/StudioPreferencesSection";
 import { useApiClient } from "../lib/apiClient";
 
@@ -17,16 +18,15 @@ const cards: Partial<Record<SectionKey, Array<[string, string, string?]>>> = {
 
 export function DashboardSectionRoute({ section }: { section: SectionKey }) {
   const api = useApiClient(); const navigate = useNavigate(); const location = useLocation();
-  const [notice, setNotice] = useState(""); const [search, setSearch] = useState(""); const [files, setFiles] = useState<string[]>([]); const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState(""); const [search, setSearch] = useState("");
   const [eyebrow, title, description] = copy[section];
   const visibleCards = (cards[section] ?? []).filter(([name]) => name.toLowerCase().includes(search.toLowerCase()));
   const create = async (name = "Untitled project") => { const project = await api.createProject({ name }); navigate(`/project/${project.id}`); };
   const invite = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const data = new FormData(event.currentTarget); setNotice(`Invitation prepared for ${String(data.get("email"))}.`); event.currentTarget.reset(); };
-  const upload = async (selected: FileList | null) => { const list = Array.from(selected ?? []); if (!list.length) return; setFiles(list.map((file) => file.name)); setUploading(true); try { for (const file of list) { const result = await api.uploadImage(file); await api.createReference({ url: result.publicUrl, source: "upload" }); } setNotice(`${list.length} ${list.length === 1 ? "file" : "files"} uploaded to your asset library.`); } catch { setNotice("The upload could not be completed. Check your connection and try again."); } finally { setUploading(false); } };
   return <div className="dashboard-shell"><DashboardSidebar view="home" activeSection={section} onChangeView={() => navigate("/dashboard")} onCreate={() => void create()}/><div className="dashboard-workspace"><DashboardTopBar value={search} onChange={setSearch} onNotifications={() => navigate("/activity")}/><main className="dashboard-feature-page">
     <button type="button" className="feature-back" onClick={() => navigate("/dashboard")}>← Dashboard</button><header><p>{eyebrow}</p><h1>{title}</h1><span>{description}</span></header>{notice && <div className="feature-notice" role="status">{notice}</div>}
     {visibleCards.length > 0 && <div className="feature-card-grid">{visibleCards.map(([name, text, image]) => <article key={name} className="feature-card">{image && <img src={image} alt=""/>}<div><h2>{name}</h2><p>{text}</p><button type="button" onClick={() => void create(name)}>Use this direction →</button></div></article>)}</div>}
-    {section === "assets" && <section className="feature-form-card"><h2>Upload project files</h2><p>Choose images, drawings, or model exports before attaching them to a project.</p><label className="feature-upload"><input type="file" multiple autoFocus={location.search.includes("upload=1")} accept="image/*,.pdf,.dwg,.dxf,.skp" onChange={(event) => void upload(event.target.files)}/><span>{uploading ? "Uploading…" : "Choose files"}</span><small>PNG, JPG, PDF, DWG, DXF, or SKP</small></label>{files.length > 0 && <ul>{files.map((file) => <li key={file}>{file}</li>)}</ul>}</section>}
+    {section === "assets" && <AssetsSection autoOpenUpload={location.search.includes("upload=1")} onNotice={setNotice} />}
     {section === "team" && <form className="feature-form-card" onSubmit={invite}><h2>Invite a collaborator</h2><label>Email address<input name="email" type="email" placeholder="designer@studio.com" required/></label><label>Role<select name="role"><option>Editor</option><option>Viewer</option><option>Administrator</option></select></label><button type="submit">Prepare invitation</button></form>}
     {section === "settings" && <StudioPreferencesSection onSaved={setNotice} />}
     {section === "billing" && <div className="feature-plan-grid"><Plan name="Starter" price="$0" detail="5 renders each month, 720p exports, and one project."/><Plan name="Studio" price="$29" detail="200 monthly renders, 4K output, and unlimited projects." featured onChoose={() => setNotice("Studio selected. Secure checkout will open when billing is connected.")}/><Plan name="Enterprise" price="Custom" detail="Team collaboration, private storage, and dedicated support." onChoose={() => setNotice("Enterprise selected. Your workspace request is ready for sales follow-up.")}/></div>}
