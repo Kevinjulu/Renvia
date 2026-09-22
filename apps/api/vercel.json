@@ -3,5 +3,5 @@
   "buildCommand": "pnpm exec tsc --noEmit",
   "outputDirectory": "public",
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/[...route]" }],
-  "crons": [{ "path": "/api/cron/sweep-renders", "schedule": "*/5 * * * *" }]
+  "crons": [{ "path": "/api/cron/sweep-renders", "schedule": "0 3 * * *" }]
 }
