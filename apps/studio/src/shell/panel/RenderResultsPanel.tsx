@@ -12,16 +12,8 @@ import { useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
-
-const PROGRESS_CEILING = 92;
-
-function jobProgress(job: ClientRenderJob, now: number): number {
-  if (job.status === "succeeded" || job.status === "failed") return 100;
-  const anchor = job.status === "processing" ? job.updatedAt : job.createdAt;
-  const elapsedSeconds = Math.max(0, (now - new Date(anchor).getTime()) / 1000);
-  const base = job.status === "pending" ? 6 : 15;
-  return Math.min(PROGRESS_CEILING, base + (PROGRESS_CEILING - base) * (1 - Math.exp(-elapsedSeconds / 18)));
-}
+import { jobProgress } from "../../canvas/utils/renderProgress";
+import { useArchitectureFact } from "./useArchitectureFact";
 
 function timeAgo(iso: string, now: number) {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
@@ -211,6 +203,7 @@ export function RenderResultsPanel() {
   const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
   const starred = job.isFavorite;
   const progress = Math.round(jobProgress(job, now));
+  const fact = useArchitectureFact(inFlight);
   const parent = job.settings?.edit
     ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
     : undefined;
@@ -322,6 +315,7 @@ export function RenderResultsPanel() {
               <i>
                 <em style={{ width: `${progress}%` }} />
               </i>
+              <small key={fact}>{fact}</small>
             </figcaption>
           )}
           {job.status === "failed" && (

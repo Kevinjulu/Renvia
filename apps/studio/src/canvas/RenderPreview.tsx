@@ -7,6 +7,7 @@ import { useApiClient } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
 import { formatAspectRatio } from "./utils/aspectRatio";
+import { WaitingProgress } from "../shell/panel/WaitingProgress";
 
 function downloadImage(url: string) {
   const link = document.createElement("a");
@@ -220,6 +221,7 @@ export function RenderPreview() {
 
   // When an edit queued from here finishes, show it against the render it came from.
   const awaited = jobs.find((item) => item.id === awaitingJobId);
+  const awaiting = awaited && (awaited.status === "pending" || awaited.status === "processing") ? awaited : null;
   useEffect(() => {
     if (!awaited || (awaited.status !== "succeeded" && awaited.status !== "failed")) return;
     useRenderEditStore.getState().setAwaitingJob(null);
@@ -354,7 +356,11 @@ export function RenderPreview() {
         )}
       </div>
 
-      {isEditing ? (
+      {awaiting ? (
+        <div className="render-preview-waiting">
+          <WaitingProgress job={awaiting} label={awaiting.status === "pending" ? "Queued" : "Applying edit"} />
+        </div>
+      ) : isEditing ? (
         <footer className="render-preview-footer is-hint">
           <p>
             {selectNotice
@@ -366,7 +372,6 @@ export function RenderPreview() {
                 : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
           </p>
           {isSelecting && <span className="render-edit-pending">Finding that area…</span>}
-          {awaitingJobId && <span className="render-edit-pending">Edit in progress…</span>}
         </footer>
       ) : (
         (job.prompt || job.style || formatAspectRatio(job.aspectRatio)) && (

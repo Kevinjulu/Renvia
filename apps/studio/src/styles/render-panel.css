@@ -1284,6 +1284,16 @@
 .render-preview-footer.is-hint p{color:#2b3a8f;white-space:normal}
 .render-edit-pending{display:inline-flex;flex:none;align-items:center;gap:6px;color:#4265f5;font-size:11.5px;font-weight:600}
 .render-edit-pending:before{width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;content:"";animation:render-preview-spin .8s linear infinite}
+.render-preview-waiting{border-top:1px solid #dfe5fb;background:#f5f7ff;padding:10px 14px}
+.waiting-progress{display:flex;flex-direction:column;gap:7px}
+.waiting-progress-head{display:flex;align-items:center;justify-content:space-between;color:#2b3a8f;font-size:11.5px;font-weight:600}
+.waiting-progress-head b{font-variant-numeric:tabular-nums}
+.waiting-progress-time{color:#6b78c4;font-weight:500;font-variant-numeric:tabular-nums}
+.waiting-progress-bar{display:block;height:4px;overflow:hidden;border-radius:999px;background:#dfe5fb}
+.waiting-progress-bar em{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#4265f5,#8ba0ff);transition:width .5s ease-out}
+.waiting-progress-fact{margin:0;color:#4e535c;font-size:11.5px;line-height:1.45;animation:waiting-progress-fade .4s ease}
+.waiting-progress-fact span{color:#4265f5}
+@keyframes waiting-progress-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
 .edit-target-card{display:flex;gap:11px;border:1px solid #dfe5fb;border-radius:11px;padding:10px;background:#f5f7ff}
 .edit-target-card>img{width:64px;height:64px;flex:none;border-radius:7px;object-fit:cover}
 .edit-target-card .edit-target-thumb{flex:none;margin:0;padding:0;border:0;border-radius:7px;background:none;line-height:0;cursor:zoom-in}
