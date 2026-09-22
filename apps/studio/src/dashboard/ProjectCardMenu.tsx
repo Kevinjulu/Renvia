@@ -54,7 +54,7 @@ export function ProjectCardMenu({ onRename, onDelete }: ProjectCardMenuProps) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-8 z-10 w-36 overflow-hidden rounded-lg border border-hairline bg-white py-1 shadow-lg"
+          className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-lg border border-hairline bg-white py-1 shadow-xl"
         >
           <button
             type="button"
@@ -64,10 +64,11 @@ export function ProjectCardMenu({ onRename, onDelete }: ProjectCardMenuProps) {
               setOpen(false);
               onRename();
             }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-sm text-primary transition-colors hover:bg-surface-muted"
+            className="flex w-full items-center px-3.5 py-2 text-left text-sm text-primary transition-colors hover:bg-surface-muted"
           >
             Rename
           </button>
+          <div className="my-1 h-px bg-hairline" />
           <button
             type="button"
             role="menuitem"
@@ -76,7 +77,7 @@ export function ProjectCardMenu({ onRename, onDelete }: ProjectCardMenuProps) {
               setOpen(false);
               onDelete();
             }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
+            className="flex w-full items-center px-3.5 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
           >
             Delete
           </button>
