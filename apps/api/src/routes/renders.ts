@@ -43,9 +43,10 @@ const createRenderSchema = z.object({
           maskImageUrl: z.string().url().optional(),
         })
         .optional(),
-      // fal seeds are non-negative 32-bit ints; validated loosely here since an out-of-range
-      // value just gets rejected by fal itself rather than doing anything unsafe.
-      seed: z.number().int().min(0).max(2_147_483_647).optional(),
+      // fal seeds are non-negative unsigned 32-bit ints (up to 2^32 - 1, not the signed int32
+      // max) — validated loosely here since an out-of-range value just gets rejected by fal
+      // itself rather than doing anything unsafe.
+      seed: z.number().int().min(0).max(4_294_967_295).optional(),
     })
     .optional(),
 });

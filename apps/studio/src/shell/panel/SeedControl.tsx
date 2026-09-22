@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 
-const MAX_SEED = 2_147_483_647;
+// fal seeds are unsigned 32-bit (0 to 2^32 - 1), not signed int32.
+const MAX_SEED = 4_294_967_295;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * MAX_SEED);

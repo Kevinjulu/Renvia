@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, integer, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, bigint, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
 export const users = pgTable("users", {
     id: uuid("id").primaryKey().defaultRandom(),
     clerkId: text("clerk_id").notNull().unique(),
@@ -76,8 +76,12 @@ export const renders = pgTable("renders", {
      * The seed actually used: what the caller requested, or what the model echoed back when
      * none was given. Null when the model doesn't report one (nano-banana/edit) and none was
      * requested — that render can't be exactly reproduced.
+     *
+     * bigint, not integer: fal echoes back unsigned 32-bit seeds up to ~4.29 billion, which
+     * overflows Postgres's signed int4 (max ~2.147 billion) — every refresh of a render whose
+     * random seed landed above that line failed to save and got stuck retrying forever.
      */
-    seed: integer("seed"),
+    seed: bigint("seed", { mode: "number" }),
     /** Starred by the owner in the studio's results panel. */
     isFavorite: boolean("is_favorite").notNull().default(false),
     /**
