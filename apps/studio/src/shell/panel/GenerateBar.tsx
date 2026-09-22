@@ -303,12 +303,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         edit.maskImageUrl = publicUrl;
       }
 
+      // "style" tells the model what look to preserve — that's the style the image on screen
+      // actually was rendered in, not whatever the Render tab's dropdown happens to be set to
+      // right now (unrelated, and often left over from a different elevation).
       const { job } = await apiClient.createRender({
         projectId,
         sourceImageUrl,
         prompt: editPrompt.trim(),
         aspectRatio,
-        style,
+        style: editRender ? editRender.style : "Photorealistic",
         viewKey: editRender ? (editRender.viewKey ?? undefined) : editView?.id,
         viewLabel: editRender ? (editRender.viewLabel ?? undefined) : editView?.label,
         generationSettings: {

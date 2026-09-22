@@ -144,10 +144,11 @@ export function buildEditPrompt({ prompt, edit, hasReferences, style }: EditProm
   }
 
   if (edit.mode === "building" && hasReferences) {
+    // No styleHint here — restyling via reference means leaving the current style behind,
+    // which a "keep this in ..." instruction for that same current style would contradict.
     return [
       "Restyle the building in the architectural style of the reference images" + (subject ? `: ${subject}.` : "."),
       `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`,
-      styleHint,
     ]
       .filter(Boolean)
       .join(" ");
