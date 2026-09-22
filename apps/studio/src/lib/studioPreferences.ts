@@ -17,7 +17,9 @@ export const DEFAULT_STUDIO_PREFERENCES: StudioPreferences = {
   defaultStyle: "Photorealistic",
   defaultAspectRatio: "auto",
   defaultStyleInfluence: 3,
-  defaultEditInfluence: 2,
+  // Maximum, not Balanced: a weak guidance scale on the edit model under-applies the
+  // instruction (partial or no visible change) far more often than it over-applies it.
+  defaultEditInfluence: 4,
   defaultPreserveStructure: true,
 };
 

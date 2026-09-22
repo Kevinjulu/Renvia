@@ -12,8 +12,14 @@ export interface CropRect {
 const MASK_THRESHOLD = 127;
 /** Context kept around the selection, as a fraction of its longer side, so the model sees what it's editing. */
 const CONTEXT_RATIO = 0.6;
-/** Smallest crop side — tiny selections still get enough surroundings to match light and style. */
-const MIN_CROP_SIDE = 448;
+/**
+ * Smallest crop side — tiny selections still get enough surroundings to match light and
+ * style. Was 448: for a single small window (~124x105) that floor forced a 448x448 crop
+ * where the selected object was only ~6.5% of the frame, diluting the instruction's visual
+ * target so badly the model regularly missed it. 320 keeps enough context for lighting/
+ * material matching without burying a modest selection in mostly-irrelevant surroundings.
+ */
+const MIN_CROP_SIDE = 320;
 /** Past this share of the image, cropping gains little detail; the model gets the whole image instead. */
 const MAX_CROP_AREA_SHARE = 0.65;
 
