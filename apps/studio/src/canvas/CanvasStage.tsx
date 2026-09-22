@@ -36,14 +36,21 @@ export function CanvasStage() {
   const selection = useSelectionToolStore((state) => state.selection);
   const targetNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const commitSelection = useSelectionToolStore((state) => state.commitSelection);
+  const clearSelection = useSelectionToolStore((state) => state.clearSelection);
 
   const visibleNode = nodes.find((node) => node.elevationId === activeViewId && node.imageUrl) ?? null;
   // An image open full-size covers the canvas, so the upload prompt must not show through it.
   const isPreviewingRender = useRenderJobsStore(
     (state) => state.previewJobId !== null || state.previewImage !== null,
   );
+  // Once this view has a finished render, region-select belongs to the render editor
+  // (brush/eraser/rectangle/polygon/magic in the full-size viewer), not the original upload.
+  const hasRenderForView = useRenderJobsStore((state) =>
+    state.jobs.some((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId),
+  );
+  const canSelectOnCanvas = Boolean(visibleNode) && !hasRenderForView;
   const targetNode = visibleNode;
-  const isDrawing = activeTab === "edit" && activeTool !== null;
+  const isDrawing = activeTab === "edit" && activeTool !== null && canSelectOnCanvas;
 
   const [draftRect, setDraftRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [draftPolygon, setDraftPolygon] = useState<number[]>([]);
@@ -61,6 +68,14 @@ export function CanvasStage() {
   useEffect(() => {
     setStageSize(size);
   }, [size, setStageSize]);
+
+  // A render just landed for this view (or the user switched to one that already has one) —
+  // any tool armed or selection drawn on the original image no longer applies.
+  useEffect(() => {
+    if (canSelectOnCanvas) return;
+    setActiveTool(null);
+    clearSelection();
+  }, [canSelectOnCanvas, setActiveTool, clearSelection]);
 
   const resetDraft = () => {
     isDraggingRect.current = false;
@@ -184,7 +199,7 @@ export function CanvasStage() {
       }}
     >
       {!visibleNode && !isPreviewingRender && <CanvasEmptyState />}
-      {activeTab === "edit" && visibleNode && <EditToolbar />}
+      {activeTab === "edit" && canSelectOnCanvas && <EditToolbar />}
       <Stage
         width={size.width}
         height={size.height}

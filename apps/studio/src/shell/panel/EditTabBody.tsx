@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ReferenceBar } from "./ReferenceBar";
 import { SeedControl } from "./SeedControl";
 import { AdvancedSection } from "./AdvancedSection";
-import { hasSelection, maskStrokeFrom, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
+import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
   STYLE_INFLUENCE_LABELS,
   inferEditMode,
@@ -45,9 +45,11 @@ function modeSentence(hasReferences: boolean, mode: EditMode, partLabel: string 
 
 interface EditTabBodyProps {
   currentImageUrl: string | null;
+  /** A finished render for this view that isn't currently open in the render editor. */
+  pendingRenderJobId?: string | null;
 }
 
-export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
+export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: EditTabBodyProps) {
   const apiClient = useApiClient();
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const applyInferredEditMode = useGenerationSettingsStore((state) => state.applyInferredEditMode);
@@ -195,12 +197,19 @@ export function EditTabBody({ currentImageUrl }: EditTabBodyProps) {
             </button>
           </div>
         </div>
-      ) : (
+      ) : isEditingRender ? (
         <p className="cp-hint">
-          {isEditingRender
-            ? "Paint over the part of the render you want to change — brush, rectangle or polygon in the viewer."
-            : "Draw a rectangle or polygon on the image — only that area is regenerated."}
+          Paint over the part of the render you want to change — brush, rectangle or polygon in the viewer.
         </p>
+      ) : pendingRenderJobId ? (
+        <div className="cp-hint cp-hint-action">
+          <p>This view already has a render — select the area to change on it, not the original upload.</p>
+          <button type="button" className="cp-hint-button" onClick={() => startRenderEdit(pendingRenderJobId)}>
+            Edit this render
+          </button>
+        </div>
+      ) : (
+        <p className="cp-hint">Draw a rectangle or polygon on the image — only that area is regenerated.</p>
       )}
 
       {notice && <p className="cp-notice">{notice}</p>}

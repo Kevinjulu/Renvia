@@ -133,6 +133,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   // A render open in the viewer's edit mode takes over from the canvas image as the edit target.
   const editRender = jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null;
   const hasEditSelection = editRender ? hasSelection(renderStrokes) : Boolean(editSelection);
+  // A finished render for this view means region-select happens in the render editor, not on the canvas image.
+  const hasRenderForView = jobs.some((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId);
 
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
@@ -248,7 +250,13 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       return;
     }
     if (selectionMode === "manual" && !hasEditSelection) {
-      setStatus(editRender ? "Paint over the area to change first, or switch to Auto select." : "Draw a selection on the image first, or switch to Auto select.");
+      setStatus(
+        editRender
+          ? "Paint over the area to change first, or switch to Auto select."
+          : hasRenderForView
+            ? "Open \"Edit this render\" to select an area, or switch to Auto select."
+            : "Draw a selection on the image first, or switch to Auto select.",
+      );
       return;
     }
     if (needsPartChoice && !chosenPart && !wholeImageChosen) {

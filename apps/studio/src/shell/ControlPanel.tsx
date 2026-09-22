@@ -30,6 +30,9 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
   const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
   const editRender = useRenderJobsStore((state) => state.jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null);
   const currentImageUrl = editRender?.resultImageUrl ?? nodeForView(nodes, activeViewId)?.imageUrl ?? null;
+  const latestRenderForView = useRenderJobsStore((state) =>
+    state.jobs.find((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId) ?? null,
+  );
 
   return (
     <div className="cp-panel">
@@ -48,7 +51,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
         ) : (
           <>
             <EditModeHeader render={editRender} currentImageUrl={editRender ? null : currentImageUrl} />
-            <EditTabBody currentImageUrl={currentImageUrl} />
+            <EditTabBody currentImageUrl={currentImageUrl} pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)} />
           </>
         )}
       </div>
