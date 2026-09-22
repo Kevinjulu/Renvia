@@ -313,6 +313,19 @@ button { color: inherit; }
 .assets-empty-title{margin:0 0 6px;color:#3a3733;font-size:14px;font-weight:600}
 .assets-empty p:not(.assets-empty-title){margin:0;font-size:12.5px;max-width:420px;margin-inline:auto}
 
+.templates-page{display:flex;max-width:1120px;flex-direction:column;gap:20px;margin-top:38px}
+.template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px}
+.template-card{overflow:hidden;border:1px solid #e2dfda;border-radius:14px;background:#fff;transition:transform .18s ease,box-shadow .18s ease}
+.template-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.07)}
+.template-card-image{position:relative;height:150px}
+.template-card-image img{width:100%;height:100%;object-fit:cover}
+.template-card-category{position:absolute;left:10px;top:10px;border-radius:999px;padding:3px 9px;background:rgba(20,20,20,.6);color:#fff;font-size:10px;font-weight:600}
+.template-card>div{padding:16px 18px 18px}
+.template-card h2{margin:0;font-family:var(--font-general-sans);font-size:16px}
+.template-card p{min-height:34px;margin:6px 0 14px;color:#77736e;font-size:12.5px;line-height:1.5}
+.template-card button{border:0;background:none;padding:0;color:#171717;font-size:12px;font-weight:600;cursor:pointer}
+.template-card button:disabled{color:#b5b1aa;cursor:default}
+
 @keyframes rise-in {
   from {
     opacity: 0;

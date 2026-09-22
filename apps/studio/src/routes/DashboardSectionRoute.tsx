@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { DashboardSidebar } from "../dashboard/DashboardSidebar";
 import { DashboardTopBar } from "../dashboard/DashboardTopBar";
 import { AssetsSection } from "../dashboard/AssetsSection";
+import { TemplatesSection } from "../dashboard/TemplatesSection";
 import { StudioPreferencesSection } from "../dashboard/StudioPreferencesSection";
 import { useApiClient } from "../lib/apiClient";
 
@@ -12,7 +13,6 @@ const copy: Record<SectionKey, [string, string, string]> = {
 };
 const cards: Partial<Record<SectionKey, Array<[string, string, string?]>>> = {
   explore: [["Warm minimal residences", "Natural timber, quiet stone, and generous daylight.", "/dashboard/house-exterior.jpg"], ["Modern lakeside living", "Low profiles and reflective landscapes.", "/dashboard/lakeside-house.jpg"], ["After-dark presentation", "Controlled contrast and believable interior light.", "/dashboard/house-dark.jpg"]],
-  templates: [["Photoreal exterior", "Balanced daylight, landscaping, and natural materials.", "/style-thumbs/photorealistic.jpg"], ["Architectural linework", "Clean monochrome studies for early design reviews.", "/style-thumbs/vector-sketch.jpg"], ["Watercolor concept", "Soft atmospheric visuals for presentations.", "/style-thumbs/watercolor-sketch.jpg"]],
   "ai-tools": [["Sketch to render", "Turn linework into a presentation-ready visualization."], ["Regional material edit", "Change one surface while preserving the building."], ["Design variations", "Explore alternate finishes without redrawing the project."]],
 };
 
@@ -27,6 +27,7 @@ export function DashboardSectionRoute({ section }: { section: SectionKey }) {
     <button type="button" className="feature-back" onClick={() => navigate("/dashboard")}>← Dashboard</button><header><p>{eyebrow}</p><h1>{title}</h1><span>{description}</span></header>{notice && <div className="feature-notice" role="status">{notice}</div>}
     {visibleCards.length > 0 && <div className="feature-card-grid">{visibleCards.map(([name, text, image]) => <article key={name} className="feature-card">{image && <img src={image} alt=""/>}<div><h2>{name}</h2><p>{text}</p><button type="button" onClick={() => void create(name)}>Use this direction →</button></div></article>)}</div>}
     {section === "assets" && <AssetsSection autoOpenUpload={location.search.includes("upload=1")} onNotice={setNotice} />}
+    {section === "templates" && <TemplatesSection onNotice={setNotice} />}
     {section === "team" && <form className="feature-form-card" onSubmit={invite}><h2>Invite a collaborator</h2><label>Email address<input name="email" type="email" placeholder="designer@studio.com" required/></label><label>Role<select name="role"><option>Editor</option><option>Viewer</option><option>Administrator</option></select></label><button type="submit">Prepare invitation</button></form>}
     {section === "settings" && <StudioPreferencesSection onSaved={setNotice} />}
     {section === "billing" && <div className="feature-plan-grid"><Plan name="Starter" price="$0" detail="5 renders each month, 720p exports, and one project."/><Plan name="Studio" price="$29" detail="200 monthly renders, 4K output, and unlimited projects." featured onChoose={() => setNotice("Studio selected. Secure checkout will open when billing is connected.")}/><Plan name="Enterprise" price="Custom" detail="Team collaboration, private storage, and dedicated support." onChoose={() => setNotice("Enterprise selected. Your workspace request is ready for sales follow-up.")}/></div>}
