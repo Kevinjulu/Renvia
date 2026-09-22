@@ -8,6 +8,7 @@ import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
 import { formatAspectRatio } from "./utils/aspectRatio";
 import { WaitingProgress } from "../shell/panel/WaitingProgress";
+import { useWheelZoom } from "./hooks/useWheelZoom";
 
 function downloadImage(url: string) {
   const link = document.createElement("a");
@@ -197,6 +198,7 @@ export function RenderPreview() {
   const tool = useRenderEditStore((state) => state.tool);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectNotice, setSelectNotice] = useState<string | null>(null);
+  const { zoom, transformOrigin, targetRef: imageRef, onWheel, resetZoom, isZoomed } = useWheelZoom<HTMLImageElement>(`${previewJobId}:${mode}`);
 
   const viewable = jobs.filter((job) => job.status === "succeeded" && job.resultImageUrl);
   const index = viewable.findIndex((job) => job.id === previewJobId);
@@ -330,7 +332,7 @@ export function RenderPreview() {
         )}
       </header>
 
-      <div className="render-preview-stage">
+      <div className={`render-preview-stage ${!isEditing && mode !== "compare" ? "is-zoomable" : ""}`} onWheel={!isEditing && mode !== "compare" ? onWheel : undefined}>
         {!isEditing && index > 0 && (
           <button type="button" className="render-preview-nav is-prev" aria-label="Previous render" onClick={() => setPreviewJob(viewable[index - 1]!.id)}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
@@ -346,9 +348,23 @@ export function RenderPreview() {
         ) : mode === "compare" ? (
           <CompareView key={job.id} renderUrl={job.resultImageUrl} sourceUrl={job.sourceImageUrl} />
         ) : (
-          <img key={shownUrl} src={shownUrl} alt={mode === "source" ? "Source image" : title} className={`render-preview-image ${loaded ? "is-loaded" : ""}`} onLoad={() => setLoaded(true)} draggable={false} />
+          <img
+            key={shownUrl}
+            ref={imageRef}
+            src={shownUrl}
+            alt={mode === "source" ? "Source image" : title}
+            className={`render-preview-image ${loaded ? "is-loaded" : ""}`}
+            style={{ transform: `scale(${zoom})`, transformOrigin }}
+            onLoad={() => setLoaded(true)}
+            draggable={false}
+          />
         )}
         {!isEditing && mode !== "compare" && !loaded && <span className="render-preview-spinner" aria-label="Loading image" />}
+        {!isEditing && mode !== "compare" && isZoomed && (
+          <button type="button" className="render-zoom-badge" onClick={resetZoom}>
+            {Math.round(zoom * 100)}% · Reset
+          </button>
+        )}
         {!isEditing && index < viewable.length - 1 && (
           <button type="button" className="render-preview-nav is-next" aria-label="Next render" onClick={() => setPreviewJob(viewable[index + 1]!.id)}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>

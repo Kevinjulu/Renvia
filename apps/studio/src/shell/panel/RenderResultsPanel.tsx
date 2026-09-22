@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
-import { useRenderJobsStore, type ClientRenderJob } from "../../canvas/hooks/useRenderJobsStore";
+import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/placeImageNode";
 import { useAutoShowFinishedRender, useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
@@ -57,6 +57,7 @@ export function RenderResultsPanel() {
 
   const activeJob = jobs.find((job) => job.id === activeJobId) ?? jobs[0] ?? null;
   const hasInFlight = jobs.some((job) => job.status === "pending" || job.status === "processing");
+  const fact = useArchitectureFact(hasInFlight);
 
   useEffect(() => {
     if (!hasInFlight) return;
@@ -203,7 +204,6 @@ export function RenderResultsPanel() {
   const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
   const starred = job.isFavorite;
   const progress = Math.round(jobProgress(job, now));
-  const fact = useArchitectureFact(inFlight);
   const parent = job.settings?.edit
     ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
     : undefined;

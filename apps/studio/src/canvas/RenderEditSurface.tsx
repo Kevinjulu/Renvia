@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useFittedBox, type Size } from "./hooks/useFittedBox";
+import { useWheelZoom } from "./hooks/useWheelZoom";
 import { drawStrokes, useRenderEditStore, type RenderMaskStroke } from "./hooks/useRenderEditStore";
 
 const SELECTION_COLOUR = "#2F6FED";
@@ -38,6 +39,7 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   const [draft, setDraft] = useState<Draft>(null);
   const [polygon, setPolygon] = useState<number[]>([]);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const { zoom, transformOrigin, targetRef, onWheel, resetZoom, isZoomed } = useWheelZoom(imageUrl);
 
   useEffect(() => {
     setNatural(null);
@@ -45,8 +47,8 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
     setPolygon([]);
   }, [imageUrl]);
 
-  /** Image pixels per screen pixel. */
-  const scale = box && natural ? natural.width / box.width : 1;
+  /** Image pixels per on-screen pixel, at the current zoom. */
+  const scale = box && natural ? natural.width / (box.width * zoom) : 1;
 
   const toImage = (event: { clientX: number; clientY: number }) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -63,8 +65,8 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
     const canvas = canvasRef.current;
     if (!canvas || !box || !natural) return;
     const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(box.width * ratio);
-    canvas.height = Math.round(box.height * ratio);
+    canvas.width = Math.round(box.width * zoom * ratio);
+    canvas.height = Math.round(box.height * zoom * ratio);
     const context = canvas.getContext("2d");
     if (!context) return;
 
@@ -128,7 +130,7 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
       context.stroke();
     }
     context.setTransform(1, 0, 0, 1, 0, 0);
-  }, [box, natural, scale, strokes, draft, polygon, pointer, tool, brushSize]);
+  }, [box, natural, zoom, scale, strokes, draft, polygon, pointer, tool, brushSize]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -142,6 +144,8 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
         if (polygon.length > 0 || draft) {
           setPolygon([]);
           setDraft(null);
+        } else if (isZoomed) {
+          resetZoom();
         } else {
           onExit();
         }
@@ -154,7 +158,7 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [polygon, draft, undo, onExit, closePolygon, setTool]);
+  }, [polygon, draft, undo, onExit, closePolygon, setTool, isZoomed, resetZoom]);
 
   // Switching tools abandons a half-drawn polygon.
   useEffect(() => setPolygon([]), [tool]);
@@ -209,10 +213,14 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   };
 
   return (
-    <div ref={areaRef} className="render-preview-compare-area">
+    <div ref={areaRef} className="render-preview-compare-area is-zoomable" onWheel={onWheel}>
       <img src={imageUrl} alt="" hidden onLoad={(event) => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />
       {box ? (
-        <div className="render-edit-surface" style={box}>
+        <div
+          ref={targetRef}
+          className="render-edit-surface"
+          style={{ ...box, transform: `scale(${zoom})`, transformOrigin }}
+        >
           <img src={imageUrl} alt="Render being edited" draggable={false} />
           <canvas
             ref={canvasRef}
@@ -228,6 +236,11 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
         </div>
       ) : (
         <span className="render-preview-spinner" aria-label="Loading image" />
+      )}
+      {isZoomed && (
+        <button type="button" className="render-zoom-badge" onClick={resetZoom}>
+          {Math.round(zoom * 100)}% · Reset
+        </button>
       )}
     </div>
   );
