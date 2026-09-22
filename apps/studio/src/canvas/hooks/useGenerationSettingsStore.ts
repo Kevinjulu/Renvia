@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AspectRatio, EditAction, EditMode, RenderGenerationSettings, RenderSourceType } from "@renvia/types";
+import { readStudioPreferences } from "../../lib/studioPreferences";
 
 export type { EditAction, EditMode };
 export type SelectionMode = "auto" | "manual";
@@ -78,16 +79,19 @@ interface GenerationSettingsState {
   }) => void;
 }
 
+// Read once at module load — a Studio Settings change takes effect on the next
+// project/reload, matching every other per-tab default in this store.
+const preferences = readStudioPreferences();
+
 export const useGenerationSettingsStore = create<GenerationSettingsState>((set) => ({
   prompt: "",
   editPrompt: "",
-  aspectRatio: "auto",
-  style: "Photorealistic",
+  aspectRatio: preferences.defaultAspectRatio,
+  style: preferences.defaultStyle,
   sourceType: "photo",
-  // Strong by default — Balanced gave weak results in testing.
-  styleInfluence: 3,
-  editInfluence: 2,
-  preserveStructure: true,
+  styleInfluence: preferences.defaultStyleInfluence,
+  editInfluence: preferences.defaultEditInfluence,
+  preserveStructure: preferences.defaultPreserveStructure,
   referenceImageUrls: [],
   seed: null,
   atmospherePreset: null,
