@@ -1,5 +1,5 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { AspectRatio, RenderBudgetResponse, RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
@@ -296,4 +296,48 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
     console.error("fal refresh failed", render.id, error);
     return render;
   }
+}
+
+/**
+ * Stops an in-flight render at the user's request. Best-effort on fal's side — a request
+ * that's already finished or too far along to interrupt still gets marked failed here, since
+ * the user asked to stop watching it either way.
+ */
+export async function cancelRender(env: Env, db: Database, render: RenderRow): Promise<RenderRow> {
+  if (render.status !== "pending" && render.status !== "processing") return render;
+
+  if (render.falRequestId && render.model && render.model !== "mock") {
+    try {
+      await falClient(env).queue.cancel(render.model, { requestId: render.falRequestId });
+    } catch (error) {
+      // Already completed, already failed, or this stage can't be cancelled — fall through
+      // and mark it failed below regardless.
+      console.error("fal cancel failed", render.id, error);
+    }
+  }
+
+  const [updated] = await db
+    .update(schema.renders)
+    .set({ ...failurePatch("Cancelled"), updatedAt: new Date() })
+    .where(and(eq(schema.renders.id, render.id), inArray(schema.renders.status, ["pending", "processing"])))
+    .returning();
+  const current = updated ?? (await db.select().from(schema.renders).where(eq(schema.renders.id, render.id)))[0]!;
+  return refundIfFailed(db, current);
+}
+
+/**
+ * Advances every render still in flight, regardless of who owns it. A client only refreshes
+ * jobs it's actively watching, so a render whose tab closed or never got revisited would
+ * otherwise sit at "processing" forever — this is what a scheduled sweep calls instead.
+ */
+export async function sweepStaleRenders(env: Env, db: Database, origin: string): Promise<number> {
+  const stale = await db
+    .select()
+    .from(schema.renders)
+    .where(inArray(schema.renders.status, ["pending", "processing"]))
+    .limit(100);
+  for (const render of stale) {
+    await refreshRender(env, db, render, origin);
+  }
+  return stale.length;
 }

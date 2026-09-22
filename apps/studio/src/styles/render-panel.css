@@ -1298,6 +1298,11 @@
 .waiting-progress-fact{margin:0;color:#4e535c;font-size:11.5px;line-height:1.45;animation:waiting-progress-fade .4s ease}
 .waiting-progress-fact span{color:#4265f5}
 @keyframes waiting-progress-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
+.waiting-progress-footer{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.waiting-progress-footer .waiting-progress-fact{flex:1;min-width:0}
+.waiting-progress-cancel{flex:none;border:1px solid #dfe5fb;border-radius:8px;padding:5px 11px;background:#fff;color:#4e535c;font-size:11px;font-weight:600;cursor:pointer}
+.waiting-progress-cancel:hover:not(:disabled){border-color:#e5484d;color:#e5484d}
+.waiting-progress-cancel:disabled{opacity:.6;cursor:default}
 .edit-target-card{display:flex;gap:11px;border:1px solid #dfe5fb;border-radius:11px;padding:10px;background:#f5f7ff}
 .edit-target-card>img{width:64px;height:64px;flex:none;border-radius:7px;object-fit:cover}
 .edit-target-card .edit-target-thumb{flex:none;margin:0;padding:0;border:0;border-radius:7px;background:none;line-height:0;cursor:zoom-in}

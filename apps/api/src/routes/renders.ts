@@ -8,7 +8,7 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
-import { getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
+import { cancelRender, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
 import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
@@ -190,6 +190,20 @@ async function findOwnedRender(db: ReturnType<typeof createDb>, id: string, owne
     .limit(1);
   return row[0]?.render ?? null;
 }
+
+// Stops a render still in flight — best-effort on fal's side, always marks it failed
+// (and refunds credits) here so the user isn't left watching a progress bar forever.
+renders.post("/:id/cancel", async (c) => {
+  const { clerkId } = c.get("auth");
+  const db = createDb(c.env.DATABASE_URL);
+  const ownerId = await getOrCreateUserId(c.env, db, clerkId);
+  const render = await findOwnedRender(db, c.req.param("id"), ownerId);
+  if (!render) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  return c.json({ job: await cancelRender(c.env, db, render) });
+});
 
 const updateRenderSchema = z.object({ isFavorite: z.boolean() });
 

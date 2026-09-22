@@ -140,6 +140,7 @@ export function useApiClient() {
       }),
     getRenderBudget: () => request<RenderBudgetResponse>(getToken, "/renders/budget"),
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
+    cancelRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}/cancel`, { method: "POST" }),
     updateRender: (id: string, body: UpdateRenderRequest) =>
       request<UpdateRenderResponse>(getToken, `/renders/${id}`, {
         method: "PATCH",

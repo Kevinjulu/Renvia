@@ -14,10 +14,12 @@ function elapsedLabel(seconds: number): string {
 interface WaitingProgressProps {
   job: ProgressJob;
   label: string;
+  onCancel?: () => void;
+  isCancelling?: boolean;
 }
 
 /** Progress bar plus a rotating architecture fact, so a slow render/edit still feels alive. */
-export function WaitingProgress({ job, label }: WaitingProgressProps) {
+export function WaitingProgress({ job, label, onCancel, isCancelling = false }: WaitingProgressProps) {
   const [now, setNow] = useState(() => Date.now());
   const fact = useArchitectureFact(true);
 
@@ -40,9 +42,16 @@ export function WaitingProgress({ job, label }: WaitingProgressProps) {
       <i className="waiting-progress-bar">
         <em style={{ width: `${progress}%` }} />
       </i>
-      <p className="waiting-progress-fact" key={fact}>
-        <span aria-hidden="true">✦</span> {fact}
-      </p>
+      <div className="waiting-progress-footer">
+        <p className="waiting-progress-fact" key={fact}>
+          <span aria-hidden="true">✦</span> {fact}
+        </p>
+        {onCancel && (
+          <button type="button" className="waiting-progress-cancel" onClick={onCancel} disabled={isCancelling}>
+            {isCancelling ? "Cancelling…" : "Cancel"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

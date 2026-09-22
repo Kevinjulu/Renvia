@@ -199,6 +199,9 @@ export function RenderPreview() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectNotice, setSelectNotice] = useState<string | null>(null);
   const { zoom, transformOrigin, targetRef: imageRef, onWheel, resetZoom, isZoomed } = useWheelZoom<HTMLImageElement>(`${previewJobId}:${mode}`);
+  const updateJob = useRenderJobsStore((state) => state.updateJob);
+  const setAwaitingJob = useRenderEditStore((state) => state.setAwaitingJob);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const viewable = jobs.filter((job) => job.status === "succeeded" && job.resultImageUrl);
   const index = viewable.findIndex((job) => job.id === previewJobId);
@@ -267,6 +270,21 @@ export function RenderPreview() {
       setSelectNotice("Automatic selection failed. Try again, or paint the area by hand.");
     } finally {
       setIsSelecting(false);
+    }
+  };
+
+  const handleCancelAwaiting = async () => {
+    if (!awaiting || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      const { job: cancelled } = await apiClient.cancelRender(awaiting.id);
+      updateJob(cancelled.id, cancelled);
+      void refreshAccount(apiClient.getMe);
+      setAwaitingJob(null);
+    } catch {
+      // Left processing — the button stays up so the user can try again.
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -374,7 +392,12 @@ export function RenderPreview() {
 
       {awaiting ? (
         <div className="render-preview-waiting">
-          <WaitingProgress job={awaiting} label={awaiting.status === "pending" ? "Queued" : "Applying edit"} />
+          <WaitingProgress
+            job={awaiting}
+            label={awaiting.status === "pending" ? "Queued" : "Applying edit"}
+            onCancel={handleCancelAwaiting}
+            isCancelling={isCancelling}
+          />
         </div>
       ) : isEditing ? (
         <footer className="render-preview-footer is-hint">

@@ -10,6 +10,7 @@ import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
 import { admin } from "./routes/admin.js";
+import { cron } from "./routes/cron.js";
 import { allowedOrigins } from "./lib/origins.js";
 
 export interface Env {
@@ -27,6 +28,8 @@ export interface Env {
   NEON_STORAGE_BUCKET: string;
   NEON_STORAGE_REGION: string;
   ALLOWED_ORIGINS: string;
+  /** Bearer token the sweep-renders cron must present; unset disables the endpoint. */
+  CRON_SECRET?: string;
 }
 
 export interface AuthVariables {
@@ -72,6 +75,7 @@ app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);
 app.route("/references", references);
 app.route("/admin", admin);
+app.route("/cron", cron);
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

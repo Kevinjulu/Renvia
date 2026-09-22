@@ -9,6 +9,7 @@ import { viewImage } from "../../canvas/utils/viewImage";
 import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
 import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { useApiClient } from "../../lib/apiClient";
+import { refreshAccount } from "../../lib/useAccountStore";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
@@ -46,6 +47,7 @@ export function RenderResultsPanel() {
 
   const [isPromoting, setIsPromoting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [copied, setCopied] = useState(false);
   const [seedCopied, setSeedCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -136,6 +138,20 @@ export function RenderResultsPanel() {
       reportLimit(error);
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!activeJob || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      const { job } = await apiClient.cancelRender(activeJob.id);
+      updateJob(job.id, job);
+      void refreshAccount(apiClient.getMe);
+    } catch {
+      // Left processing — the button stays up so the user can try again.
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -316,6 +332,9 @@ export function RenderResultsPanel() {
                 <em style={{ width: `${progress}%` }} />
               </i>
               <small key={fact}>{fact}</small>
+              <button type="button" className="rp-progress-cancel" disabled={isCancelling} onClick={() => void handleCancel()}>
+                {isCancelling ? "Cancelling…" : "Cancel"}
+              </button>
             </figcaption>
           )}
           {job.status === "failed" && (
