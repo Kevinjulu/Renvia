@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useGenerationSettingsStore } from "./useGenerationSettingsStore";
 
 export type SelectionTool = "rectangle" | "polygon";
 
@@ -22,7 +23,11 @@ export const useSelectionToolStore = create<SelectionToolState>((set) => ({
   targetNodeId: null,
   selection: null,
   setActiveTool: (tool) => set({ activeTool: tool }),
-  commitSelection: (nodeId, shape) =>
-    set({ selection: shape, targetNodeId: nodeId, activeTool: null }),
+  commitSelection: (nodeId, shape) => {
+    set({ selection: shape, targetNodeId: nodeId, activeTool: null });
+    // Drawing a rectangle/polygon directly on the original image is a manual selection —
+    // keep the Edit panel's mode toggle in sync with what the user actually just did.
+    useGenerationSettingsStore.getState().setSelectionMode("manual");
+  },
   clearSelection: () => set({ selection: null, targetNodeId: null }),
 }));

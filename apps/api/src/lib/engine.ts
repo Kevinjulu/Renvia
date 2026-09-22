@@ -184,7 +184,13 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     ]);
 
     const prompt = settings.edit
-      ? buildEditPrompt({ prompt: render.prompt, edit: settings.edit, hasReferences: referenceUrls.length > 0, style: render.style })
+      ? buildEditPrompt({
+          prompt: render.prompt,
+          edit: settings.edit,
+          hasReferences: referenceUrls.length > 0,
+          hasSelection: Boolean(masked?.crop),
+          style: render.style,
+        })
       : buildEnginePrompt({
           prompt: render.prompt,
           style: render.style,

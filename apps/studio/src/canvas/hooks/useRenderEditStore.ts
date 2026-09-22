@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useCanvasStore } from "./useCanvasStore";
 import { useRenderJobsStore } from "./useRenderJobsStore";
+import { useGenerationSettingsStore } from "./useGenerationSettingsStore";
 
 export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon" | "magic";
 
@@ -42,7 +43,13 @@ export const useRenderEditStore = create<RenderEditState>((set) => ({
   awaitingJobId: null,
   setTool: (tool) => set({ tool }),
   setBrushSize: (brushSize) => set({ brushSize }),
-  addStroke: (stroke) => set((state) => ({ strokes: [...state.strokes, stroke] })),
+  addStroke: (stroke) => {
+    set((state) => ({ strokes: [...state.strokes, stroke] }));
+    // Painting directly on the image (brush, rectangle, polygon, or a magic click) is a manual
+    // selection, distinct from the panel's Auto-select part chips — the panel should reflect
+    // whichever one the user actually just did, instead of sitting on a stale mode.
+    if (stroke.kind !== "eraser") useGenerationSettingsStore.getState().setSelectionMode("manual");
+  },
   undo: () => set((state) => ({ strokes: state.strokes.slice(0, -1) })),
   clearStrokes: () => set({ strokes: [] }),
   setAwaitingJob: (awaitingJobId) => set({ awaitingJobId }),

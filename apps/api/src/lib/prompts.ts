@@ -110,6 +110,8 @@ export interface EditPromptOptions {
   prompt: string;
   edit: RenderEditSettings;
   hasReferences: boolean;
+  /** A brush/rectangle/polygon/magic selection is targeting part of the image, not the whole thing. */
+  hasSelection?: boolean;
   /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
   style?: string;
 }
@@ -125,10 +127,12 @@ function asSentence(text: string): string {
 }
 
 /**
- * Composes the model prompt for an Edit-tab job. Selection edits use the same instruction
- * prompt — only the selected area of the result is kept, so the model needn't know about it.
+ * Composes the model prompt for an Edit-tab job. A selection edit is already sent a cropped
+ * close-up of just that region (see engine.ts) — only its result is composited back — but the
+ * catch-all branch below still names it explicitly, since a short text cue costs nothing and
+ * keeps the model from mistaking the crop for the whole building.
  */
-export function buildEditPrompt({ prompt, edit, hasReferences, style }: EditPromptOptions): string {
+export function buildEditPrompt({ prompt, edit, hasReferences, hasSelection, style }: EditPromptOptions): string {
   const subject = prompt.trim();
   // A non-default style on the image being edited would otherwise drift toward photoreal —
   // these models have no memory of how the source was rendered.
@@ -160,7 +164,16 @@ export function buildEditPrompt({ prompt, edit, hasReferences, style }: EditProm
     change: `Change ${subject}.`,
   }[edit.action ?? "change"];
   const referenceHint = hasReferences ? "Use the reference images as a guide." : "";
-  return [asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction), referenceHint, KEEP_THE_REST, styleHint]
+  // This is already a close-up crop of just the selected region (see engine.ts), but saying
+  // so in words too keeps the model from second-guessing what it's looking at.
+  const selectionLead = hasSelection ? "This is a close-up of the selected part of the building." : "";
+  return [
+    selectionLead,
+    asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction),
+    referenceHint,
+    KEEP_THE_REST,
+    styleHint,
+  ]
     .filter(Boolean)
     .join(" ");
 }
