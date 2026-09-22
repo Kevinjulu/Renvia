@@ -9,6 +9,7 @@ const STYLE_DESCRIPTIONS: Record<string, string> = {
 
 const INFLUENCE_PHRASES: Record<number, string> = {
   1: "Apply the style subtly.",
+  2: "Apply the style moderately.",
   3: "Apply the style strongly.",
   4: "Apply the style as boldly as possible.",
 };

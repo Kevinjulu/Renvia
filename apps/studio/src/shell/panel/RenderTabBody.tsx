@@ -38,6 +38,15 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
 
+  const applyPreset = (preset: (typeof PRESETS)[number]) => {
+    const trimmed = prompt.trim();
+    // Adds to whatever's already written instead of erasing it — a preset is a quick
+    // addition, not a replacement for a prompt the user took the time to write.
+    const merged = trimmed ? `${trimmed}${/[.!?]$/.test(trimmed) ? "" : "."} ${preset.prompt}` : preset.prompt;
+    onPromptChange(merged.slice(0, maxPromptChars));
+    setAtmospherePreset(preset.label);
+  };
+
   const advancedSummary = [
     SOURCE_TYPES.find((option) => option.id === sourceType)?.label,
     `${STYLE_INFLUENCE_LABELS[styleInfluence - 1]} influence`,
@@ -74,11 +83,8 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
                 type="button"
                 className={atmospherePreset === preset.label ? "is-active" : ""}
                 aria-pressed={atmospherePreset === preset.label}
-                title={preset.prompt}
-                onClick={() => {
-                  onPromptChange(preset.prompt);
-                  setAtmospherePreset(preset.label);
-                }}
+                title={`Adds: "${preset.prompt}"`}
+                onClick={() => applyPreset(preset)}
               >
                 {preset.label}
               </button>
