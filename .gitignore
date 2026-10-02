@@ -26,6 +26,9 @@ pnpm-debug.log*
 
 # drizzle
 packages/db/migrations/meta/
+!packages/db/migrations/meta/
+packages/db/migrations/meta/*
+!packages/db/migrations/meta/_journal.json
 
 # playwright
 test-results/

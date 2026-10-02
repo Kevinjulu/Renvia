@@ -69,6 +69,48 @@ export async function wouldExceedBudget(env: Env, db: Database, costMicros: numb
   return (await spentMicros(db)) + costMicros > budgetMicros;
 }
 
+/**
+ * Takes a short-lived, database-backed hold before a paid job row exists. The advisory lock
+ * serializes the aggregate check and insert across serverless instances; the hold is released
+ * immediately after the render/segmentation row is created (which then represents its spend).
+ */
+export async function reserveBudget(db: Database, costMicros: number, budgetUsd: number): Promise<string | null> {
+  if (costMicros === 0) return "free";
+  const id = crypto.randomUUID();
+  const budgetMicros = Math.round(budgetUsd * MICROS_PER_USD);
+  const result = await db.execute<{ reserved: boolean }>(sql`
+    with locked as (
+      select pg_advisory_xact_lock(88420371) as locked
+    ),
+    cleared as (
+      delete from budget_reservations where created_at < now() - interval '15 minutes' returning id
+    ),
+    spent as (
+      select
+        coalesce(sum(r.cost_micros) filter (where r.status <> 'failed'), 0)
+        + coalesce((select sum(s.cost_micros) from segmentations s where s.status <> 'failed'), 0)
+        + coalesce((select sum(b.cost_micros) from budget_reservations b), 0)
+        + 0 * (select count(*) from cleared) as total
+      from locked
+      left join renders r on true
+    ),
+    reserved as (
+      insert into budget_reservations (id, cost_micros)
+      select ${id}::uuid, ${costMicros}
+      from spent
+      where total + ${costMicros} <= ${budgetMicros}
+      returning id
+    )
+    select exists(select 1 from reserved) as reserved
+  `);
+  return result.rows[0]?.reserved ? id : null;
+}
+
+export async function releaseBudgetReservation(db: Database, id: string | null): Promise<void> {
+  if (!id || id === "free") return;
+  await db.delete(schema.budgetReservations).where(eq(schema.budgetReservations.id, id));
+}
+
 async function updateRender(db: Database, id: string, patch: Partial<RenderRow>): Promise<RenderRow> {
   const [updated] = await db
     .update(schema.renders)

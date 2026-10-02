@@ -27,6 +27,8 @@ export interface Env {
   NEON_STORAGE_ENDPOINT: string;
   NEON_STORAGE_BUCKET: string;
   NEON_STORAGE_REGION: string;
+  /** HMAC key used for expiring browser-accessible object URLs. */
+  STORAGE_URL_SIGNING_SECRET: string;
   ALLOWED_ORIGINS: string;
   /** Bearer token the sweep-renders cron must present; unset disables the endpoint. */
   CRON_SECRET?: string;

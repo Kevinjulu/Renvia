@@ -1,7 +1,8 @@
 # RΞNVIA
 
-AI-powered architectural/design visualization SaaS. Monorepo scaffold — no
-feature logic yet, just the structure everything else gets built on.
+AI-powered architectural/design visualization SaaS. The monorepo includes the
+shipping Studio, role-gated admin console, rendering API, migrations, and static
+marketing site.
 
 ## Structure
 
@@ -10,7 +11,7 @@ apps/
   marketing/   Next.js 15 (App Router, static export) — public landing site
   studio/      Vite + React 18 SPA — gated, infinite-canvas product
   admin/       Vite + React 18 SPA — admin dashboard (users, credits, usage, settings)
-  api/         Hono on Cloudflare Workers — shared backend
+  api/         Hono on Vercel Functions — shared backend
 packages/
   db/          Drizzle schema + client (Postgres via Neon, HTTP driver)
   types/       Shared TypeScript types (API contracts, job status enums)
@@ -28,9 +29,9 @@ contracts through `packages/*` via the pnpm workspace protocol.
 | Package manager | pnpm workspaces + Turborepo |
 | Marketing | Next.js 15, Tailwind CSS, Motion |
 | Studio | Vite, React 18, react-konva (Konva.js), Zustand, Clerk |
-| API | Hono on Cloudflare Workers |
+| API | Hono served by Vercel Functions |
 | Database | Postgres (Neon) via Drizzle ORM |
-| File storage | Cloudflare R2 |
+| File storage | Neon Object Storage (S3-compatible) |
 | Async jobs | fal queue (submit + webhook / status poll) |
 | AI rendering | fal.ai via `@fal-ai/client` (queue submit, storage, webhooks) — see `apps/api/src/lib/engine.ts` |
 
@@ -39,7 +40,7 @@ contracts through `packages/*` via the pnpm workspace protocol.
 ```bash
 pnpm install
 cp .env.example .env   # fill in values, see below
-pnpm dev                # boots all three apps concurrently via Turborepo
+pnpm dev                # boots all apps concurrently via Turborepo
 ```
 
 | App | Port | URL |
@@ -47,13 +48,13 @@ pnpm dev                # boots all three apps concurrently via Turborepo
 | marketing | 3000 | http://localhost:3000 |
 | studio | 5173 | http://localhost:5173 |
 | admin | 5174 | http://localhost:5174 |
-| api | 8787 | http://localhost:8787 |
+| api | 8787 | http://localhost:8787/api/health |
 
 Verify the scaffold:
 - `apps/marketing` renders a placeholder homepage at `/`.
 - `apps/studio` redirects `/` → `/login`, and `/project/:projectId` renders a
   placeholder canvas route with a working Konva stage (pan/zoom).
-- `apps/api` responds `200 OK` on `GET /health`.
+- `apps/api` responds `200 OK` on `GET /api/health`.
 
 ## Environment variables
 
@@ -71,13 +72,19 @@ Copy `.env.example` to `.env` at the repo root and fill in:
   (cheapest model) or `prod`. Anything else falls back to `mock`.
 - `FAL_BUDGET_USD` — hard cap on total estimated fal spend; `POST /renders`
   returns 402 once reached. Unset blocks all paid renders.
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` —
-  Cloudflare R2 for uploaded source images and generated renders.
+- `NEON_STORAGE_ACCESS_KEY_ID`, `NEON_STORAGE_SECRET_ACCESS_KEY`,
+  `NEON_STORAGE_ENDPOINT`, `NEON_STORAGE_BUCKET`, `NEON_STORAGE_REGION` — Neon
+  Object Storage for uploaded source images and generated renders.
+- `STORAGE_URL_SIGNING_SECRET` — a long random secret used to issue seven-day,
+  expiring browser links for stored images. Objects are not anonymously public.
+- `ALLOWED_ORIGINS` — comma-separated Studio and Admin origins; used for CORS and
+  Clerk authorized-party validation. `CRON_SECRET` protects the scheduled sweep.
 
-`apps/api` runs on Cloudflare Workers, so in production these are set as
-Worker secrets (`wrangler secret put <NAME>`) rather than read from a `.env`
-file; `wrangler dev` picks up a local `.dev.vars` file (gitignored) for
-local development, or you can export them into your shell before `pnpm dev`.
+`apps/api` is deployed as a Vercel Function. Set these values in that Vercel
+project; for local work, place them in `apps/api/.env.local` (or export them
+before running the API). The browser apps use only their `VITE_*` or
+`NEXT_PUBLIC_*` variables. `pnpm --filter @renvia/api dev` runs the function
+locally through Vercel at port 8787.
 
 ## Admin dashboard
 
@@ -127,15 +134,15 @@ Schema lives in [packages/db/src/schema.ts](packages/db/src/schema.ts):
 - Tailwind is pinned to v3 (`tailwind.config.ts`) rather than v4, to match
   the JS-config file explicitly listed in the brief.
 - `packages/db`'s client uses `drizzle-orm/neon-http` (not `node-postgres`),
-  since `apps/api` runs on Cloudflare Workers, which can't hold raw TCP
+  since `apps/api` runs in a serverless environment, which can't hold raw TCP
   connections — this driver works from both Node and Workers.
 - Renders flow through `apps/api/src/lib/engine.ts`: `POST /renders` submits
   to the fal queue, and jobs complete via the `/webhooks/fal` callback (public
   deployments) or on the next `GET /renders/:id` poll (local dev, and as a
   fallback). Results are copied into our storage, since fal's URLs expire.
-- Protected `apps/api` routes (`/renders`, `/uploads`) return a 500 in local
+- Protected `apps/api` routes (`/api/renders`, `/api/uploads`) return a 500 in local
   dev until `CLERK_SECRET_KEY` is set — `@hono/clerk-auth` throws on a
-  missing key rather than degrading to "unauthenticated". `/health` doesn't
+  missing key rather than degrading to "unauthenticated". `/api/health` doesn't
   require auth and always returns 200.
 
 ## Environment-specific fixes baked into `pnpm-workspace.yaml`

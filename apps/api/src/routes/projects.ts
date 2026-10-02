@@ -8,6 +8,7 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput, resolveLimits } from "../lib/limits.js";
+import { deleteObject, ownUploadKey, presentUploadUrl } from "../lib/storage.js";
 
 export const projects = new Hono<AppContext>();
 
@@ -45,7 +46,7 @@ projects.post("/", async (c) => {
     .values({ ownerId: user.id, name: body.name })
     .returning();
 
-  return c.json(created, 201);
+  return c.json({ ...created, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, created!.thumbnailUrl) }, 201);
 });
 
 projects.get("/", async (c) => {
@@ -59,7 +60,8 @@ projects.get("/", async (c) => {
     .where(eq(schema.projects.ownerId, ownerId))
     .orderBy(desc(schema.projects.createdAt));
 
-  return c.json({ projects: rows });
+  const origin = new URL(c.req.url).origin;
+  return c.json({ projects: await Promise.all(rows.map(async (project) => ({ ...project, thumbnailUrl: await presentUploadUrl(c.env, origin, project.thumbnailUrl) }))) });
 });
 
 projects.get("/:id", async (c) => {
@@ -74,7 +76,7 @@ projects.get("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json(project);
+  return c.json({ ...project, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, project.thumbnailUrl) });
 });
 
 projects.patch("/:id", async (c) => {
@@ -99,7 +101,7 @@ projects.patch("/:id", async (c) => {
     .where(eq(schema.projects.id, id))
     .returning();
 
-  return c.json(updated);
+  return c.json({ ...updated, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, updated!.thumbnailUrl) });
 });
 
 projects.delete("/:id", async (c) => {
@@ -113,10 +115,24 @@ projects.delete("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  // Render outputs are generated uniquely per render, so unlike user uploads they cannot be
+  // shared by another project and can be removed immediately. Source/reference uploads are
+  // intentionally retained because they may be reused in another project or the asset library.
+  const renderRows = await db
+    .select({ resultImageUrl: schema.renders.resultImageUrl })
+    .from(schema.renders)
+    .where(eq(schema.renders.projectId, id));
+  const origin = new URL(c.req.url).origin;
+  const generatedKeys = renderRows
+    .map((row) => row.resultImageUrl && ownUploadKey(row.resultImageUrl, origin))
+    .filter((key): key is string => Boolean(key?.startsWith("renders/")));
+
   // No cascade on the FKs — clear dependent rows before the project itself.
   await db.delete(schema.renders).where(eq(schema.renders.projectId, id));
   await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id));
   await db.delete(schema.projects).where(eq(schema.projects.id, id));
+
+  await Promise.allSettled(generatedKeys.map((key) => deleteObject(c.env, key)));
 
   return c.json({ id });
 });

@@ -20,7 +20,13 @@
         "NEON_STORAGE_SECRET_ACCESS_KEY",
         "NEON_STORAGE_ENDPOINT",
         "NEON_STORAGE_BUCKET",
-        "NEON_STORAGE_REGION"
+        "NEON_STORAGE_REGION",
+        "VITE_API_BASE_URL",
+        "VITE_CLERK_PUBLISHABLE_KEY",
+        "VITE_UNSPLASH_ACCESS_KEY",
+        "VITE_MARKETING_URL",
+        "NEXT_PUBLIC_SITE_URL",
+        "NEXT_PUBLIC_STUDIO_URL"
       ]
     },
     "lint": {

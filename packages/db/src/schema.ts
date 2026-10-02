@@ -134,6 +134,21 @@ export const referenceImages = pgTable("reference_images", {
 });
 
 /**
+ * Very short-lived budget holds used while a request converts a budget check into a render
+ * or segmentation row. They close the race where simultaneous requests could all observe
+ * the same remaining fal budget.
+ */
+export const budgetReservations = pgTable(
+  "budget_reservations",
+  {
+    id: uuid("id").primaryKey(),
+    costMicros: integer("cost_micros").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("budget_reservations_cost_non_negative", sql`${table.costMicros} >= 0`)],
+);
+
+/**
  * Automatic selections (SAM 3 on fal) made while editing a render. Each is charged like an
  * image and its fal cost counts toward the global spending cap alongside renders.
  */

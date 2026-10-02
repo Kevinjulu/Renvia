@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vercel dev --listen 8787",
     "build": "tsc --noEmit",
     "deploy": "vercel deploy --prod",
     "lint": "eslint .",

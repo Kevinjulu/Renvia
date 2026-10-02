@@ -5,8 +5,8 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { createChargedSegmentation, InsufficientCreditsError } from "../lib/credits.js";
-import { wouldExceedBudget } from "../lib/engine.js";
-import { effectiveEngineMode, getSettings } from "../lib/settings.js";
+import { releaseBudgetReservation, reserveBudget } from "../lib/engine.js";
+import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
@@ -61,7 +61,8 @@ segmentations.post("/", async (c) => {
 
   const mode = effectiveEngineMode(c.env, appSettings);
   const costMicros = mode === "mock" ? 0 : SAM_COST_MICROS;
-  if (await wouldExceedBudget(c.env, db, costMicros)) {
+  const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
+  if (!reservation) {
     const refusal = refuseBudget(appSettings);
     return c.json(refusal, refusal.status);
   }
@@ -83,6 +84,9 @@ segmentations.post("/", async (c) => {
       return c.json(refusal, refusal.status);
     }
     throw error;
+  } finally {
+    // Once the segmentation row exists its cost is visible to the next reservation check.
+    await releaseBudgetReservation(db, reservation);
   }
 
   const { segmentation, maskDataUrl } = await runSegmentation(c.env, db, created, origin, mode);

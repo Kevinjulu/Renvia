@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Env } from "../index.js";
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
@@ -31,9 +31,61 @@ export function renderResultKeyFor(renderId: string, contentType: string): strin
 // The whole app is mounted under "/api" for Vercel's api/ directory convention
 // (see apps/api/api/[...route].ts), so served objects live under this prefix.
 const UPLOADS_PATH = "/api/uploads/";
+const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export function publicUploadUrl(origin: string, key: string): string {
   return `${origin}${UPLOADS_PATH}${key}`;
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(value: string): Uint8Array | null {
+  try {
+    const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+async function signatureFor(secret: string, key: string, expires: number): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const signingKey = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", signingKey, encoder.encode(`${key}:${expires}`)));
+}
+
+/** A browser-safe link that expires, so the storage bucket is not an anonymous public CDN. */
+export async function signedUploadUrl(env: Env, origin: string, key: string): Promise<string> {
+  const expires = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS;
+  const signature = base64Url(await signatureFor(env.STORAGE_URL_SIGNING_SECRET, key, expires));
+  const url = new URL(publicUploadUrl(origin, key));
+  url.searchParams.set("expires", String(expires));
+  url.searchParams.set("signature", signature);
+  return url.toString();
+}
+
+/** Re-sign one of our persisted URLs; external links are returned unchanged. */
+export function presentUploadUrl(env: Env, origin: string, url: string): Promise<string>;
+export function presentUploadUrl(env: Env, origin: string, url: null): Promise<null>;
+export function presentUploadUrl(env: Env, origin: string, url: string | null): Promise<string | null>;
+export async function presentUploadUrl(env: Env, origin: string, url: string | null): Promise<string | null> {
+  if (!url) return null;
+  const key = ownUploadKey(url, origin);
+  return key ? signedUploadUrl(env, origin, key) : url;
+}
+
+export async function hasValidSignature(env: Env, key: string, url: URL): Promise<boolean> {
+  const expires = Number(url.searchParams.get("expires"));
+  const supplied = url.searchParams.get("signature");
+  if (!Number.isSafeInteger(expires) || expires < Math.floor(Date.now() / 1000) || !supplied) return false;
+  const signature = fromBase64Url(supplied);
+  if (!signature) return false;
+  const signingKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.STORAGE_URL_SIGNING_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  return crypto.subtle.verify("HMAC", signingKey, signature, new TextEncoder().encode(`${key}:${expires}`));
 }
 
 /** The storage key if `url` points at one of our own served uploads, else null. */
@@ -91,4 +143,8 @@ export async function getObject(env: Env, key: string): Promise<StoredObject | n
     }
     throw error;
   }
+}
+
+export async function deleteObject(env: Env, key: string): Promise<void> {
+  await createStorageClient(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: key }));
 }

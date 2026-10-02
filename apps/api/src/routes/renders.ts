@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
@@ -8,11 +9,11 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { renderRouteFor } from "@renvia/types";
-import { cancelRender, getBudget, refreshRender, submitRender, wouldExceedBudget } from "../lib/engine.js";
-import { effectiveEngineMode, getSettings } from "../lib/settings.js";
+import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
+import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
-import { ownUploadKey } from "../lib/storage.js";
+import { ownUploadKey, presentUploadUrl } from "../lib/storage.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -50,6 +51,27 @@ const createRenderSchema = z.object({
     })
     .optional(),
 });
+
+async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
+  const origin = new URL(c.req.url).origin;
+  const settings = job.settings
+    ? {
+        ...job.settings,
+        referenceImageUrls: job.settings.referenceImageUrls
+          ? await Promise.all(job.settings.referenceImageUrls.map((url) => presentUploadUrl(c.env, origin, url)))
+          : undefined,
+        edit: job.settings.edit
+          ? { ...job.settings.edit, maskImageUrl: await presentUploadUrl(c.env, origin, job.settings.edit.maskImageUrl ?? null) ?? undefined }
+          : undefined,
+      }
+    : job.settings;
+  return {
+    ...job,
+    sourceImageUrl: await presentUploadUrl(c.env, origin, job.sourceImageUrl),
+    resultImageUrl: await presentUploadUrl(c.env, origin, job.resultImageUrl),
+    settings,
+  };
+}
 
 renders.post("/", async (c) => {
   const { clerkId } = c.get("auth");
@@ -92,38 +114,42 @@ renders.post("/", async (c) => {
   if (allowance) return c.json(allowance, allowance.status);
 
   const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(settings));
-  if (await wouldExceedBudget(c.env, db, model.costMicros)) {
+  const reservation = await reserveBudget(db, model.costMicros, effectiveBudgetUsd(c.env, appSettings));
+  if (!reservation) {
     const refusal = refuseBudget(appSettings);
     return c.json(refusal, refusal.status);
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
   const credits = isAdmin ? 0 : appSettings.creditsPerImage;
-  let created;
   try {
-    created = await createChargedRender(db, user.id, credits, {
-      projectId: body.projectId,
-      sourceImageUrl: body.sourceImageUrl,
-      prompt: body.prompt,
-      aspectRatio: body.aspectRatio,
-      style: body.style,
-      viewKey: body.viewKey,
-      viewLabel: body.viewLabel,
-      status: "pending",
-      model: model.id,
-      costMicros: model.costMicros,
-      settings,
-    });
-  } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
-      const refusal = refuseCredits(appSettings, user.creditBalance, credits);
-      return c.json(refusal, refusal.status);
+    let created;
+    try {
+      created = await createChargedRender(db, user.id, credits, {
+        projectId: body.projectId,
+        sourceImageUrl: body.sourceImageUrl,
+        prompt: body.prompt,
+        aspectRatio: body.aspectRatio,
+        style: body.style,
+        viewKey: body.viewKey,
+        viewLabel: body.viewLabel,
+        status: "pending",
+        model: model.id,
+        costMicros: model.costMicros,
+        settings,
+      });
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        const refusal = refuseCredits(appSettings, user.creditBalance, credits);
+        return c.json(refusal, refusal.status);
+      }
+      throw error;
     }
-    throw error;
+    const job = await submitRender(c.env, db, created, origin);
+    return c.json({ job: await presentRender(c, job) }, 201);
+  } finally {
+    await releaseBudgetReservation(db, reservation);
   }
-
-  const job = await submitRender(c.env, db, created, origin);
-  return c.json({ job }, 201);
 });
 
 // Global fal spend is operator information, not something normal users should see.
@@ -158,7 +184,7 @@ renders.get("/", async (c) => {
     .orderBy(desc(schema.renders.createdAt));
 
   const origin = new URL(c.req.url).origin;
-  return c.json({ jobs: await Promise.all(jobs.map((job) => refreshRender(c.env, db, job, origin))) });
+  return c.json({ jobs: await Promise.all(jobs.map(async (job) => presentRender(c, await refreshRender(c.env, db, job, origin)))) });
 });
 
 renders.get("/:id", async (c) => {
@@ -178,7 +204,7 @@ renders.get("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json({ job: await refreshRender(c.env, db, row[0].render, new URL(c.req.url).origin) });
+  return c.json({ job: await presentRender(c, await refreshRender(c.env, db, row[0].render, new URL(c.req.url).origin)) });
 });
 
 /** The owner's render, or null — hidden renders count as gone. */
@@ -203,7 +229,7 @@ renders.post("/:id/cancel", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json({ job: await cancelRender(c.env, db, render) });
+  return c.json({ job: await presentRender(c, await cancelRender(c.env, db, render)) });
 });
 
 const updateRenderSchema = z.object({ isFavorite: z.boolean() });
@@ -223,7 +249,7 @@ renders.patch("/:id", async (c) => {
     .set({ isFavorite: body.isFavorite })
     .where(eq(schema.renders.id, render.id))
     .returning();
-  return c.json({ job });
+  return c.json({ job: await presentRender(c, job!) });
 });
 
 // Hides the render from the owner's history. The row is kept: spend caps, credit history

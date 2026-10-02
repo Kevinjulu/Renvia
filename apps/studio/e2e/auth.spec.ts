@@ -42,7 +42,7 @@ test.describe("sign-up flow", () => {
     });
     expect(token).toBeTruthy();
 
-    const meResponse = await page.request.get("http://localhost:8787/me", {
+    const meResponse = await page.request.get("http://localhost:8787/api/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(meResponse.ok()).toBe(true);

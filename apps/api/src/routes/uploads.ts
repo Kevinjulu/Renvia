@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getObject, objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
+import { getObject, hasValidSignature, objectKeyFor, putObject, signedUploadUrl } from "../lib/storage.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput } from "../lib/limits.js";
@@ -38,12 +38,15 @@ uploads.post("/", requireAuth, async (c) => {
 
   await putObject(c.env, key, bytes, contentType);
 
-  const response: UploadImageResponse = { publicUrl: publicUploadUrl(new URL(c.req.url).origin, key) };
+  const response: UploadImageResponse = { publicUrl: await signedUploadUrl(c.env, new URL(c.req.url).origin, key) };
   return c.json(response, 201);
 });
 
 uploads.get("/:key{.+}", async (c) => {
   const key = c.req.param("key");
+  if (!(await hasValidSignature(c.env, key, new URL(c.req.url)))) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
   const object = await getObject(c.env, key);
 
   if (!object) {
@@ -53,7 +56,8 @@ uploads.get("/:key{.+}", async (c) => {
   return new Response(object.body, {
     headers: {
       "Content-Type": object.contentType,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      // Do not let a shared CDN extend access beyond the link's signature expiry.
+      "Cache-Control": "private, no-store",
     },
   });
 });

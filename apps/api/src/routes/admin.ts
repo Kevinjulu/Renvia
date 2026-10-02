@@ -41,6 +41,7 @@ import { getOrCreateUser } from "../lib/users.js";
 import { modelsFor } from "../lib/models.js";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsRow } from "../lib/settings.js";
 import { getUsage, resolveLimits } from "../lib/limits.js";
+import { presentUploadUrl } from "../lib/storage.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type AdminContext = { Bindings: Env; Variables: AuthVariables & { admin: UserRow; db: Database } };
@@ -147,10 +148,12 @@ function selectAdminRenders(db: Database) {
 
 type AdminRenderRow = Awaited<ReturnType<ReturnType<typeof selectAdminRenders>["execute"]>>[number];
 
-function toAdminRender(
+async function toAdminRender(
+  env: Env,
+  origin: string,
   { render, projectId, projectName, userId, userEmail }: AdminRenderRow,
   stuckMinutes = 15,
-): AdminRender {
+): Promise<AdminRender> {
   return {
     id: render.id,
     kind: render.settings?.edit ? "edit" : "render",
@@ -163,8 +166,8 @@ function toAdminRender(
     aspectRatio: render.aspectRatio,
     seed: render.seed,
     viewLabel: render.viewLabel,
-    sourceImageUrl: render.sourceImageUrl,
-    resultImageUrl: render.resultImageUrl,
+    sourceImageUrl: await presentUploadUrl(env, origin, render.sourceImageUrl),
+    resultImageUrl: await presentUploadUrl(env, origin, render.resultImageUrl),
     errorMessage: render.errorMessage,
     falRequestId: render.falRequestId,
     stuck: isRenderStuck(render.status, render.updatedAt, stuckMinutes),
@@ -376,6 +379,20 @@ admin.get("/overview", async (c) => {
     });
   }
 
+  const recentFailures = await Promise.all(failureRows.map(async (row) => {
+    const render = await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes);
+    return {
+      id: render.id,
+      kind: render.kind,
+      userId: render.userId,
+      userEmail: render.userEmail,
+      projectName: render.projectName,
+      errorMessage: render.errorMessage,
+      sourceImageUrl: render.sourceImageUrl,
+      createdAt: render.createdAt,
+    };
+  }));
+
   const response: AdminOverviewResponse = {
     users: { total: users!.total, newLast7Days: users!.newLast7Days, disabled: users!.disabled },
     renders: {
@@ -418,19 +435,7 @@ admin.get("/overview", async (c) => {
       failureRate: segFinished > 0 ? segByStatus.failed / segFinished : 0,
       spentUsd: Number(segSpend?.spentMicros ?? 0) / MICROS_PER_USD,
     },
-    recentFailures: failureRows.map((row) => {
-      const render = toAdminRender(row, settings.stuckTimeoutMinutes);
-      return {
-        id: render.id,
-        kind: render.kind,
-        userId: render.userId,
-        userEmail: render.userEmail,
-        projectName: render.projectName,
-        errorMessage: render.errorMessage,
-        sourceImageUrl: render.sourceImageUrl,
-        createdAt: render.createdAt,
-      };
-    }),
+    recentFailures,
     alerts,
   };
   return c.json(response);
@@ -606,7 +611,7 @@ admin.get("/users/:id", async (c) => {
   return c.json({
     user,
     ledger,
-    renders: renderRows.map((row) => toAdminRender(row, settings.stuckTimeoutMinutes)),
+    renders: await Promise.all(renderRows.map((row) => toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes))),
     limits: resolveLimits(userRow!, settings),
     usage: await getUsage(db, user.id),
   });
@@ -935,7 +940,7 @@ admin.get("/renders", async (c) => {
   const inFlight = byStatus.pending + byStatus.processing;
 
   return c.json({
-    renders: rows.map((row) => toAdminRender(row, stuckMinutes)),
+    renders: await Promise.all(rows.map((row) => toAdminRender(c.env, new URL(c.req.url).origin, row, stuckMinutes))),
     total: count?.total ?? 0,
     summary: {
       total: byStatus.pending + byStatus.processing + byStatus.succeeded + byStatus.failed,
@@ -958,7 +963,7 @@ admin.get("/renders/:id", async (c) => {
   const settings = await getSettings(db);
   const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
   if (!row) return c.json({ error: "Render not found" }, 404);
-  return c.json({ render: toAdminRender(row, settings.stuckTimeoutMinutes) });
+  return c.json({ render: await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) });
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────────
@@ -1193,7 +1198,7 @@ function projectRenderStats(db: Database) {
 
 type ProjectStats = ReturnType<typeof projectRenderStats>;
 
-function toAdminProject(row: {
+async function toAdminProject(env: Env, origin: string, row: {
   id: string;
   name: string;
   thumbnailUrl: string | null;
@@ -1206,11 +1211,11 @@ function toAdminProject(row: {
   inFlightCount: number;
   spentMicros: number;
   lastRenderAt: Date | null;
-}): AdminProject {
+}): Promise<AdminProject> {
   return {
     id: row.id,
     name: row.name,
-    thumbnailUrl: row.thumbnailUrl,
+    thumbnailUrl: await presentUploadUrl(env, origin, row.thumbnailUrl),
     ownerId: row.ownerId,
     ownerEmail: row.ownerEmail,
     renderCount: row.renderCount,
@@ -1313,7 +1318,7 @@ admin.get("/projects", async (c) => {
   ]);
 
   return c.json({
-    projects: rows.map(toAdminProject),
+    projects: await Promise.all(rows.map((row) => toAdminProject(c.env, new URL(c.req.url).origin, row))),
     total: count?.total ?? 0,
     summary: {
       total: summary?.total ?? 0,
@@ -1339,8 +1344,8 @@ admin.get("/projects/:id", async (c) => {
     .limit(25);
 
   return c.json({
-    project: toAdminProject(row),
-    renders: renders.map((render) => toAdminRender(render, settings.stuckTimeoutMinutes)),
+    project: await toAdminProject(c.env, new URL(c.req.url).origin, row),
+    renders: await Promise.all(renders.map((render) => toAdminRender(c.env, new URL(c.req.url).origin, render, settings.stuckTimeoutMinutes))),
   });
 });
 

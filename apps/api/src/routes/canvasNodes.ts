@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
@@ -6,6 +7,7 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
+import { presentUploadUrl } from "../lib/storage.js";
 
 export const canvasNodes = new Hono<AppContext>();
 
@@ -21,6 +23,15 @@ const createCanvasNodeSchema = z.object({
 const updateCanvasNodeSchema = z.object({
   data: z.record(z.unknown()),
 });
+
+async function presentNode(c: Context<AppContext>, node: typeof schema.canvasNodes.$inferSelect) {
+  const origin = new URL(c.req.url).origin;
+  const data = { ...(node.data as Record<string, unknown>) };
+  for (const field of ["url", "sourceImageUrl", "resultImageUrl", "beforeUrl", "afterUrl"]) {
+    if (typeof data[field] === "string") data[field] = await presentUploadUrl(c.env, origin, data[field]);
+  }
+  return { ...node, data };
+}
 
 canvasNodes.get("/", async (c) => {
   const { clerkId } = c.get("auth");
@@ -42,7 +53,7 @@ canvasNodes.get("/", async (c) => {
     .where(eq(schema.canvasNodes.projectId, projectId))
     .orderBy(asc(schema.canvasNodes.createdAt));
 
-  return c.json({ nodes });
+  return c.json({ nodes: await Promise.all(nodes.map((node) => presentNode(c, node)) });
 });
 
 canvasNodes.post("/", async (c) => {
@@ -61,7 +72,7 @@ canvasNodes.post("/", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  return c.json({ node: created }, 201);
+  return c.json({ node: await presentNode(c, created) }, 201);
 });
 
 canvasNodes.patch("/:id", async (c) => {
@@ -94,7 +105,7 @@ canvasNodes.patch("/:id", async (c) => {
     return c.json({ error: "Internal error" }, 500);
   }
 
-  return c.json({ node: updated });
+  return c.json({ node: await presentNode(c, updated) });
 });
 
 canvasNodes.delete("/:id", async (c) => {
