@@ -52,6 +52,13 @@ function fromBase64Url(value: string): Uint8Array | null {
   }
 }
 
+/** Web Crypto in TypeScript 5.9 requires a concrete ArrayBuffer-backed view. */
+function cryptoBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
 async function signatureFor(secret: string, key: string, expires: number): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const signingKey = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -85,7 +92,7 @@ export async function hasValidSignature(env: Env, key: string, url: URL): Promis
   const signature = fromBase64Url(supplied);
   if (!signature) return false;
   const signingKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.STORAGE_URL_SIGNING_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-  return crypto.subtle.verify("HMAC", signingKey, signature, new TextEncoder().encode(`${key}:${expires}`));
+  return crypto.subtle.verify("HMAC", signingKey, cryptoBytes(signature), new TextEncoder().encode(`${key}:${expires}`));
 }
 
 /** The storage key if `url` points at one of our own served uploads, else null. */
