@@ -3,6 +3,7 @@ import { eq, getTableColumns, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
 import { getSettings } from "./settings.js";
+import { ensureEntitlement } from "./billing.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 
@@ -35,13 +36,16 @@ export async function syncUser(env: Env, db: Database, clerkId: string): Promise
   if (inserted && signupBonusCredits > 0) {
     await db.insert(schema.creditLedger).values({ userId: user.id, amount: signupBonusCredits, reason: "signup_bonus" });
   }
+  await ensureEntitlement(db, user.id);
   return user;
 }
 
 /** The user's row; only calls Clerk the first time a user is seen. */
 export async function getOrCreateUser(env: Env, db: Database, clerkId: string): Promise<UserRow> {
   const existing = await db.query.users.findFirst({ where: eq(schema.users.clerkId, clerkId) });
-  return existing ?? syncUser(env, db, clerkId);
+  if (!existing) return syncUser(env, db, clerkId);
+  await ensureEntitlement(db, existing.id);
+  return existing;
 }
 
 export async function getOrCreateUserId(env: Env, db: Database, clerkId: string): Promise<string> {

@@ -9,6 +9,7 @@ import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput, resolveLimits } from "../lib/limits.js";
 import { deleteObject, ownUploadKey, presentUploadUrl } from "../lib/storage.js";
+import { ensureEntitlement } from "../lib/billing.js";
 
 export const projects = new Hono<AppContext>();
 
@@ -29,7 +30,8 @@ projects.post("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   const [user, settings] = await Promise.all([getOrCreateUser(c.env, db, clerkId), getSettings(db)]);
-  const { maxProjects } = resolveLimits(user, settings);
+  const billing = await ensureEntitlement(db, user.id);
+  const { maxProjects } = resolveLimits(user, settings, billing.plan);
   if (maxProjects !== null) {
     const [owned] = await db
       .select({ count: sql<number>`count(*)::int` })

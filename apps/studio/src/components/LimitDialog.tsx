@@ -15,6 +15,7 @@ const KNOWN_CODES: LimitCode[] = [
   "insufficient_credits",
   "daily_limit_reached",
   "monthly_limit_reached",
+  "concurrency_limit_reached",
   "budget_exhausted",
   "maintenance",
   "account_disabled",
@@ -87,6 +88,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         icon: "clock",
         tone: "amber",
       };
+    case "concurrency_limit_reached":
+      return {
+        title: "Your renders are still running",
+        body: "Wait for one of the active renders to finish, then start the next one.",
+        icon: "clock",
+        tone: "amber",
+      };
     case "budget_exhausted":
       return {
         title: "Rendering is paused",
@@ -148,6 +156,8 @@ function usageLine(refusal: LimitRefusal): string | null {
       return `${used} of ${limit} used today`;
     case "monthly_limit_reached":
       return `${used} of ${limit} used this month`;
+    case "concurrency_limit_reached":
+      return `${used} of ${limit} renders running`;
     case "insufficient_credits":
       return `Balance ${used} · this render needs ${limit}`;
     case "project_limit_reached":
@@ -168,6 +178,7 @@ const ALLOWANCE_CODES: LimitCode[] = [
   "insufficient_credits",
   "daily_limit_reached",
   "monthly_limit_reached",
+  "concurrency_limit_reached",
   "budget_exhausted",
   "maintenance",
 ];

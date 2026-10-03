@@ -134,6 +134,13 @@
       "when": 1791072000000,
       "tag": "0018_free_tier_economics",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791158400000,
+      "tag": "0019_billing_foundation",
+      "breakpoints": true
     }
   ]
 }

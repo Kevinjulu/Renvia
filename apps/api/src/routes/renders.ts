@@ -15,6 +15,7 @@ import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInpu
 import { modelFor } from "../lib/models.js";
 import { ownUploadKey, presentUploadUrl } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
+import { ensureEntitlement } from "../lib/billing.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -103,6 +104,7 @@ renders.post("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   const user = await getOrCreateUser(c.env, db, clerkId);
+  const billing = await ensureEntitlement(db, user.id);
   const appSettings = await getSettings(db);
   if (user.disabled) {
     const refusal = refuseDisabled(appSettings);
@@ -122,7 +124,7 @@ renders.post("/", async (c) => {
   }
 
   const isAdmin = user.role === "admin";
-  const limits = resolveLimits(user, appSettings);
+  const limits = resolveLimits(user, appSettings, billing.plan);
 
   if (body.prompt.length > limits.maxPromptChars) {
     const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxPromptChars, body.prompt.length);
@@ -134,7 +136,7 @@ renders.post("/", async (c) => {
     return c.json(refusal, refusal.status);
   }
 
-  const allowance = await checkAllowance(db, user, appSettings, "render");
+  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return c.json(allowance, allowance.status);
 
   const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(settings));
@@ -184,6 +186,7 @@ renders.post("/:id/upscale", async (c) => {
   const { target } = createUpscaleSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, clerkId);
+  const billing = await ensureEntitlement(db, user.id);
   const appSettings = await getSettings(db);
   if (user.disabled) {
     const refusal = refuseDisabled(appSettings);
@@ -198,7 +201,7 @@ renders.post("/:id/upscale", async (c) => {
   if (!ownUploadKey(parent.resultImageUrl, origin)) {
     return c.json({ error: "This render is not available for high-resolution export" }, 400);
   }
-  const allowance = await checkAllowance(db, user, appSettings, "render");
+  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return c.json(allowance, allowance.status);
 
   const model = modelFor(effectiveEngineMode(c.env, appSettings), "upscale");

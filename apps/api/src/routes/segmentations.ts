@@ -10,6 +10,7 @@ import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/set
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
+import { ensureEntitlement } from "../lib/billing.js";
 
 export const segmentations = new Hono<AppContext>();
 
@@ -37,6 +38,7 @@ segmentations.post("/", async (c) => {
   const db = createDb(c.env.DATABASE_URL);
 
   const user = await getOrCreateUser(c.env, db, clerkId);
+  const billing = await ensureEntitlement(db, user.id);
   const appSettings = await getSettings(db);
   if (user.disabled) {
     const refusal = refuseDisabled(appSettings);
@@ -49,14 +51,14 @@ segmentations.post("/", async (c) => {
   }
 
   const isAdmin = user.role === "admin";
-  const limits = resolveLimits(user, appSettings);
+  const limits = resolveLimits(user, appSettings, billing.plan);
 
   if (body.prompt && body.prompt.length > limits.maxSelectionPromptChars) {
     const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxSelectionPromptChars, body.prompt.length);
     return c.json(refusal, refusal.status);
   }
 
-  const allowance = await checkAllowance(db, user, appSettings, "segment");
+  const allowance = await checkAllowance(db, user, appSettings, "segment", billing.plan);
   if (allowance) return c.json(allowance, allowance.status);
 
   const mode = effectiveEngineMode(c.env, appSettings);

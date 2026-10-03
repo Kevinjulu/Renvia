@@ -188,7 +188,7 @@ export const creditLedger = pgTable(
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase"],
+      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "subscription_grant", "subscription_expiry"],
     }).notNull(),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
     segmentationId: uuid("segmentation_id").references(() => segmentations.id, { onDelete: "set null" }),
@@ -204,6 +204,177 @@ export const creditLedger = pgTable(
     uniqueIndex("credit_ledger_segmentation_reason_unique").on(table.segmentationId, table.reason),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
   ],
+);
+
+/**
+ * Commercial plans are data, not an interpretation of a user's remaining credits.
+ * Amounts are stored in the currency's minor unit (for USD, cents).
+ */
+export const billingPlans = pgTable(
+  "billing_plans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    priceCents: integer("price_cents").notNull().default(0),
+    interval: text("interval", { enum: ["none", "month"] }).notNull().default("none"),
+    /** Credits granted on every successful subscription renewal; 0 for the Free plan. */
+    monthlyCredits: integer("monthly_credits").notNull().default(0),
+    /** Included credits permitted to carry into the next cycle. Renvia starts at zero. */
+    rolloverCredits: integer("rollover_credits").notNull().default(0),
+    dailyRenderLimit: integer("daily_render_limit"),
+    monthlyRenderLimit: integer("monthly_render_limit"),
+    maxProjects: integer("max_projects"),
+    concurrentRenderLimit: integer("concurrent_render_limit"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("billing_plans_price_non_negative", sql`${table.priceCents} >= 0`),
+    check("billing_plans_monthly_credits_non_negative", sql`${table.monthlyCredits} >= 0`),
+    check("billing_plans_rollover_non_negative", sql`${table.rolloverCredits} >= 0 AND ${table.rolloverCredits} <= ${table.monthlyCredits}`),
+    check("billing_plans_daily_limit_range", sql`${table.dailyRenderLimit} IS NULL OR ${table.dailyRenderLimit} BETWEEN 1 AND 10000`),
+    check("billing_plans_monthly_limit_range", sql`${table.monthlyRenderLimit} IS NULL OR ${table.monthlyRenderLimit} BETWEEN 1 AND 100000`),
+    check("billing_plans_max_projects_range", sql`${table.maxProjects} IS NULL OR ${table.maxProjects} BETWEEN 1 AND 10000`),
+    check("billing_plans_concurrent_limit_range", sql`${table.concurrentRenderLimit} IS NULL OR ${table.concurrentRenderLimit} BETWEEN 1 AND 100`),
+  ],
+);
+
+/** A user's current commercial access. This remains authoritative even at a zero credit balance. */
+export const userEntitlements = pgTable(
+  "user_entitlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().unique().references(() => users.id),
+    planId: uuid("plan_id").notNull().references(() => billingPlans.id),
+    status: text("status", { enum: ["active", "past_due", "canceled", "expired"] }).notNull().default("active"),
+    provider: text("provider", { enum: ["manual", "stripe", "paystack", "flutterwave", "mpesa"] }),
+    providerCustomerId: text("provider_customer_id"),
+    providerSubscriptionId: text("provider_subscription_id"),
+    currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** Unspent included monthly credits. Purchased and manual credits are not stored here. */
+    monthlyCreditsRemaining: integer("monthly_credits_remaining").notNull().default(0),
+    nextCreditGrantAt: timestamp("next_credit_grant_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_entitlements_provider_subscription_unique").on(table.provider, table.providerSubscriptionId),
+    index("user_entitlements_grant_due_idx").on(table.status, table.nextCreditGrantAt),
+    check("user_entitlements_monthly_credits_non_negative", sql`${table.monthlyCreditsRemaining} >= 0`),
+  ],
+);
+
+/** One-off purchasable credit packs. Payment-provider product IDs are configured later, not hard-coded in UI. */
+export const creditPacks = pgTable(
+  "credit_packs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sku: text("sku").notNull().unique(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    priceCents: integer("price_cents").notNull(),
+    credits: integer("credits").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("credit_packs_price_positive", sql`${table.priceCents} > 0`),
+    check("credit_packs_credits_positive", sql`${table.credits} > 0`),
+  ],
+);
+
+/** A provider-neutral purchase attempt. The chosen provider supplies its opaque checkout ID. */
+export const billingCheckouts = pgTable(
+  "billing_checkouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    planId: uuid("plan_id").references(() => billingPlans.id),
+    creditPackId: uuid("credit_pack_id").references(() => creditPacks.id),
+    kind: text("kind", { enum: ["subscription", "credit_pack"] }).notNull(),
+    provider: text("provider", { enum: ["stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerCheckoutId: text("provider_checkout_id").unique(),
+    status: text("status", { enum: ["created", "pending", "paid", "expired", "canceled", "failed"] }).notNull().default("created"),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("billing_checkouts_user_created_idx").on(table.userId, table.createdAt),
+    check("billing_checkouts_amount_non_negative", sql`${table.amountCents} >= 0`),
+    check("billing_checkouts_one_product", sql`(${table.planId} IS NOT NULL) <> (${table.creditPackId} IS NOT NULL)`),
+  ],
+);
+
+export const billingPayments = pgTable(
+  "billing_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    checkoutId: uuid("checkout_id").references(() => billingCheckouts.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    provider: text("provider", { enum: ["stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerPaymentId: text("provider_payment_id").notNull(),
+    status: text("status", { enum: ["pending", "paid", "refunded", "failed"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_payments_provider_payment_unique").on(table.provider, table.providerPaymentId),
+    index("billing_payments_user_created_idx").on(table.userId, table.createdAt),
+    check("billing_payments_amount_non_negative", sql`${table.amountCents} >= 0`),
+  ],
+);
+
+export const billingInvoices = pgTable(
+  "billing_invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    paymentId: uuid("payment_id").references(() => billingPayments.id),
+    provider: text("provider", { enum: ["stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerInvoiceId: text("provider_invoice_id"),
+    number: text("number").notNull().unique(),
+    status: text("status", { enum: ["open", "paid", "void", "uncollectible"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    hostedUrl: text("hosted_url"),
+    pdfUrl: text("pdf_url"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_invoices_provider_invoice_unique").on(table.provider, table.providerInvoiceId),
+    index("billing_invoices_user_issued_idx").on(table.userId, table.issuedAt),
+    check("billing_invoices_amount_non_negative", sql`${table.amountCents} >= 0`),
+  ],
+);
+
+/** Raw provider events are retained for idempotency and post-payment auditability. */
+export const billingWebhookEvents = pgTable(
+  "billing_webhook_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider", { enum: ["stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    failureMessage: text("failure_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("billing_webhook_events_provider_event_unique").on(table.provider, table.providerEventId)],
 );
 
 /**

@@ -242,7 +242,9 @@ export type CreditLedgerReason =
   | "render_refund"
   | "segment"
   | "segment_refund"
-  | "purchase";
+  | "purchase"
+  | "subscription_grant"
+  | "subscription_expiry";
 
 export interface CreditLedgerEntry {
   id: string;
@@ -281,6 +283,7 @@ export type LimitCode =
   | "insufficient_credits"
   | "daily_limit_reached"
   | "monthly_limit_reached"
+  | "concurrency_limit_reached"
   | "budget_exhausted"
   | "maintenance"
   | "account_disabled"
@@ -296,6 +299,7 @@ export interface UserLimits {
   dailySegments: number | null;
   monthlyRenders: number | null;
   monthlySegments: number | null;
+  concurrentRenders: number | null;
   maxProjects: number | null;
   maxCreditBalance: number | null;
   maxUploadMb: number;
@@ -305,7 +309,7 @@ export interface UserLimits {
   lowCreditThreshold: number;
   /** True when the user skips daily/monthly caps and maintenance pauses (admins and exempt users). */
   exempt: boolean;
-  /** Which of the daily/monthly caps came from a per-user override rather than the global setting. */
+  /** Which of the daily/monthly caps came from a per-user override rather than the plan setting. */
   overridden: { dailyRenders: boolean; dailySegments: boolean; monthlyRenders: boolean; monthlySegments: boolean };
 }
 
@@ -314,6 +318,7 @@ export interface UserUsage {
   rendersToday: number;
   segmentsToday: number;
   rendersThisMonth: number;
+  rendersInFlight: number;
   segmentsThisMonth: number;
   projects: number;
 }
@@ -323,7 +328,7 @@ export interface MeResponse {
   clerkId: string;
   email: string;
   role: UserRole;
-  /** Spendable credits; 1 credit = 1 image. Admins aren't charged. */
+  /** Spendable credits; standard renders cost 1 and premium routes can cost more. Admins aren't charged. */
   creditBalance: number;
   disabled: boolean;
   /** Credits charged per render/edit image (from admin settings). */
@@ -338,12 +343,44 @@ export interface MeResponse {
   maintenanceMessage: string | null;
   /** What this user may do right now. */
   limits: UserLimits;
+  /** The separate commercial entitlement governing those limits. */
+  entitlement: BillingEntitlement;
   /** What they've used against those limits today and this month. */
   usage: UserUsage;
   /** Operator-authored refusal copy; a null entry means use the studio's built-in wording. */
   limitMessages: Partial<Record<LimitCode, string | null>>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type BillingProvider = "stripe" | "paystack" | "flutterwave" | "mpesa";
+export type BillingEntitlementStatus = "active" | "past_due" | "canceled" | "expired";
+
+/** Public plan definition. Limits and entitlement—not credit balance—govern account access. */
+export interface BillingPlan {
+  id: string;
+  slug: "starter" | "studio" | "team" | string;
+  name: string;
+  description: string;
+  currency: string;
+  priceCents: number;
+  interval: "none" | "month";
+  monthlyCredits: number;
+  /** Included subscription credits that may survive renewal; currently 0 on every plan. */
+  rolloverCredits: number;
+  dailyRenderLimit: number | null;
+  monthlyRenderLimit: number | null;
+  maxProjects: number | null;
+  concurrentRenderLimit: number | null;
+}
+
+export interface BillingEntitlement {
+  plan: BillingPlan;
+  status: BillingEntitlementStatus;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  monthlyCreditsRemaining: number;
 }
 
 export interface Project {

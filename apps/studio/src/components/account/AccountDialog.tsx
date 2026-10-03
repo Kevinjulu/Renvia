@@ -26,6 +26,8 @@ const LEDGER_LABEL: Record<CreditLedgerReason, string> = {
   segment: "Automatic selection",
   segment_refund: "Refund — selection found nothing",
   purchase: "Credit purchase",
+  subscription_grant: "Monthly plan credits",
+  subscription_expiry: "Unused monthly credits expired",
 };
 
 type ClerkSession = Awaited<ReturnType<NonNullable<ReturnType<typeof useUser>["user"]>["getSessions"]>>[number];

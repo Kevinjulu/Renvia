@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, syncUser } from "../lib/users.js";
 import { getSettings } from "../lib/settings.js";
 import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
+import { ensureEntitlement } from "../lib/billing.js";
 
 export const me = new Hono<AppContext>();
 
@@ -17,11 +18,20 @@ me.get("/", async (c) => {
 
   // Called once per studio load, so it also refreshes the stored email from Clerk.
   const [user, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
+  const billing = await ensureEntitlement(db, user.id);
   const usage = await getUsage(db, user.id);
 
   return c.json({
     ...user,
-    limits: resolveLimits(user, settings),
+    limits: resolveLimits(user, settings, billing.plan),
+    entitlement: {
+      plan: billing.plan,
+      status: billing.entitlement.status,
+      currentPeriodStart: billing.entitlement.currentPeriodStart,
+      currentPeriodEnd: billing.entitlement.currentPeriodEnd,
+      cancelAtPeriodEnd: billing.entitlement.cancelAtPeriodEnd,
+      monthlyCreditsRemaining: billing.entitlement.monthlyCreditsRemaining,
+    },
     usage,
     limitMessages: limitMessages(settings),
     creditsPerImage: settings.creditsPerImage,

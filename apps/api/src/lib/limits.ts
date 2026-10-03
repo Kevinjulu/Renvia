@@ -4,6 +4,7 @@ import type { LimitCode, UserLimits, UserUsage } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
 
 type UserRow = typeof schema.users.$inferSelect;
+type BillingPlanRow = typeof schema.billingPlans.$inferSelect;
 
 /** Start of the current UTC day / month, as the same expression the render counters already use. */
 const UTC_DAY_START = sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`;
@@ -19,14 +20,15 @@ function resolveCap(override: number | null, global: number | null, exempt: bool
   return override ?? global;
 }
 
-export function resolveLimits(user: UserRow, settings: AppSettingsRow): UserLimits {
+export function resolveLimits(user: UserRow, settings: AppSettingsRow, plan?: BillingPlanRow): UserLimits {
   const exempt = user.role === "admin" || user.limitsExempt;
   return {
-    dailyRenders: resolveCap(user.dailyRenderLimitOverride, settings.dailyRenderLimit, exempt),
+    dailyRenders: resolveCap(user.dailyRenderLimitOverride, plan?.dailyRenderLimit ?? settings.dailyRenderLimit, exempt),
     dailySegments: resolveCap(user.dailySegmentLimitOverride, settings.dailySegmentLimit, exempt),
-    monthlyRenders: resolveCap(user.monthlyRenderLimitOverride, settings.monthlyRenderLimit, exempt),
+    monthlyRenders: resolveCap(user.monthlyRenderLimitOverride, plan?.monthlyRenderLimit ?? settings.monthlyRenderLimit, exempt),
     monthlySegments: resolveCap(user.monthlySegmentLimitOverride, settings.monthlySegmentLimit, exempt),
-    maxProjects: exempt ? null : settings.maxProjectsPerUser,
+    concurrentRenders: exempt ? null : (plan?.concurrentRenderLimit ?? 1),
+    maxProjects: exempt ? null : (plan?.maxProjects ?? settings.maxProjectsPerUser),
     maxCreditBalance: settings.maxCreditBalance,
     maxUploadMb: settings.maxUploadMb,
     maxReferenceImages: settings.maxReferenceImages,
@@ -48,7 +50,7 @@ export function resolveLimits(user: UserRow, settings: AppSettingsRow): UserLimi
  * refunded, so they don't consume the day's or month's allowance either.
  */
 export async function getUsage(db: Database, userId: string): Promise<UserUsage> {
-  const [[renders], [segments], [projects]] = await Promise.all([
+  const [[renders], [segments], [projects], [inFlight]] = await Promise.all([
     db
       .select({
         today: sql<number>`count(*) filter (where ${schema.renders.createdAt} >= ${UTC_DAY_START})::int`,
@@ -80,12 +82,18 @@ export async function getUsage(db: Database, userId: string): Promise<UserUsage>
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.projects)
       .where(eq(schema.projects.ownerId, userId)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.renders)
+      .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
+      .where(and(eq(schema.projects.ownerId, userId), sql`${schema.renders.status} in ('pending', 'processing')`)),
   ]);
 
   return {
     rendersToday: renders?.today ?? 0,
     segmentsToday: segments?.today ?? 0,
     rendersThisMonth: renders?.month ?? 0,
+    rendersInFlight: inFlight?.count ?? 0,
     segmentsThisMonth: segments?.month ?? 0,
     projects: projects?.count ?? 0,
   };
@@ -119,6 +127,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   daily_limit_reached: "Daily limit reached",
   monthly_limit_reached: "Monthly limit reached",
   budget_exhausted: "Render budget exhausted",
+  concurrency_limit_reached: "Too many renders are already running",
   maintenance: "Temporarily paused for maintenance",
   account_disabled: "Account disabled",
   project_limit_reached: "Project limit reached",
@@ -143,8 +152,9 @@ export async function checkAllowance(
   user: UserRow,
   settings: AppSettingsRow,
   kind: Kind,
+  plan?: BillingPlanRow,
 ): Promise<Refusal | null> {
-  const limits = resolveLimits(user, settings);
+  const limits = resolveLimits(user, settings, plan);
   if (limits.exempt) return null;
 
   const paused = kind === "render" ? settings.maintenanceRenders : settings.maintenanceSegments;
@@ -152,11 +162,15 @@ export async function checkAllowance(
 
   const daily = kind === "render" ? limits.dailyRenders : limits.dailySegments;
   const monthly = kind === "render" ? limits.monthlyRenders : limits.monthlySegments;
-  if (daily === null && monthly === null) return null;
+  if (daily === null && monthly === null && (kind !== "render" || limits.concurrentRenders === null)) return null;
 
   const usage = await getUsage(db, user.id);
   const usedToday = kind === "render" ? usage.rendersToday : usage.segmentsToday;
   const usedThisMonth = kind === "render" ? usage.rendersThisMonth : usage.segmentsThisMonth;
+
+  if (kind === "render" && limits.concurrentRenders !== null && usage.rendersInFlight >= limits.concurrentRenders) {
+    return refuse(settings, "concurrency_limit_reached", 429, { limit: limits.concurrentRenders, used: usage.rendersInFlight });
+  }
 
   if (daily !== null && usedToday >= daily) {
     return refuse(settings, "daily_limit_reached", 429, { limit: daily, used: usedToday });

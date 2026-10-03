@@ -38,6 +38,8 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "budget_exhausted") return "Rendering is paused — the demo budget is used up.";
   if (code === "account_disabled") return "Your account is disabled. Contact support.";
   if (code === "daily_limit_reached") return "You've reached today's render or selection limit. Try again tomorrow.";
+  if (code === "monthly_limit_reached") return "You've reached this month's render or selection limit.";
+  if (code === "concurrency_limit_reached") return "Your current renders are still running. Wait for one to finish before starting another.";
   if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
   if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
   return null;

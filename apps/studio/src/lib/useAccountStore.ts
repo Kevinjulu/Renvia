@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { CreditLedgerEntry, CreditLedgerReason, MeCreditsResponse, MeResponse } from "@renvia/types";
 
 /** Ledger reasons that add spendable credits (refunds only return what was spent). */
-const GRANT_REASONS: ReadonlySet<CreditLedgerReason> = new Set(["signup_bonus", "initial_grant", "admin_grant", "purchase"]);
+const GRANT_REASONS: ReadonlySet<CreditLedgerReason> = new Set(["signup_bonus", "initial_grant", "admin_grant", "purchase", "subscription_grant"]);
 
 interface AccountState {
   /** The signed-in user's Renvia record (credits, role) — null until /me has loaded. */
