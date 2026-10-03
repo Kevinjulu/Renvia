@@ -359,7 +359,7 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
         )}
       </div>
 
-      <Section title="Credit balance" description="Each rendered or edited image uses 1 credit. Failed renders are refunded automatically.">
+      <Section title="Credit balance" description="Standard renders and edits use 1 credit. Strict source-fidelity renders use 2. Failed renders are refunded automatically.">
         {isAdmin ? (
           <div className="account-readonly">
             <span>Admin accounts render without using credits.</span>

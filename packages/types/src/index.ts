@@ -133,6 +133,18 @@ export interface RenderGenerationSettings {
   seed?: number;
 }
 
+/**
+ * Customer-visible base credit price for a render action. The operator's
+ * `creditsPerImage` setting multiplies image-generation routes, while upscales carry
+ * their own explicit cost. Keep this shared so the Studio quote and API debit agree.
+ */
+export function baseCreditCostForRender(settings: RenderGenerationSettings): number {
+  if (settings.upscale) return settings.upscale.target === "8k" ? 2 : 1;
+  const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
+  if (!settings.edit && hasReferences && settings.fidelity?.mode === "strict") return 2;
+  return 1;
+}
+
 export interface CreateRenderRequest {
   projectId: string;
   sourceImageUrl: string;

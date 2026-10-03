@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  baseCreditCostForRender,
   renderRouteFor,
   type CreateRenderResponse,
   type RenderBudgetResponse,
@@ -142,13 +143,18 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
-  const route = isEdit
-    ? renderRouteFor({ referenceImageUrls, edit: { mode: editMode } })
-    : renderRouteFor({ sourceType, referenceImageUrls });
+  const costSettings = isEdit
+    ? { referenceImageUrls, edit: { mode: editMode } }
+    : {
+        sourceType,
+        referenceImageUrls,
+        fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
+      };
+  const route = renderRouteFor(costSettings);
   const estimateUsd = budget ? imageCount * budget.pricing[route] : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
   const creditsPerImage = me?.creditsPerImage ?? 1;
-  const creditsNeeded = imageCount * creditsPerImage;
+  const creditsNeeded = imageCount * baseCreditCostForRender(costSettings) * creditsPerImage;
   const creditBalance = me?.creditBalance ?? 0;
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;

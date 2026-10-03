@@ -9,7 +9,7 @@ export const users = pgTable(
   clerkId: text("clerk_id").notNull().unique(),
   email: text("email").notNull(),
   role: text("role", { enum: ["user", "admin"] }).notNull().default("user"),
-  /** Spendable credits (1 credit = 1 image); every change is mirrored in credit_ledger. */
+  /** Spendable credits; standard renders cost 1, while premium actions can cost more. Every change is mirrored in credit_ledger. */
   creditBalance: integer("credit_balance").notNull().default(0),
   disabled: boolean("disabled").notNull().default(false),
   /** Per-user override of app_settings.daily_render_limit; null = use the global setting. */
@@ -216,7 +216,7 @@ export const appSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     signupBonusCredits: integer("signup_bonus_credits").notNull().default(25),
     /** Max renders per non-admin user per UTC day; null = unlimited. */
-    dailyRenderLimit: integer("daily_render_limit"),
+    dailyRenderLimit: integer("daily_render_limit").default(5),
     /** Max segmentations per non-admin user per UTC day; null = unlimited. */
     dailySegmentLimit: integer("daily_segment_limit"),
     /** Max renders per non-admin user per UTC calendar month; null = unlimited. */
@@ -226,7 +226,7 @@ export const appSettings = pgTable(
     /** Ceiling on a non-admin's credit balance — grants clamp to it. Null = uncapped. */
     maxCreditBalance: integer("max_credit_balance"),
     /** Max projects a non-admin may own; null = unlimited. */
-    maxProjectsPerUser: integer("max_projects_per_user"),
+    maxProjectsPerUser: integer("max_projects_per_user").default(2),
     /** Largest accepted upload, in megabytes. */
     maxUploadMb: integer("max_upload_mb").notNull().default(10),
     /** Max style/material reference images per render. */

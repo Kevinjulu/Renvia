@@ -69,7 +69,7 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
     case "insufficient_credits":
       return {
         title: "You're out of credits",
-        body: `Each render costs ${perImage} ${perImage === 1 ? "credit" : "credits"}, and your balance can't cover the next one.`,
+        body: `Standard renders cost ${perImage} ${perImage === 1 ? "credit" : "credits"}; Strict source fidelity costs ${perImage * 2} credits. Your balance can't cover the next action.`,
         icon: "coins",
         tone: "rose",
       };

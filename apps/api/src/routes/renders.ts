@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { renderRouteFor } from "@renvia/types";
+import { baseCreditCostForRender, renderRouteFor } from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
@@ -75,7 +75,6 @@ renders.post("/repair-prompt", async (c) => {
 
 const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]) });
 const UPSCALE_COST_MICROS = { "4k": 40_000, "8k": 80_000 } as const;
-const UPSCALE_CREDIT_MULTIPLIER = { "4k": 1, "8k": 2 } as const;
 
 async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
   const origin = new URL(c.req.url).origin;
@@ -146,7 +145,9 @@ renders.post("/", async (c) => {
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
-  const credits = isAdmin ? 0 : appSettings.creditsPerImage;
+  // Strict source fidelity costs two credits because its Canny-controlled route costs
+  // materially more than the standard image/reference routes.
+  const credits = isAdmin ? 0 : baseCreditCostForRender(settings) * appSettings.creditsPerImage;
   try {
     let created;
     try {
@@ -208,7 +209,7 @@ renders.post("/:id/upscale", async (c) => {
     return c.json(refusal, refusal.status);
   }
 
-  const credits = user.role === "admin" ? 0 : appSettings.creditsPerImage * UPSCALE_CREDIT_MULTIPLIER[target];
+  const credits = user.role === "admin" ? 0 : baseCreditCostForRender({ upscale: { target, parentRenderId: parent.id } }) * appSettings.creditsPerImage;
   try {
     const created = await createChargedRender(db, user.id, credits, {
       projectId: parent.projectId,

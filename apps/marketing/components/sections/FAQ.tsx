@@ -2,22 +2,22 @@ const FAQS = [
   {
     question: "How does Renvia preserve my geometry?",
     answer:
-      "Renvia treats your uploaded geometry as a fixed constraint. Generation only changes materials, lighting, and surrounding context — walls, window positions, and proportions are never redrawn or reinterpreted.",
+      "Renvia treats your uploaded source as the architectural authority. Strict source fidelity adds Canny guidance and protected geometry controls for silhouette, roof, openings, massing, and camera. AI output still needs a final design review before client delivery.",
   },
   {
     question: "What file formats can I upload?",
     answer:
-      "Common 3D export formats (OBJ, FBX, glTF), flat sketches, and PNG, JPEG, or WEBP photos of physical models or elevations. If Renvia can read the geometry, it can render on top of it.",
+      "PNG, JPEG, and WEBP elevations, sketches, model screenshots, and site photos. Export CAD or 3D work to one of those image formats before uploading.",
   },
   {
     question: "Can I use AutoCAD exports?",
     answer:
-      "Yes — export your AutoCAD drawing as a flat image or a supported 3D format and upload it directly. Renvia locks onto the exported geometry the same way it does with any other source.",
+      "Yes — export the drawing as PNG, JPEG, or WEBP, then upload it as the source image. Native DWG, OBJ, FBX, and glTF import are not available yet.",
   },
   {
     question: "How do rendering credits work?",
     answer:
-      "Each render variation uses one credit. Your plan includes a monthly credit allowance, and unused credits don't roll over — upgrade any time if you need more.",
+      "New accounts receive 25 one-time welcome credits. Standard renders and edits use 1 credit; Strict source-fidelity renders use 2. Failed renders are refunded. Paid credit packs and subscriptions will be available once checkout is connected.",
   },
   {
     question: "Can I generate multiple variations?",

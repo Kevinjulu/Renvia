@@ -5,30 +5,30 @@ const TIERS = [
     name: "Starter",
     description: "Explore the workflow and bring your first ideas to life.",
     price: "$0",
-    period: "/month",
-    billing: "Free forever",
-    features: ["5 renders / month", "720p exports", "Community support", "1 project"],
-    cta: "Start creating",
+    period: "",
+    billing: "25 welcome credits · no card required",
+    features: ["Up to 5 render jobs per day", "Standard renders: 1 credit", "Strict source fidelity: 2 credits", "2 active projects"],
+    cta: "Start with 25 credits",
     emphasized: false,
   },
   {
     name: "Studio",
-    description: "The complete workspace for professionals creating every day.",
+    description: "The planned professional workspace for architects producing every day.",
     price: "$29",
     period: "/month",
-    billing: "Billed monthly",
-    features: ["200 renders / month", "4K exports", "Priority render queue", "Unlimited projects", "Email support"],
-    cta: "Start free trial",
+    billing: "Coming soon — billing is not live yet",
+    features: ["200 flexible monthly credits", "4K export: 1 credit · 8K: 2 credits", "Strict fidelity uses 2 credits", "Unlimited projects when available"],
+    cta: "Start free for now",
     emphasized: true,
   },
   {
     name: "Enterprise",
-    description: "Flexible scale, control, and support for ambitious teams.",
+    description: "Planned scale, control, and support for ambitious teams.",
     price: "Let’s talk",
     period: "",
     billing: "Custom pricing",
-    features: ["Custom render volume", "Team collaboration", "Private storage", "Dedicated support", "SLA & security"],
-    cta: "Contact sales",
+    features: ["Custom render volume", "Team collaboration when available", "Private storage roadmap", "Dedicated support", "SLA & security planning"],
+    cta: "Talk to us",
     emphasized: false,
   },
 ];
@@ -72,9 +72,9 @@ export function Pricing() {
         </div>
 
         <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-3">
-          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">01</span> Begin free and learn the workflow</div>
-          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">02</span> Move up when projects demand more</div>
-          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">03</span> Talk to us when your whole team is ready</div>
+          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">01</span> Start with 25 real rendering credits</div>
+          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">02</span> See every action’s credit cost before you run it</div>
+          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">03</span> Paid plans launch with billing and entitlements, not promises</div>
         </div>
       </div>
     </section>
