@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AspectRatio, EditAction, EditMode, RenderGenerationSettings, RenderSourceType } from "@renvia/types";
+import type { AspectRatio, EditAction, EditMode, FidelityMode, ProtectedGeometryFeature, RenderGenerationSettings, RenderSourceType } from "@renvia/types";
 import { readStudioPreferences } from "../../lib/studioPreferences";
 
 export type { EditAction, EditMode };
@@ -37,6 +37,9 @@ interface GenerationSettingsState {
   /** Edit tab's own strength control — never shares state with the Render tab's. */
   editInfluence: number;
   preserveStructure: boolean;
+  fidelityMode: FidelityMode;
+  protectedGeometry: ProtectedGeometryFeature[];
+  geometryReviewedAt: string | null;
   referenceImageUrls: string[];
   /**
    * Reproduces (locked) or nudges (same seed, new prompt/strength) a previous render.
@@ -60,6 +63,9 @@ interface GenerationSettingsState {
   setStyleInfluence: (value: number) => void;
   setEditInfluence: (value: number) => void;
   setPreserveStructure: (value: boolean) => void;
+  setFidelityMode: (mode: FidelityMode) => void;
+  setProtectedGeometry: (features: ProtectedGeometryFeature[]) => void;
+  confirmGeometryReview: () => void;
   setReferenceImageUrls: (urls: string[]) => void;
   setSeed: (seed: number | null) => void;
   setAtmospherePreset: (label: string | null) => void;
@@ -92,6 +98,9 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   styleInfluence: preferences.defaultStyleInfluence,
   editInfluence: preferences.defaultEditInfluence,
   preserveStructure: preferences.defaultPreserveStructure,
+  fidelityMode: "strict",
+  protectedGeometry: ["silhouette", "roof", "openings", "massing", "camera"],
+  geometryReviewedAt: null,
   referenceImageUrls: [],
   seed: null,
   atmospherePreset: null,
@@ -108,6 +117,9 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setStyleInfluence: (styleInfluence) => set({ styleInfluence }),
   setEditInfluence: (editInfluence) => set({ editInfluence }),
   setPreserveStructure: (preserveStructure) => set({ preserveStructure }),
+  setFidelityMode: (fidelityMode) => set({ fidelityMode, geometryReviewedAt: null }),
+  setProtectedGeometry: (protectedGeometry) => set({ protectedGeometry, geometryReviewedAt: null }),
+  confirmGeometryReview: () => set({ geometryReviewedAt: new Date().toISOString() }),
   // A reference image is a style/material input. It must never silently turn a source drawing
   // into a request to recreate the reference building, so attaching one locks structure here
   // and the API repeats the same guard for older clients and direct requests.
@@ -136,6 +148,9 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       styleInfluence: settings?.styleInfluence ?? state.styleInfluence,
       editInfluence: settings?.editInfluence ?? state.editInfluence,
       preserveStructure: settings?.referenceImageUrls?.length ? true : (settings?.preserveStructure ?? state.preserveStructure),
+      fidelityMode: settings?.fidelity?.mode ?? state.fidelityMode,
+      protectedGeometry: settings?.fidelity?.protectedFeatures ?? state.protectedGeometry,
+      geometryReviewedAt: settings?.fidelity?.reviewedAt ?? null,
       referenceImageUrls: settings?.referenceImageUrls ?? [],
     })),
 }));

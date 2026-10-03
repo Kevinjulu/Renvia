@@ -20,6 +20,7 @@ import type {
   MeCreditsResponse,
   MeResponse,
   Project,
+  PromptRepairResponse,
   ReferenceImage,
   RenderBudgetResponse,
   DeleteCanvasNodeResponse,
@@ -133,6 +134,12 @@ export function useApiClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+      }),
+    repairPrompt: (prompt: string, sourceLocked = true) =>
+      request<PromptRepairResponse>(getToken, "/renders/repair-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, sourceLocked }),
       }),
     upscaleRender: (id: string, body: CreateUpscaleRequest) =>
       request<CreateUpscaleResponse>(getToken, `/renders/${id}/upscale`, {

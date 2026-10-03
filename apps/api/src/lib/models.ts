@@ -92,6 +92,30 @@ const FLUX_3_EDIT: ModelSpec = {
   }),
 };
 
+/**
+ * Dedicated strict-fidelity route. EasyControl's built-in Canny preprocessor turns the source
+ * into spatial guidance, while `reference_image_url` carries the (single strongest) material
+ * reference separately. This keeps geometry and visual treatment from competing as one image.
+ */
+const FLUX_GENERAL_FIDELITY: ModelSpec = {
+  id: "fal-ai/flux-general/image-to-image",
+  // fal bills this endpoint at $0.075 per rounded-up megapixel; Studio requests one 1K image.
+  costMicros: 75_000,
+  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio, seed }) => ({
+    image_url: imageUrl,
+    prompt,
+    // Low denoise keeps the source image as the base; Canny locks its spatial lines.
+    strength: 0.25,
+    num_inference_steps: 28,
+    guidance_scale: 3.5,
+    easycontrols: [{ control_method_url: "canny", image_url: imageUrl, image_control_type: "spatial", scale: 1 }],
+    ...(referenceUrls[0] ? { reference_image_url: referenceUrls[0], reference_strength: 0.65 } : {}),
+    ...(SDXL_IMAGE_SIZE[aspectRatio] ? { image_size: SDXL_IMAGE_SIZE[aspectRatio] } : {}),
+    output_format: "jpeg",
+    ...(seed !== undefined ? { seed } : {}),
+  }),
+};
+
 // Bria preserves the existing architecture instead of generating a new design. The caller
 // caps the result at a 4K or 8K long edge and supplies a factor no larger than 4x.
 const BRIA_UPSCALE: ModelSpec = {
@@ -107,11 +131,12 @@ const BRIA_UPSCALE: ModelSpec = {
 };
 
 const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
-  mock: { photo: MOCK, drawing: MOCK, references: MOCK, edit: MOCK, "edit-references": MOCK, upscale: MOCK },
+  mock: { photo: MOCK, drawing: MOCK, references: MOCK, fidelity: MOCK, edit: MOCK, "edit-references": MOCK, upscale: MOCK },
   dev: {
     photo: LIGHTNING_SDXL,
     drawing: LIGHTNING_SDXL,
     references: LIGHTNING_SDXL,
+    fidelity: LIGHTNING_SDXL,
     edit: LIGHTNING_SDXL,
     "edit-references": LIGHTNING_SDXL,
     upscale: BRIA_UPSCALE,
@@ -120,6 +145,7 @@ const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
     photo: KONTEXT_PRO,
     drawing: KONTEXT_PRO,
     references: FLUX_3_EDIT,
+    fidelity: FLUX_GENERAL_FIDELITY,
     edit: KONTEXT_PRO,
     "edit-references": FLUX_3_EDIT,
     upscale: BRIA_UPSCALE,

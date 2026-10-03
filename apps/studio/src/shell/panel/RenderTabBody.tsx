@@ -1,10 +1,12 @@
-import type { RenderSourceType } from "@renvia/types";
+import { useState } from "react";
+import type { ProtectedGeometryFeature, PromptRepairResponse, RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
 import { SeedControl } from "./SeedControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
+import { useApiClient } from "../../lib/apiClient";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
@@ -25,13 +27,30 @@ const PRESETS = [
   { label: "Lush landscape", prompt: "Lush considered landscaping, mature greenery and a refined residential setting" },
 ];
 
+const PROTECTED_FEATURES: { id: ProtectedGeometryFeature; label: string }[] = [
+  { id: "silhouette", label: "Silhouette" },
+  { id: "roof", label: "Roof" },
+  { id: "openings", label: "Openings" },
+  { id: "massing", label: "Massing" },
+  { id: "camera", label: "Camera" },
+];
+
 export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
+  const apiClient = useApiClient();
+  const [repair, setRepair] = useState<PromptRepairResponse | null>(null);
+  const [isRepairing, setIsRepairing] = useState(false);
   const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const setSourceType = useGenerationSettingsStore((state) => state.setSourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const setStyleInfluence = useGenerationSettingsStore((state) => state.setStyleInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
   const setPreserveStructure = useGenerationSettingsStore((state) => state.setPreserveStructure);
+  const fidelityMode = useGenerationSettingsStore((state) => state.fidelityMode);
+  const setFidelityMode = useGenerationSettingsStore((state) => state.setFidelityMode);
+  const protectedGeometry = useGenerationSettingsStore((state) => state.protectedGeometry);
+  const setProtectedGeometry = useGenerationSettingsStore((state) => state.setProtectedGeometry);
+  const geometryReviewedAt = useGenerationSettingsStore((state) => state.geometryReviewedAt);
+  const confirmGeometryReview = useGenerationSettingsStore((state) => state.confirmGeometryReview);
   const referenceCount = useGenerationSettingsStore((state) => state.referenceImageUrls.length);
   const atmospherePreset = useGenerationSettingsStore((state) => state.atmospherePreset);
   const setAtmospherePreset = useGenerationSettingsStore((state) => state.setAtmospherePreset);
@@ -46,6 +65,23 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
     const merged = trimmed ? `${trimmed}${/[.!?]$/.test(trimmed) ? "" : "."} ${preset.prompt}` : preset.prompt;
     onPromptChange(merged.slice(0, maxPromptChars));
     setAtmospherePreset(preset.label);
+  };
+
+  const polishPrompt = async () => {
+    setIsRepairing(true);
+    try {
+      setRepair(await apiClient.repairPrompt(prompt, referenceCount > 0));
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
+  const toggleProtectedFeature = (feature: ProtectedGeometryFeature) => {
+    setProtectedGeometry(
+      protectedGeometry.includes(feature)
+        ? protectedGeometry.filter((item) => item !== feature)
+        : [...protectedGeometry, feature],
+    );
   };
 
   const advancedSummary = [
@@ -91,6 +127,31 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
               </button>
             ))}
           </div>
+          <div className="cp-prompt-tools">
+            <button type="button" className="cp-prompt-polish" onClick={() => void polishPrompt()} disabled={isRepairing || !prompt.trim()}>
+              {isRepairing ? "Polishing…" : "Polish prompt"}
+            </button>
+            <small>{referenceCount > 0 ? "Removes reference instructions that would redesign your source." : "Cleans up a short rendering brief."}</small>
+          </div>
+          {repair && (
+            <div className="cp-prompt-repair" role="status">
+              {repair.blocked.length > 0 && <p>Kept out: {repair.blocked.join(" · ")}</p>}
+              {repair.prompt && <p>Ready to use: {repair.prompt}</p>}
+              <div>
+                <button
+                  type="button"
+                  disabled={!repair.prompt || repair.prompt === prompt}
+                  onClick={() => {
+                    onPromptChange(repair.prompt);
+                    setRepair(null);
+                  }}
+                >
+                  Use polished prompt
+                </button>
+                <button type="button" onClick={() => setRepair(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <section className="cp-card cp-references">
@@ -164,6 +225,32 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             <span aria-hidden="true" />
           </span>
         </label>
+        {referenceCount > 0 && (
+          <div className="cp-setting is-stacked cp-fidelity">
+            <span>
+              <strong>Source fidelity</strong>
+              <small>Keep the source design fixed while references supply finishes, light and landscape.</small>
+            </span>
+            <div className="cp-segmented" role="group" aria-label="Source fidelity mode">
+              <button type="button" className={fidelityMode === "strict" ? "is-active" : ""} aria-pressed={fidelityMode === "strict"} onClick={() => setFidelityMode("strict")}>Strict</button>
+              <button type="button" className={fidelityMode === "standard" ? "is-active" : ""} aria-pressed={fidelityMode === "standard"} onClick={() => setFidelityMode("standard")}>Standard</button>
+            </div>
+            {fidelityMode === "strict" && (
+              <>
+                <div className="cp-chips is-wrap" role="group" aria-label="Protected source features">
+                  {PROTECTED_FEATURES.map((feature) => (
+                    <button key={feature.id} type="button" className={protectedGeometry.includes(feature.id) ? "is-active" : ""} aria-pressed={protectedGeometry.includes(feature.id)} onClick={() => toggleProtectedFeature(feature.id)}>
+                      {feature.label}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" className="cp-fidelity-review" onClick={confirmGeometryReview}>
+                  {geometryReviewedAt ? "Source contract reviewed" : "Review protected source geometry"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <SeedControl />
       </AdvancedSection>
     </div>

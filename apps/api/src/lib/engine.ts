@@ -320,6 +320,8 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           hasReferences,
           preserveStructure,
           influence,
+          strictFidelity: hasReferences && settings.fidelity?.mode === "strict",
+          protectedFeatures: settings.fidelity?.protectedFeatures,
         });
 
     const { request_id } = await fal.queue.submit(model.id, {

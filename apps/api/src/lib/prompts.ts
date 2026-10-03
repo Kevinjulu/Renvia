@@ -1,4 +1,4 @@
-import type { RenderEditSettings, RenderSourceType } from "@renvia/types";
+import type { PromptRepairResponse, ProtectedGeometryFeature, RenderEditSettings, RenderSourceType } from "@renvia/types";
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
   Photorealistic: "a photorealistic architectural visualization with physically accurate materials, lighting and shadows",
@@ -28,6 +28,42 @@ export interface EnginePromptOptions {
   preserveStructure: boolean;
   /** 1 (subtle) – 4 (maximum). */
   influence: number;
+  /** Strict mode is a user-reviewed source-design contract, not a promise of model determinism. */
+  strictFidelity?: boolean;
+  protectedFeatures?: ProtectedGeometryFeature[];
+}
+
+const STRUCTURAL_CHANGE = /\b(add|remove|move|relocate|replace|resize|change|redesign|rebuild|extend|rotate|shift|alter|make)\b[\s\S]{0,100}\b(roof|roofline|ridge|eave|window|windows|door|doors|opening|openings|balcony|garage|porch|gazebo|floor|storey|story|massing|volume|footprint|silhouette|facade|façade|camera|view|perspective|angle|framing)\b/i;
+const PROTOTYPE_COPY = /\b(copy|match|use|borrow|take)\b[\s\S]{0,80}\b(building|house|architecture|shape|layout|perspective|camera|composition)\b/i;
+
+/**
+ * Makes a short free-text direction safe for a source-locked reference render. It is
+ * deliberately deterministic: users can preview exactly what will be sent, and no second
+ * AI model gets to reinterpret their architecture. Non-structural material, light and
+ * landscape direction is retained verbatim.
+ */
+export function repairReferencePrompt(prompt: string): PromptRepairResponse {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  if (!normalized) return { prompt: "", repairs: [], blocked: [] };
+
+  const sentences = normalized.match(/[^.!?]+[.!?]*/g) ?? [normalized];
+  const safe: string[] = [];
+  const blocked: string[] = [];
+  for (const sentence of sentences) {
+    const direction = sentence.trim();
+    if (!direction) continue;
+    if (STRUCTURAL_CHANGE.test(direction) || PROTOTYPE_COPY.test(direction)) {
+      blocked.push(direction.replace(/[.!?]+$/, ""));
+    } else {
+      safe.push(direction.replace(/[.!?]+$/, ""));
+    }
+  }
+
+  const repaired = safe.join(". ");
+  const repairs: string[] = [];
+  if (repaired !== normalized.replace(/[.!?]+$/g, "")) repairs.push("Removed requests that would redesign the source building.");
+  if (repaired && !/[.!?]$/.test(repaired)) repairs.push("Normalized the direction into a concise rendering brief.");
+  return { prompt: repaired, repairs, blocked };
 }
 
 /** Composes the model prompt; the user's raw prompt is stored separately on the render. */
@@ -38,12 +74,16 @@ export function buildEnginePrompt({
   hasReferences,
   preserveStructure,
   influence,
+  strictFidelity = false,
+  protectedFeatures = ["silhouette", "roof", "openings", "massing", "camera"],
 }: EnginePromptOptions): string {
   const styleText = STYLE_DESCRIPTIONS[style] ?? STYLE_DESCRIPTIONS.Photorealistic!;
   const scene = prompt.trim() ? `Scene: ${prompt.trim()}` : null;
 
   if (hasReferences) {
     const level = Math.min(4, Math.max(1, Math.round(influence)));
+    const repaired = repairReferencePrompt(prompt);
+    const repairedScene = repaired.prompt ? `Scene: ${repaired.prompt}` : null;
     return [
       referenceLead(sourceType, styleText),
       // Reference renders are always source-led. The engine enforces this too, but keeping
@@ -51,7 +91,8 @@ export function buildEnginePrompt({
       REFERENCE_FORM_LOCK,
       PROTOTYPE_BORROW[level],
       level >= 2 ? COLOUR_FIDELITY : null,
-      scene,
+      strictFidelity ? strictFidelityReview(protectedFeatures) : null,
+      repairedScene,
       // The user's scene direction comes last, so repeat the contract after it. This keeps a
       // visually strong reference or an enthusiastic prompt from becoming a request to redraw.
       REFERENCE_FORM_LOCK,
@@ -90,6 +131,22 @@ const REFERENCE_FORM_LOCK =
   "porches, gazebos, openings, camera angle and framing. Map prototype colours and surface finishes only onto the corresponding " +
   "existing image 1 surfaces. Do not add, remove, resize, relocate or replace any architectural element. Never copy, blend with, " +
   "interpolate toward, or match a prototype's shape, layout, camera angle, perspective or composition.";
+
+const FEATURE_LABELS: Record<ProtectedGeometryFeature, string> = {
+  silhouette: "silhouette",
+  roof: "roof and ridges",
+  openings: "openings",
+  massing: "massing",
+  camera: "camera and framing",
+};
+
+function strictFidelityReview(features: ProtectedGeometryFeature[]): string {
+  const criteria = features.map((feature) => FEATURE_LABELS[feature]).join(", ");
+  return (
+    `STRICT FIDELITY MODE: The source ${criteria || "silhouette, roof and ridges, openings, massing and camera"} are protected acceptance criteria. ` +
+    "If a requested material or reference feature conflicts with any protected criterion, keep the source criterion and omit the conflicting feature."
+  );
+}
 
 /** How much of the prototype's surface character to carry onto the design, by influence level. */
 const PROTOTYPE_BORROW: Record<number, string> = {

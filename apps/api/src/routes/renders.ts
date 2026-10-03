@@ -14,6 +14,7 @@ import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/set
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
 import { ownUploadKey, presentUploadUrl } from "../lib/storage.js";
+import { repairReferencePrompt } from "../lib/prompts.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -35,6 +36,13 @@ const createRenderSchema = z.object({
       styleInfluence: z.number().int().min(1).max(4).optional(),
       editInfluence: z.number().int().min(1).max(4).optional(),
       preserveStructure: z.boolean().optional(),
+      fidelity: z
+        .object({
+          mode: z.enum(["standard", "strict"]),
+          protectedFeatures: z.array(z.enum(["silhouette", "roof", "openings", "massing", "camera"])).min(1).max(5),
+          reviewedAt: z.string().datetime().optional(),
+        })
+        .optional(),
       // Hard ceiling; app_settings.max_reference_images is the one operators tune.
       referenceImageUrls: z.array(z.string().url()).max(16).optional(),
       edit: z
@@ -50,6 +58,19 @@ const createRenderSchema = z.object({
       seed: z.number().int().min(0).max(4_294_967_295).optional(),
     })
     .optional(),
+});
+
+const repairPromptSchema = z.object({
+  prompt: z.string().trim().max(8000),
+  /** The repairer is only restrictive when the source must be protected. */
+  sourceLocked: z.boolean().default(true),
+});
+
+/** Preview the exact deterministic repair used by source-locked reference renders. */
+renders.post("/repair-prompt", async (c) => {
+  const body = repairPromptSchema.parse(await c.req.json());
+  if (!body.sourceLocked) return c.json({ prompt: body.prompt, repairs: [], blocked: [] });
+  return c.json(repairReferencePrompt(body.prompt));
 });
 
 const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]) });

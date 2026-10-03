@@ -41,6 +41,34 @@ export type RenderEngineMode = "mock" | "dev" | "prod";
 
 /** drawing = CAD/line elevation (geometry-locked model); photo = photo or 3D massing. */
 export type RenderSourceType = "drawing" | "photo";
+export type FidelityMode = "standard" | "strict";
+
+/** Source-design features a strict reference render must not redesign. */
+export type ProtectedGeometryFeature =
+  | "silhouette"
+  | "roof"
+  | "openings"
+  | "massing"
+  | "camera";
+
+/**
+ * A user-reviewed source-design contract. This is intentionally stored with the render so
+ * a result can always be traced back to the geometry rules in force when it was made.
+ */
+export interface FidelitySettings {
+  mode: FidelityMode;
+  protectedFeatures: ProtectedGeometryFeature[];
+  reviewedAt?: string;
+}
+
+export interface PromptRepairResponse {
+  /** Safe, concise direction suitable for a source-locked reference render. */
+  prompt: string;
+  /** Plain-language changes made by the deterministic repairer. */
+  repairs: string[];
+  /** Structural requests deliberately left out of a source-locked prompt. */
+  blocked: string[];
+}
 
 export type EditMode = "element" | "building" | "prompt";
 export type EditAction = "add" | "remove" | "change";
@@ -64,12 +92,13 @@ export interface RenderUpscaleSettings {
 }
 
 /** Which model family serves a job. */
-export type RenderRoute = RenderSourceType | "references" | "edit" | "edit-references" | "upscale";
+export type RenderRoute = RenderSourceType | "references" | "fidelity" | "edit" | "edit-references" | "upscale";
 
 export function renderRouteFor(settings: RenderGenerationSettings): RenderRoute {
   if (settings.upscale) return "upscale";
   const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
   if (settings.edit) return hasReferences ? "edit-references" : "edit";
+  if (hasReferences && settings.fidelity?.mode === "strict") return "fidelity";
   return hasReferences ? "references" : (settings.sourceType ?? "photo");
 }
 
@@ -95,6 +124,8 @@ export interface RenderGenerationSettings {
   /** Edit-tab strength, 1 (subtle) – 4 (maximum). How closely the edit follows the instruction. */
   editInfluence?: number;
   preserveStructure?: boolean;
+  /** Strict mode records the user's source-design contract and hardens reference prompts. */
+  fidelity?: FidelitySettings;
   referenceImageUrls?: string[];
   edit?: RenderEditSettings;
   upscale?: RenderUpscaleSettings;

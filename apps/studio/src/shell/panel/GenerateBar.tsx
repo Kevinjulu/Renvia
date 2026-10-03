@@ -82,6 +82,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
+  const fidelityMode = useGenerationSettingsStore((state) => state.fidelityMode);
+  const protectedGeometry = useGenerationSettingsStore((state) => state.protectedGeometry);
+  const geometryReviewedAt = useGenerationSettingsStore((state) => state.geometryReviewedAt);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const seed = useGenerationSettingsStore((state) => state.seed);
   const selection = useSelectionToolStore((state) => state.selection);
@@ -188,6 +191,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       styleInfluence,
       preserveStructure,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+      fidelity: referenceImageUrls.length > 0
+        ? { mode: fidelityMode, protectedFeatures: protectedGeometry, ...(geometryReviewedAt ? { reviewedAt: geometryReviewedAt } : {}) }
+        : undefined,
       seed: seed ?? undefined,
     };
     try {
