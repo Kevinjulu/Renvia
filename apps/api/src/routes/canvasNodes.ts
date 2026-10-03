@@ -27,7 +27,7 @@ const updateCanvasNodeSchema = z.object({
 async function presentNode(c: Context<AppContext>, node: typeof schema.canvasNodes.$inferSelect) {
   const origin = new URL(c.req.url).origin;
   const data = { ...(node.data as Record<string, unknown>) };
-  for (const field of ["url", "sourceImageUrl", "resultImageUrl", "beforeUrl", "afterUrl"]) {
+  for (const field of ["url", "imageUrl", "sourceImageUrl", "resultImageUrl", "beforeUrl", "afterUrl"]) {
     if (typeof data[field] === "string") data[field] = await presentUploadUrl(c.env, origin, data[field]);
   }
   return { ...node, data };

@@ -33,6 +33,16 @@ export function renderResultKeyFor(renderId: string, contentType: string): strin
 const UPLOADS_PATH = "/api/uploads/";
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
+/**
+ * Keep media reachable if an older deployment has not yet been given the
+ * dedicated signing secret. The storage credential is server-only and has the
+ * same entropy requirements, while a dedicated key can still be configured to
+ * decouple future media-link rotations from storage credential rotation.
+ */
+function storageSigningSecret(env: Env): string {
+  return env.STORAGE_URL_SIGNING_SECRET?.trim() || env.NEON_STORAGE_SECRET_ACCESS_KEY;
+}
+
 export function publicUploadUrl(origin: string, key: string): string {
   return `${origin}${UPLOADS_PATH}${key}`;
 }
@@ -68,7 +78,7 @@ async function signatureFor(secret: string, key: string, expires: number): Promi
 /** A browser-safe link that expires, so the storage bucket is not an anonymous public CDN. */
 export async function signedUploadUrl(env: Env, origin: string, key: string): Promise<string> {
   const expires = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS;
-  const signature = base64Url(await signatureFor(env.STORAGE_URL_SIGNING_SECRET, key, expires));
+  const signature = base64Url(await signatureFor(storageSigningSecret(env), key, expires));
   const url = new URL(publicUploadUrl(origin, key));
   url.searchParams.set("expires", String(expires));
   url.searchParams.set("signature", signature);
@@ -91,7 +101,7 @@ export async function hasValidSignature(env: Env, key: string, url: URL): Promis
   if (!Number.isSafeInteger(expires) || expires < Math.floor(Date.now() / 1000) || !supplied) return false;
   const signature = fromBase64Url(supplied);
   if (!signature) return false;
-  const signingKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.STORAGE_URL_SIGNING_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const signingKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(storageSigningSecret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   return crypto.subtle.verify("HMAC", signingKey, cryptoBytes(signature), new TextEncoder().encode(`${key}:${expires}`));
 }
 
