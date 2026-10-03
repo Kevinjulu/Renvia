@@ -21,13 +21,13 @@ function downloadImage(url: string) {
   link.remove();
 }
 
-/** Before/after slider — the source is stretched over the render's box so the two line up. */
+/** Before/after slider — always presented in a wide 16:9 frame so differences are easy to inspect. */
 function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: string }) {
   const [split, setSplit] = useState(50);
   const [natural, setNatural] = useState<Size | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  const box = useFittedBox(areaRef, natural);
+  const box = useFittedBox(areaRef, natural, { aspectRatio: 16 / 9 });
   const dragging = useRef(false);
 
   const moveTo = (clientX: number) => {
