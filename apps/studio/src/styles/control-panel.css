@@ -110,6 +110,12 @@
 
 /* Prompt */
 .cp-direction { display: flex; flex-direction: column; gap: 14px; }
+.cp-feature-toast { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; border: 1px solid #cfd7ff; border-radius: 12px; padding: 10px 11px; background: linear-gradient(135deg, #f5f7ff, #eef2ff); color: var(--cp-text); box-shadow: 0 8px 20px -16px rgba(49, 87, 239, .7); }
+.cp-feature-toast > div { display: flex; flex-direction: column; gap: 2px; }
+.cp-feature-toast strong { color: var(--cp-ink); font-size: 12px; font-weight: 700; }
+.cp-feature-toast span { color: var(--cp-muted); font-size: 11.5px; line-height: 1.4; }
+.cp-feature-toast button { display: grid; width: 20px; height: 20px; flex: none; place-items: center; border: 0; border-radius: 6px; padding: 0; background: transparent; color: var(--cp-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.cp-feature-toast button:hover { background: rgba(49, 87, 239, .1); color: var(--cp-accent); }
 .cp-prompt { display: flex; flex-direction: column; gap: 7px; }
 .cp-prompt-head { display: flex; align-items: baseline; justify-content: space-between; }
 .cp-prompt-head label { color: var(--cp-ink); font-size: 13px; font-weight: 600; }

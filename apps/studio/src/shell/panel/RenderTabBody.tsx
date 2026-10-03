@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProtectedGeometryFeature, PromptRepairResponse, RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
@@ -10,6 +10,7 @@ import { useApiClient } from "../../lib/apiClient";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
+const FIDELITY_TOAST_STORAGE_KEY = "renvia:fidelity-feature-toast:v1";
 
 interface RenderTabBodyProps {
   prompt: string;
@@ -39,6 +40,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const apiClient = useApiClient();
   const [repair, setRepair] = useState<PromptRepairResponse | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
+  const [showFidelityToast, setShowFidelityToast] = useState(false);
   const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const setSourceType = useGenerationSettingsStore((state) => state.setSourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
@@ -57,6 +59,19 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+
+  // Announce the new source-fidelity tools at the moment they matter, once per browser.
+  // Storage failures (private mode, quota) should never prevent someone from rendering.
+  useEffect(() => {
+    if (referenceCount === 0) return;
+    try {
+      if (localStorage.getItem(FIDELITY_TOAST_STORAGE_KEY) === "1") return;
+      localStorage.setItem(FIDELITY_TOAST_STORAGE_KEY, "1");
+      setShowFidelityToast(true);
+    } catch {
+      setShowFidelityToast(true);
+    }
+  }, [referenceCount]);
 
   const applyPreset = (preset: (typeof PRESETS)[number]) => {
     const trimmed = prompt.trim();
@@ -94,6 +109,15 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   return (
     <div className="cp-tab-body">
       <div className="cp-direction" data-guide="control.direction">
+        {showFidelityToast && (
+          <div className="cp-feature-toast" role="status" aria-live="polite">
+            <div>
+              <strong>New: strict source fidelity</strong>
+              <span>References can now guide finishes while your roof, openings, massing and camera stay protected.</span>
+            </div>
+            <button type="button" aria-label="Dismiss source fidelity announcement" onClick={() => setShowFidelityToast(false)}>×</button>
+          </div>
+        )}
         <div className="cp-prompt">
           <div className="cp-prompt-head">
             <label htmlFor="render-prompt">
