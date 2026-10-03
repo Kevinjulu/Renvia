@@ -24,7 +24,7 @@ export interface RenderJob {
   /**
    * The seed actually used — what was requested, or what the model echoed back when none
    * was. Null when the model doesn't report one and none was requested, so this exact
-   * result can't be reproduced (currently true for nano-banana/edit's reference route).
+   * result can't be reproduced (currently true for the production reference-edit route).
    */
   seed: number | null;
   /** Starred by the owner in the results panel. */

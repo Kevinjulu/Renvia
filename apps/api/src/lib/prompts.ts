@@ -76,19 +76,19 @@ export function buildEnginePrompt({
 function referenceLead(sourceType: RenderSourceType, styleText: string): string {
   const design =
     sourceType === "drawing"
-      ? "The first image is an architectural drawing of the building to render"
-      : "The first image is the building to render";
+      ? "Image 1 is the architectural drawing to render"
+      : "Image 1 is the building to render";
   return (
-    `${design}; render it as ${styleText}. ` +
-    "Every later image is a prototype swatch board for materials, finishes, colours, lighting and landscape only, never a building to copy."
+    `${design} as ${styleText}. ` +
+    "Images 2 onward are swatch boards for materials, finishes, colours, lighting and landscape only; never copy their buildings."
   );
 }
 
 const REFERENCE_FORM_LOCK =
-  "NON-NEGOTIABLE SOURCE DESIGN CONTRACT: Treat the first image as the fixed building and fixed camera. Preserve its exact " +
+  "NON-NEGOTIABLE SOURCE DESIGN CONTRACT: Treat image 1 as the fixed building and fixed camera. Preserve its exact " +
   "silhouette, footprint, massing, floor count, proportions, roof shape and ridges, eaves, windows, doors, balconies, garages, " +
   "porches, gazebos, openings, camera angle and framing. Map prototype colours and surface finishes only onto the corresponding " +
-  "existing source surfaces. Do not add, remove, resize, relocate or replace any architectural element. Never copy, blend with, " +
+  "existing image 1 surfaces. Do not add, remove, resize, relocate or replace any architectural element. Never copy, blend with, " +
   "interpolate toward, or match a prototype's shape, layout, camera angle, perspective or composition.";
 
 /** How much of the prototype's surface character to carry onto the design, by influence level. */

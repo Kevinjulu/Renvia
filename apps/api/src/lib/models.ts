@@ -76,17 +76,19 @@ const KONTEXT_PRO: ModelSpec = {
   }),
 };
 
-// $0.0398/image. Multi-image editing: the building first, then the references. Rendered
-// the line drawing almost exactly as the real building when given its photo as reference.
-const NANO_BANANA_EDIT: ModelSpec = {
-  id: "fal-ai/nano-banana/edit",
-  costMicros: 39_800,
-  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio, seed }) => ({
+// Multi-image editing with explicit image roles and source-composition retention. fal's
+// launch price is lower, but budget at the published standard 1K rate so the global cap
+// remains safe when promotional pricing ends.
+const FLUX_3_EDIT: ModelSpec = {
+  id: "blackforestlabs/flux-3/edit-image",
+  costMicros: 48_000,
+  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio }) => ({
     image_urls: [imageUrl, ...referenceUrls],
     prompt,
     aspect_ratio: aspectRatio,
+    resolution: "1k",
+    enable_prompt_expansion: false,
     output_format: "jpeg",
-    ...(seed !== undefined ? { seed } : {}),
   }),
 };
 
@@ -117,9 +119,9 @@ const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
   prod: {
     photo: KONTEXT_PRO,
     drawing: KONTEXT_PRO,
-    references: NANO_BANANA_EDIT,
+    references: FLUX_3_EDIT,
     edit: KONTEXT_PRO,
-    "edit-references": NANO_BANANA_EDIT,
+    "edit-references": FLUX_3_EDIT,
     upscale: BRIA_UPSCALE,
   },
 };

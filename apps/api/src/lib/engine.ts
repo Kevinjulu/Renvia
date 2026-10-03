@@ -401,7 +401,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
     // Kontext and lightning-sdxl echo back the seed they actually used (including a random
-    // one we didn't set); nano-banana/edit doesn't, so it falls back to what we asked for.
+    // one we didn't set); reference-edit models may not, so it falls back to what we asked for.
     const seed = typeof result.seed === "number" ? result.seed : (render.settings?.seed ?? null);
     return finishRender(db, render, { status: "succeeded", resultImageUrl, seed });
   } catch (error) {

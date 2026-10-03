@@ -95,7 +95,7 @@ export const renders = pgTable("renders", {
   creditsCharged: integer("credits_charged").notNull().default(0),
   /**
    * The seed actually used: what the caller requested, or what the model echoed back when
-   * none was given. Null when the model doesn't report one (nano-banana/edit) and none was
+   * none was given. Null when the model doesn't report one and none was
    * requested — that render can't be exactly reproduced.
    *
    * bigint, not integer: fal echoes back unsigned 32-bit seeds up to ~4.29 billion, which
