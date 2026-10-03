@@ -53,7 +53,7 @@ canvasNodes.get("/", async (c) => {
     .where(eq(schema.canvasNodes.projectId, projectId))
     .orderBy(asc(schema.canvasNodes.createdAt));
 
-  return c.json({ nodes: await Promise.all(nodes.map((node) => presentNode(c, node)) });
+  return c.json({ nodes: await Promise.all(nodes.map((node) => presentNode(c, node))) });
 });
 
 canvasNodes.post("/", async (c) => {
