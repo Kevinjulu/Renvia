@@ -10,6 +10,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test:render-fixtures": "node tests/render-fidelity/verify-fixtures.mjs",
     "db:generate": "pnpm --filter @renvia/db db:generate",
     "db:migrate": "pnpm --filter @renvia/db db:migrate"
   },

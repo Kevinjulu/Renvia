@@ -46,10 +46,15 @@ export function buildEnginePrompt({
     const level = Math.min(4, Math.max(1, Math.round(influence)));
     return [
       referenceLead(sourceType, styleText),
-      preserveStructure ? REFERENCE_FORM_LOCK : REFERENCE_FORM_LOOSE,
+      // Reference renders are always source-led. The engine enforces this too, but keeping
+      // the branch here makes this contract explicit for callers outside the normal route.
+      REFERENCE_FORM_LOCK,
       PROTOTYPE_BORROW[level],
       level >= 2 ? COLOUR_FIDELITY : null,
       scene,
+      // The user's scene direction comes last, so repeat the contract after it. This keeps a
+      // visually strong reference or an enthusiastic prompt from becoming a request to redraw.
+      REFERENCE_FORM_LOCK,
     ]
       .filter(Boolean)
       .join(" ");
@@ -66,8 +71,8 @@ export function buildEnginePrompt({
 }
 
 // With references the images play different roles: the first is the design (form, camera), the
-// rest are the prototype (surfaces). Saying "match the references" without that split let the
-// model pull the prototype's massing and viewpoint in too, most of all at high influence.
+// rest are prototype swatches (surfaces). Saying "match the references" without that split let
+// the model pull the prototype's massing and viewpoint in too, most of all at high influence.
 function referenceLead(sourceType: RenderSourceType, styleText: string): string {
   const design =
     sourceType === "drawing"
@@ -75,28 +80,28 @@ function referenceLead(sourceType: RenderSourceType, styleText: string): string 
       : "The first image is the building to render";
   return (
     `${design}; render it as ${styleText}. ` +
-    "The other images are the prototype: a reference for materials, finishes, colours and details only."
+    "Every later image is a prototype swatch board for materials, finishes, colours, lighting and landscape only, never a building to copy."
   );
 }
 
 const REFERENCE_FORM_LOCK =
-  "Take the building's geometry, proportions, massing, roofline, window and door layout, and the camera angle and framing " +
-  "exactly from the first image; do not add, remove or move any structural element. " +
-  "Never copy the prototype's shape, layout or viewpoint.";
-
-const REFERENCE_FORM_LOOSE =
-  "Keep the first image's overall form, proportions and camera angle. Never copy the prototype's shape, layout or viewpoint.";
+  "NON-NEGOTIABLE SOURCE DESIGN CONTRACT: Treat the first image as the fixed building and fixed camera. Preserve its exact " +
+  "silhouette, footprint, massing, floor count, proportions, roof shape and ridges, eaves, windows, doors, balconies, garages, " +
+  "porches, gazebos, openings, camera angle and framing. Map prototype colours and surface finishes only onto the corresponding " +
+  "existing source surfaces. Do not add, remove, resize, relocate or replace any architectural element. Never copy, blend with, " +
+  "interpolate toward, or match a prototype's shape, layout, camera angle, perspective or composition.";
 
 /** How much of the prototype's surface character to carry onto the design, by influence level. */
 const PROTOTYPE_BORROW: Record<number, string> = {
   1: "Borrow only the prototype's general colour palette and mood; keep the first image's own materials where they are clear.",
   2: "Use the prototype's main facade materials and colours.",
   3:
-    "Closely match the prototype's materials, finishes and colours, and carry over its architectural details " +
-    "such as window frames, railings, soffits, trim and cladding patterns.",
+    "Closely match the prototype's materials, finishes, colours and surface treatment, including cladding pattern, trim finish, " +
+    "frame colour, railing finish and soffit treatment, only where the first image already has a matching surface.",
   4:
-    "Apply the prototype's materials, finishes, exact colours, architectural details and overall visual character " +
-    "as completely as possible, including its lighting and landscaping, mapped onto the first image's form.",
+    "Apply the prototype's materials, finishes, exact colours and visual character as completely as possible, including compatible " +
+    "lighting, paving and landscaping, but never its structural features. If a prototype feature needs a different opening, roof, " +
+    "volume, balcony, column, wall or camera position, omit that feature rather than changing the first image.",
 };
 
 // Image models drift colours warm (white renders come back cream or brown); spelling out the

@@ -214,7 +214,12 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const influence = (isEdit ? settings.editInfluence ?? 4 : settings.styleInfluence ?? 3);
     // A targeted edit already keeps everything outside the mask untouched by compositing;
     // the crop sent to the model can afford to change more freely, so it's always unlocked.
-    const preserveStructure = isEdit ? false : (settings.preserveStructure ?? true);
+    const referenceImageUrls = settings.referenceImageUrls ?? [];
+    const hasReferences = referenceImageUrls.length > 0;
+    // A prototype is a material/style source, never a second architectural brief. Enforce the
+    // geometry lock server-side so an old client, restored job, or direct request cannot disable
+    // it while sending reference images to the multi-image model.
+    const preserveStructure = isEdit ? false : (hasReferences || (settings.preserveStructure ?? true));
     const aspectRatio: AspectRatio = (render.aspectRatio as AspectRatio) || "auto";
     // A selection edit sends the model a close-up of the selected area (see editCropFor).
     const masked = await maskedEditInputs(env, render, origin);
@@ -223,14 +228,14 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
       : falReachableImageUrl(env, fal, render.sourceImageUrl, origin);
     const [sourceUrl, ...referenceUrls] = await Promise.all([
       sourceUrlPromise,
-      ...(settings.referenceImageUrls ?? []).map((url) => falReachableImageUrl(env, fal, url, origin)),
+      ...referenceImageUrls.map((url) => falReachableImageUrl(env, fal, url, origin)),
     ]);
 
     const prompt = settings.edit
       ? buildEditPrompt({
           prompt: render.prompt,
           edit: settings.edit,
-          hasReferences: referenceUrls.length > 0,
+          hasReferences,
           hasSelection: Boolean(masked?.crop),
           style: render.style,
         })
@@ -238,7 +243,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           prompt: render.prompt,
           style: render.style,
           sourceType: settings.sourceType ?? "photo",
-          hasReferences: referenceUrls.length > 0,
+          hasReferences,
           preserveStructure,
           influence,
         });

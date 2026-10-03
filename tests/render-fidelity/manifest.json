@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "purpose": "Manual visual-regression cases for source-led prototype rendering.",
+  "source": {
+    "path": "public/Test Elevation/Original Lakeside house.png",
+    "sha256": "15A4CB94CA402FD520245616343A3B5EDBD59ED781F1FEF52CEF42AE7E735A9A"
+  },
+  "cases": [
+    {
+      "id": "VR-01-compatible-modern",
+      "title": "Modern prototype changes finish, not the Lakeside elevation",
+      "referenceImages": [
+        {
+          "path": "public/test reference images/lakeside-house.jpg",
+          "sha256": "9DC915A3E89F4E69F3FFA5851BE2870480E0C553576DD085A85236394D51088A"
+        }
+      ],
+      "settings": {
+        "sourceType": "drawing",
+        "preserveStructure": true,
+        "influences": [3, 4]
+      },
+      "prompt": "Photorealistic architectural render. Use the reference only for its modern material palette, facade finish, paving, planting and lighting. Preserve the source elevation, roof, openings, terrace, left service block, right wing, camera angle and framing exactly.",
+      "mustKeep": [
+        "flat-roof two-storey massing",
+        "upper-level vertical glazing and fins",
+        "left service block with its door and horizontal window",
+        "covered terrace, glass guardrail and right-side wing",
+        "source camera angle and framing"
+      ],
+      "mustNeverAdd": [
+        "a pitched or gabled roof",
+        "a porch, classical columns or a new balcony",
+        "relocated, enlarged or replaced doors and windows",
+        "the prototype building's viewpoint or layout"
+      ]
+    },
+    {
+      "id": "VR-02-mismatched-prototypes",
+      "title": "Pitched-roof references cannot redesign the Lakeside elevation",
+      "referenceImages": [
+        {
+          "path": "public/test reference images/download (1).jfif",
+          "sha256": "11481B8EBB39DE1E2FD4C16F266F07B30E705CEFBDC5F43867F67F6FC75E4E4F"
+        },
+        {
+          "path": "public/test reference images/download (2).jfif",
+          "sha256": "153637CDDEE71D9A7734FD717B65032281D115C07DAEA1033799177AFBECA17B"
+        }
+      ],
+      "settings": {
+        "sourceType": "drawing",
+        "preserveStructure": true,
+        "influences": [3, 4]
+      },
+      "prompt": "Photorealistic architectural render. Borrow only compatible colours, wall finishes, paving, landscape and exterior lighting from the prototypes. Keep the source elevation's flat roofs, volumes, openings, terrace, camera and framing exactly as drawn.",
+      "mustKeep": [
+        "every VR-01 structural invariant",
+        "flat rooflines rather than the references' pitched roofs",
+        "the source terrace instead of a front porch"
+      ],
+      "mustNeverAdd": [
+        "gables, red tiled pitched roofs or roof dormers",
+        "a portico, columns, arches or a new front porch",
+        "a prototype window, door, massing or camera angle"
+      ]
+    }
+  ],
+  "legacyRenderedResults": [
+    {
+      "path": "public/Rendered Results/Exterior - Detailed.jpeg",
+      "sha256": "343A8273F6065B8BF9B59491BC9BE50354B8F740218973FC56D0D7F28813E10D",
+      "note": "Historical source-preserving example; it is not evidence for the current code until the cases are re-run."
+    },
+    {
+      "path": "public/Rendered Results/Exterior - Detailed (1).jpeg",
+      "sha256": "E79E7DA77C597D8785108533E240858DE7956D99D4BA98B9D7F0F33BEC6BCBBB",
+      "note": "Historical alternate material treatment; it is not evidence for the current code until the cases are re-run."
+    }
+  ]
+}

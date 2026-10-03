@@ -108,7 +108,14 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setStyleInfluence: (styleInfluence) => set({ styleInfluence }),
   setEditInfluence: (editInfluence) => set({ editInfluence }),
   setPreserveStructure: (preserveStructure) => set({ preserveStructure }),
-  setReferenceImageUrls: (referenceImageUrls) => set({ referenceImageUrls }),
+  // A reference image is a style/material input. It must never silently turn a source drawing
+  // into a request to recreate the reference building, so attaching one locks structure here
+  // and the API repeats the same guard for older clients and direct requests.
+  setReferenceImageUrls: (referenceImageUrls) =>
+    set((state) => ({
+      referenceImageUrls,
+      preserveStructure: referenceImageUrls.length > 0 ? true : state.preserveStructure,
+    })),
   setSeed: (seed) => set({ seed }),
   setAtmospherePreset: (atmospherePreset) => set({ atmospherePreset }),
   setEditMode: (editMode) => set({ editMode, editModeAuto: false }),
@@ -128,7 +135,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       sourceType: settings?.sourceType ?? state.sourceType,
       styleInfluence: settings?.styleInfluence ?? state.styleInfluence,
       editInfluence: settings?.editInfluence ?? state.editInfluence,
-      preserveStructure: settings?.preserveStructure ?? state.preserveStructure,
+      preserveStructure: settings?.referenceImageUrls?.length ? true : (settings?.preserveStructure ?? state.preserveStructure),
       referenceImageUrls: settings?.referenceImageUrls ?? [],
     })),
 }));

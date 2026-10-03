@@ -32,6 +32,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const setStyleInfluence = useGenerationSettingsStore((state) => state.setStyleInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
   const setPreserveStructure = useGenerationSettingsStore((state) => state.setPreserveStructure);
+  const referenceCount = useGenerationSettingsStore((state) => state.referenceImageUrls.length);
   const atmospherePreset = useGenerationSettingsStore((state) => state.atmospherePreset);
   const setAtmospherePreset = useGenerationSettingsStore((state) => state.setAtmospherePreset);
   const seed = useGenerationSettingsStore((state) => state.seed);
@@ -50,7 +51,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const advancedSummary = [
     SOURCE_TYPES.find((option) => option.id === sourceType)?.label,
     `${STYLE_INFLUENCE_LABELS[styleInfluence - 1]} influence`,
-    preserveStructure ? "Structure kept" : "Loose structure",
+    referenceCount > 0 ? "Reference structure lock" : preserveStructure ? "Structure kept" : "Loose structure",
     seed === null ? "Random seed" : `Seed ${seed}`,
   ].join(" · ");
 
@@ -147,12 +148,17 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             <strong>
               <GuideLabel topicId="control.preserve">Preserve structure</GuideLabel>
             </strong>
-            <small>Keep windows, roofs and massing as drawn</small>
+            <small>
+              {referenceCount > 0
+                ? "Locked while references are attached — they can style, never redesign"
+                : "Keep windows, roofs and massing as drawn"}
+            </small>
           </span>
           <span className="cp-switch">
             <input
               type="checkbox"
               checked={preserveStructure}
+              disabled={referenceCount > 0}
               onChange={(event) => setPreserveStructure(event.target.checked)}
             />
             <span aria-hidden="true" />
