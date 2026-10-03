@@ -52,6 +52,10 @@ const createRenderSchema = z.object({
     .optional(),
 });
 
+const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]) });
+const UPSCALE_COST_MICROS = { "4k": 40_000, "8k": 80_000 } as const;
+const UPSCALE_CREDIT_MULTIPLIER = { "4k": 1, "8k": 2 } as const;
+
 async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
   const origin = new URL(c.req.url).origin;
   const settings = job.settings
@@ -147,6 +151,65 @@ renders.post("/", async (c) => {
     }
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
+  } finally {
+    await releaseBudgetReservation(db, reservation);
+  }
+});
+
+/** Queues a faithful high-resolution export from a finished render. */
+renders.post("/:id/upscale", async (c) => {
+  const { clerkId } = c.get("auth");
+  const { target } = createUpscaleSchema.parse(await c.req.json());
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  const appSettings = await getSettings(db);
+  if (user.disabled) {
+    const refusal = refuseDisabled(appSettings);
+    return c.json(refusal, refusal.status);
+  }
+  const parent = await findOwnedRender(db, c.req.param("id"), user.id);
+  if (!parent?.resultImageUrl || parent.status !== "succeeded") {
+    return c.json({ error: "Only finished renders can be exported in high resolution" }, 400);
+  }
+
+  const origin = new URL(c.req.url).origin;
+  if (!ownUploadKey(parent.resultImageUrl, origin)) {
+    return c.json({ error: "This render is not available for high-resolution export" }, 400);
+  }
+  const allowance = await checkAllowance(db, user, appSettings, "render");
+  if (allowance) return c.json(allowance, allowance.status);
+
+  const model = modelFor(effectiveEngineMode(c.env, appSettings), "upscale");
+  const costMicros = model.id === "mock" ? 0 : UPSCALE_COST_MICROS[target];
+  const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
+  if (!reservation) {
+    const refusal = refuseBudget(appSettings);
+    return c.json(refusal, refusal.status);
+  }
+
+  const credits = user.role === "admin" ? 0 : appSettings.creditsPerImage * UPSCALE_CREDIT_MULTIPLIER[target];
+  try {
+    const created = await createChargedRender(db, user.id, credits, {
+      projectId: parent.projectId,
+      sourceImageUrl: parent.resultImageUrl,
+      prompt: `${target.toUpperCase()} high-resolution export`,
+      aspectRatio: parent.aspectRatio,
+      style: "High-resolution export",
+      viewKey: parent.viewKey,
+      viewLabel: parent.viewLabel,
+      status: "pending",
+      model: model.id,
+      costMicros,
+      settings: { upscale: { target, parentRenderId: parent.id } },
+    });
+    const job = await submitRender(c.env, db, created, origin);
+    return c.json({ job: await presentRender(c, job) }, 201);
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      const refusal = refuseCredits(appSettings, user.creditBalance, credits);
+      return c.json(refusal, refusal.status);
+    }
+    throw error;
   } finally {
     await releaseBudgetReservation(db, reservation);
   }

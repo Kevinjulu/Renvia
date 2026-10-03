@@ -44,6 +44,7 @@ export type RenderSourceType = "drawing" | "photo";
 
 export type EditMode = "element" | "building" | "prompt";
 export type EditAction = "add" | "remove" | "change";
+export type UpscaleTarget = "4k" | "8k";
 
 /** Present on edit jobs (Edit tab); absent on renders. */
 export interface RenderEditSettings {
@@ -56,10 +57,17 @@ export interface RenderEditSettings {
   maskImageUrl?: string;
 }
 
+/** Present on high-resolution export jobs, which preserve an existing render rather than generating a new design. */
+export interface RenderUpscaleSettings {
+  target: UpscaleTarget;
+  parentRenderId: string;
+}
+
 /** Which model family serves a job. */
-export type RenderRoute = RenderSourceType | "references" | "edit" | "edit-references";
+export type RenderRoute = RenderSourceType | "references" | "edit" | "edit-references" | "upscale";
 
 export function renderRouteFor(settings: RenderGenerationSettings): RenderRoute {
+  if (settings.upscale) return "upscale";
   const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
   if (settings.edit) return hasReferences ? "edit-references" : "edit";
   return hasReferences ? "references" : (settings.sourceType ?? "photo");
@@ -89,6 +97,7 @@ export interface RenderGenerationSettings {
   preserveStructure?: boolean;
   referenceImageUrls?: string[];
   edit?: RenderEditSettings;
+  upscale?: RenderUpscaleSettings;
   /** Reuse a previous render's seed to reproduce it, or nudge it with a new prompt/strength. */
   seed?: number;
 }
@@ -105,6 +114,14 @@ export interface CreateRenderRequest {
 }
 
 export interface CreateRenderResponse {
+  job: RenderJob;
+}
+
+export interface CreateUpscaleRequest {
+  target: UpscaleTarget;
+}
+
+export interface CreateUpscaleResponse {
   job: RenderJob;
 }
 

@@ -290,7 +290,7 @@ export function RenderPreview() {
 
   if (!job?.resultImageUrl) return null;
 
-  const title = [job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
+  const title = [job.settings?.upscale ? `${job.settings.upscale.target.toUpperCase()} export` : job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
   const shownUrl = mode === "source" ? job.sourceImageUrl : job.resultImageUrl;
   const parent = job.settings?.edit ? jobs.find((item) => item.resultImageUrl === job.sourceImageUrl) : undefined;
   const selected = hasSelection(strokes);

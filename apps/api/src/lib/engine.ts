@@ -1,5 +1,6 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import sharp from "sharp";
 import { schema, type Database } from "@renvia/db";
 import type { AspectRatio, RenderBudgetResponse, RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
@@ -19,6 +20,7 @@ const MOCK_DURATION_MS = 4_000;
 const FAL_TIMEOUT_MS = 10 * 60_000;
 
 const MICROS_PER_USD = 1_000_000;
+const UPSCALE_TARGET_EDGE = { "4k": 3_840, "8k": 7_680 } as const;
 
 /** Current render mode: the admin setting, else FAL_MODE, else mock (never spends by accident). */
 export async function engineMode(env: Env, db: Database): Promise<RenderEngineMode> {
@@ -173,6 +175,75 @@ async function falReachableImageUrl(env: Env, fal: FalClient, url: string, origi
   return fal.storage.upload(new Blob([upload.bytes], { type: upload.contentType }));
 }
 
+/**
+ * Bria accepts at most a 4x factor. For a small source, make a high-quality intermediate
+ * canvas first, then let Bria do the actual detail-preserving enhancement to the requested edge.
+ */
+async function prepareUpscaleInput(
+  env: Env,
+  fal: FalClient,
+  url: string,
+  origin: string,
+  target: "4k" | "8k",
+): Promise<{ url: string; factor: number }> {
+  const upload = await readOwnUpload(env, url, origin);
+  if (!upload) throw new Error("High-resolution exports need a stored render");
+
+  const source = sharp(upload.bytes).rotate();
+  const metadata = await source.metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const sourceLongEdge = Math.max(width, height);
+  const targetLongEdge = UPSCALE_TARGET_EDGE[target];
+  if (!sourceLongEdge) throw new Error("Couldn’t read the render dimensions");
+  if (sourceLongEdge >= targetLongEdge) throw new Error(`This render is already ${target.toUpperCase()} or larger`);
+
+  // Bria exposes 2x and 4x checkpoints only. Pick the closest faithful checkpoint,
+  // cap its input to Bria's 8K output limit, then normalize the returned asset below.
+  const factor = sourceLongEdge > targetLongEdge / 2 ? 2 : 4;
+  const minimumInputEdge = Math.ceil(targetLongEdge / factor);
+  const maximumInputEdge = Math.floor(8_192 / factor);
+  const workingLongEdge = Math.min(Math.max(sourceLongEdge, minimumInputEdge), maximumInputEdge);
+  const working = workingLongEdge !== sourceLongEdge
+    ? await source
+        .resize({
+          width: Math.round((width / sourceLongEdge) * workingLongEdge),
+          height: Math.round((height / sourceLongEdge) * workingLongEdge),
+          kernel: sharp.kernel.lanczos3,
+        })
+        .png()
+        .toBuffer()
+    : upload.bytes;
+  return {
+    url: await fal.storage.upload(new Blob([new Uint8Array(working)], { type: "image/png" })),
+    factor,
+  };
+}
+
+async function mockUpscaleResult(env: Env, render: RenderRow, origin: string): Promise<string> {
+  const target = render.settings?.upscale?.target;
+  const upload = target ? await readOwnUpload(env, render.sourceImageUrl, origin) : null;
+  if (!target || !upload) return render.sourceImageUrl;
+  const metadata = await sharp(upload.bytes).rotate().metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const longEdge = Math.max(width, height);
+  if (!longEdge) throw new Error("Couldn’t read the render dimensions");
+  const desired = UPSCALE_TARGET_EDGE[target];
+  const bytes = await sharp(upload.bytes)
+    .rotate()
+    .resize({
+      width: Math.round((width / longEdge) * desired),
+      height: Math.round((height / longEdge) * desired),
+      kernel: sharp.kernel.lanczos3,
+    })
+    .png()
+    .toBuffer();
+  const key = renderResultKeyFor(render.id, "image/png");
+  await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, "image/png");
+  return publicUploadUrl(origin, key);
+}
+
 interface MaskedEditInputs {
   source: Uint8Array<ArrayBuffer>;
   mask: Uint8Array<ArrayBuffer>;
@@ -207,6 +278,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const fal = falClient(env);
     const settings = render.settings ?? {};
     const isEdit = Boolean(settings.edit);
+    const isUpscale = Boolean(settings.upscale);
     // Edit strength is its own control (Edit tab), never whatever the Render tab's slider
     // last happened to be set to — the two routes shouldn't share invisible state.
     // Defaults match the studio: Strong for renders, Maximum for edits — a weak guidance
@@ -223,11 +295,13 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const aspectRatio: AspectRatio = (render.aspectRatio as AspectRatio) || "auto";
     // A selection edit sends the model a close-up of the selected area (see editCropFor).
     const masked = await maskedEditInputs(env, render, origin);
-    const sourceUrlPromise = masked?.crop
-      ? cropSource(masked.source, masked.crop).then((bytes) => fal.storage.upload(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" })))
-      : falReachableImageUrl(env, fal, render.sourceImageUrl, origin);
-    const [sourceUrl, ...referenceUrls] = await Promise.all([
-      sourceUrlPromise,
+    const sourceInputPromise = isUpscale
+      ? prepareUpscaleInput(env, fal, render.sourceImageUrl, origin, settings.upscale!.target)
+      : (masked?.crop
+        ? cropSource(masked.source, masked.crop).then((bytes) => fal.storage.upload(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" })).then((url) => ({ url, factor: undefined })))
+        : falReachableImageUrl(env, fal, render.sourceImageUrl, origin).then((url) => ({ url, factor: undefined })));
+    const [sourceInput, ...referenceUrls] = await Promise.all([
+      sourceInputPromise,
       ...referenceImageUrls.map((url) => falReachableImageUrl(env, fal, url, origin)),
     ]);
 
@@ -250,13 +324,14 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
 
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
-        imageUrl: sourceUrl!,
+        imageUrl: sourceInput.url,
         referenceUrls,
         prompt,
         influence,
         preserveStructure,
         aspectRatio,
         seed: settings.seed,
+        upscaleFactor: sourceInput.factor,
       }),
       webhookUrl: webhookUrlFor(origin),
     });
@@ -281,6 +356,25 @@ async function storeFalResult(env: Env, render: RenderRow, imageUrl: string, ori
     contentType = "image/jpeg";
   }
 
+  // An upscale checkpoint returns a 2x or 4x image. Cap that output precisely at the
+  // selected long edge without changing its aspect ratio or re-running the AI model.
+  const upscaleTarget = render.settings?.upscale?.target;
+  if (upscaleTarget) {
+    const targetEdge = UPSCALE_TARGET_EDGE[upscaleTarget];
+    const normalized = sharp(bytes).rotate();
+    const metadata = await normalized.metadata();
+    const longEdge = Math.max(metadata.width ?? 0, metadata.height ?? 0);
+    if (!longEdge) throw new Error("Upscaler returned an image without dimensions");
+    if (longEdge > targetEdge) {
+      bytes = new Uint8Array(await normalized.resize({
+        width: Math.round(((metadata.width ?? 0) / longEdge) * targetEdge),
+        height: Math.round(((metadata.height ?? 0) / longEdge) * targetEdge),
+        kernel: sharp.kernel.lanczos3,
+      }).png().toBuffer());
+      contentType = "image/png";
+    }
+  }
+
   const storedType = extensionForContentType(contentType) ? contentType : "image/jpeg";
   const key = renderResultKeyFor(render.id, storedType);
   await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, storedType);
@@ -301,8 +395,8 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
 
   try {
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
-    const result = data as { images?: { url?: string }[]; seed?: number };
-    const imageUrl = result.images?.[0]?.url;
+    const result = data as { images?: { url?: string }[]; image?: { url?: string }; seed?: number };
+    const imageUrl = result.images?.[0]?.url ?? result.image?.url;
     if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatch("Render returned no image")));
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
@@ -337,9 +431,10 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
     if (Date.now() - render.createdAt.getTime() < MOCK_DURATION_MS) return render;
     // Mock result is the source image itself — enough to exercise every downstream UI path,
     // including a seed the user typed, so the Seed control is testable without spending fal credit.
+    const resultImageUrl = render.settings?.upscale ? await mockUpscaleResult(env, render, origin) : render.sourceImageUrl;
     return finishRender(db, render, {
       status: "succeeded",
-      resultImageUrl: render.sourceImageUrl,
+      resultImageUrl,
       seed: render.settings?.seed ?? null,
     });
   }

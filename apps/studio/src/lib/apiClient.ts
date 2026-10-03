@@ -6,6 +6,8 @@ import type {
   CreateReferenceImageRequest,
   CreateRenderRequest,
   CreateRenderResponse,
+  CreateUpscaleResponse,
+  CreateUpscaleRequest,
   CreateSegmentationRequest,
   CreateSegmentationResponse,
   DeleteProjectResponse,
@@ -128,6 +130,12 @@ export function useApiClient() {
     getMyCredits: () => request<MeCreditsResponse>(getToken, "/me/credits"),
     createRender: (body: CreateRenderRequest) =>
       request<CreateRenderResponse>(getToken, "/renders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    upscaleRender: (id: string, body: CreateUpscaleRequest) =>
+      request<CreateUpscaleResponse>(getToken, `/renders/${id}/upscale`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

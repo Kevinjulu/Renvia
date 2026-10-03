@@ -132,7 +132,9 @@ export function RenderResultsPanel() {
     if (!projectId) return;
     setIsRetrying(true);
     try {
-      const { job } = await apiClient.createRender(buildRetryRequest(activeJob, projectId));
+      const { job } = activeJob.settings?.upscale
+        ? await apiClient.upscaleRender(activeJob.settings.upscale.parentRenderId, { target: activeJob.settings.upscale.target })
+        : await apiClient.createRender(buildRetryRequest(activeJob, projectId));
       addJob(job);
     } catch (error) {
       reportLimit(error);
@@ -225,7 +227,9 @@ export function RenderResultsPanel() {
     : undefined;
   const references = job.settings?.referenceImageUrls ?? [];
   const tags = [
-    job.settings?.edit
+    job.settings?.upscale
+      ? `${job.settings.upscale.target.toUpperCase()} export`
+      : job.settings?.edit
       ? job.settings.edit.maskImageUrl
         ? "Area edit"
         : "Edit"
@@ -326,7 +330,7 @@ export function RenderResultsPanel() {
           {inFlight && (
             <figcaption className="rp-progress">
               <span>
-                {job.status === "pending" ? "Queued" : "Rendering"}… <b>{progress}%</b>
+                {job.status === "pending" ? "Queued" : job.settings?.upscale ? "Enhancing" : "Rendering"}… <b>{progress}%</b>
               </span>
               <i>
                 <em style={{ width: `${progress}%` }} />
@@ -339,7 +343,7 @@ export function RenderResultsPanel() {
           )}
           {job.status === "failed" && (
             <figcaption className="rp-failed">
-              <strong>Render failed</strong>
+              <strong>{job.settings?.upscale ? "High-resolution export failed" : "Render failed"}</strong>
               <span>{job.errorMessage ?? "Something went wrong. Try again."}</span>
             </figcaption>
           )}
@@ -349,7 +353,7 @@ export function RenderResultsPanel() {
 
         <div className="rp-meta">
           <p className="rp-title">
-            <strong>{[job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ")}</strong>
+            <strong>{[job.settings?.upscale ? `${job.settings.upscale.target.toUpperCase()} export` : job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ")}</strong>
             <span>{timeAgo(job.createdAt, now)}</span>
           </p>
           <div className="rp-tags">
@@ -376,7 +380,7 @@ export function RenderResultsPanel() {
             </button>
           )}
           <div className="rp-actions-row">
-            <button type="button" className="rp-btn" onClick={handleUsePromptAndSettings} title="Load this render's prompt and settings into the panel">
+            <button type="button" className="rp-btn" disabled={Boolean(job.settings?.upscale)} onClick={handleUsePromptAndSettings} title="Load this render's prompt and settings into the panel">
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3 8a5 5 0 0 1 8.5-3.5L13 6M13 2.5V6H9.5M13 8a5 5 0 0 1-8.5 3.5L3 10m0 3.5V10h3.5" />
               </svg>

@@ -13,6 +13,8 @@ export interface ModelInput {
   aspectRatio: AspectRatio;
   /** Reproduces (or nudges from) a previous result when set; a fresh random seed otherwise. */
   seed?: number;
+  /** Only supplied to the high-resolution export route. */
+  upscaleFactor?: number;
 }
 
 export interface ModelSpec {
@@ -88,14 +90,29 @@ const NANO_BANANA_EDIT: ModelSpec = {
   }),
 };
 
+// Bria preserves the existing architecture instead of generating a new design. The caller
+// caps the result at a 4K or 8K long edge and supplies a factor no larger than 4x.
+const BRIA_UPSCALE: ModelSpec = {
+  id: "bria/increase-resolution",
+  costMicros: 40_000,
+  buildInput: ({ imageUrl, upscaleFactor }) => ({
+    image_url: imageUrl,
+    desired_increase: Math.round(upscaleFactor ?? 2),
+    preserve_alpha: false,
+    preserve_color: true,
+    output_type: "png",
+  }),
+};
+
 const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
-  mock: { photo: MOCK, drawing: MOCK, references: MOCK, edit: MOCK, "edit-references": MOCK },
+  mock: { photo: MOCK, drawing: MOCK, references: MOCK, edit: MOCK, "edit-references": MOCK, upscale: MOCK },
   dev: {
     photo: LIGHTNING_SDXL,
     drawing: LIGHTNING_SDXL,
     references: LIGHTNING_SDXL,
     edit: LIGHTNING_SDXL,
     "edit-references": LIGHTNING_SDXL,
+    upscale: BRIA_UPSCALE,
   },
   prod: {
     photo: KONTEXT_PRO,
@@ -103,6 +120,7 @@ const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
     references: NANO_BANANA_EDIT,
     edit: KONTEXT_PRO,
     "edit-references": NANO_BANANA_EDIT,
+    upscale: BRIA_UPSCALE,
   },
 };
 
