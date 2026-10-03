@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useElevationUpload } from "../canvas/hooks/useElevationUpload";
 import { useUploadProgressStore } from "../canvas/hooks/useUploadProgressStore";
@@ -15,8 +15,15 @@ function UploadButton() {
   const progress = useUploadProgressStore((state) => state.progress);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showNudge, setShowNudge] = useState(true);
   const busy = status === "uploading";
   const percent = Math.round(progress * 100);
+
+  // The cue helps first orientation, then gets out of the way of the canvas controls.
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setShowNudge(false), 1000);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const start = (list: FileList | null) => {
     const files = Array.from(list ?? []).filter((file) => ACCEPTED_TYPES.includes(file.type));
@@ -57,7 +64,7 @@ function UploadButton() {
         <span className="rail-upload-label" aria-hidden="true">{face}</span>
         <span className="rail-upload-label is-submerged" aria-hidden="true">{face}</span>
       </button>
-      {status === "idle" && (
+      {status === "idle" && showNudge && (
         <span className="rail-upload-nudge" aria-hidden="true">
           <b>1</b>
           <span>Start here<small>Upload elevation</small></span>
