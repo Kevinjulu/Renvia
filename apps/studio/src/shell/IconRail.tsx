@@ -24,32 +24,46 @@ function UploadButton() {
   };
 
   const label =
-    status === "uploading" ? `Uploading, ${percent}%` : status === "done" ? "Upload complete" : status === "error" ? "Upload failed" : "Upload elevation";
+    status === "uploading"
+      ? `Uploading, ${percent}%`
+      : status === "done"
+        ? "Upload complete"
+        : status === "error"
+          ? "Upload failed"
+          : "Start here — upload elevation";
 
   const face =
     status === "uploading" ? `${percent}%` : status === "done" ? "✓" : status === "error" ? "!" : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>;
 
   return <>
-    <button
-      type="button"
-      className={`rail-upload is-${status} ${isDragOver ? "is-dragover" : ""}`}
-      style={{ "--fill": status === "idle" ? 0 : progress } as CSSProperties}
-      data-label={status === "idle" ? "Upload elevation" : label}
-      aria-label={label}
-      aria-busy={busy}
-      disabled={busy}
-      onClick={() => inputRef.current?.click()}
-      onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
-      onDragLeave={() => setIsDragOver(false)}
-      onDrop={(event) => { event.preventDefault(); setIsDragOver(false); start(event.dataTransfer.files); }}
-    >
-      <span className="rail-upload-water" aria-hidden="true">
-        <svg className="is-back" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
-        <svg className="is-front" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
-      </span>
-      <span className="rail-upload-label" aria-hidden="true">{face}</span>
-      <span className="rail-upload-label is-submerged" aria-hidden="true">{face}</span>
-    </button>
+    <div className={`rail-upload-entry is-${status}`}>
+      <button
+        type="button"
+        className={`rail-upload is-${status} ${isDragOver ? "is-dragover" : ""}`}
+        style={{ "--fill": status === "idle" ? 0 : progress } as CSSProperties}
+        data-label={label}
+        aria-label={label}
+        aria-busy={busy}
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(event) => { event.preventDefault(); setIsDragOver(false); start(event.dataTransfer.files); }}
+      >
+        <span className="rail-upload-water" aria-hidden="true">
+          <svg className="is-back" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
+          <svg className="is-front" viewBox="0 0 120 14" preserveAspectRatio="none"><path d={WAVE_PATH} /></svg>
+        </span>
+        <span className="rail-upload-label" aria-hidden="true">{face}</span>
+        <span className="rail-upload-label is-submerged" aria-hidden="true">{face}</span>
+      </button>
+      {status === "idle" && (
+        <span className="rail-upload-nudge" aria-hidden="true">
+          <b>1</b>
+          <span>Start here<small>Upload elevation</small></span>
+        </span>
+      )}
+    </div>
     <span className="sr-only" role="status">{status === "idle" ? "" : label}</span>
     <input
       ref={inputRef}
