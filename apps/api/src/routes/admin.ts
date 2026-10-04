@@ -265,12 +265,16 @@ admin.get("/overview", async (c) => {
     [segToday],
     [segSpend],
     failureRows,
+    activeNowRows,
   ] = await Promise.all([
     db
       .select({
         total: sql<number>`count(*)::int`,
         newLast7Days: sql<number>`count(*) filter (where ${schema.users.createdAt} >= now() - interval '7 days')::int`,
-      activeLast7Days: sql<number>`count(*) filter (where exists (select 1 from projects p where p.owner_id = ${schema.users.id} and p.updated_at >= now() - interval '7 days'))::int`,
+        activeNow: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '5 minutes')::int`,
+        activeLastHour: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '1 hour')::int`,
+        activeLast24Hours: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '24 hours')::int`,
+        activeLast7Days: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '7 days')::int`,
         disabled: sql<number>`count(*) filter (where ${schema.users.disabled})::int`,
         outstanding: sql<number>`coalesce(sum(${schema.users.creditBalance}), 0)::int`,
       })
@@ -354,6 +358,12 @@ admin.get("/overview", async (c) => {
     selectAdminRenders(db)
       .where(eq(schema.renders.status, "failed"))
       .orderBy(desc(schema.renders.createdAt))
+      .limit(8),
+    db
+      .select({ id: schema.users.id, email: schema.users.email, lastActiveAt: schema.users.lastActiveAt })
+      .from(schema.users)
+      .where(and(eq(schema.users.role, "user"), eq(schema.users.disabled, false), gte(schema.users.lastActiveAt, sql`now() - interval '5 minutes'`)))
+      .orderBy(desc(schema.users.lastActiveAt))
       .limit(8),
   ]);
 
@@ -456,7 +466,8 @@ admin.get("/overview", async (c) => {
   }));
 
   const response: AdminOverviewResponse = {
-    users: { total: users!.total, newLast7Days: users!.newLast7Days, activeLast7Days: users!.activeLast7Days, disabled: users!.disabled },
+    users: { total: users!.total, newLast7Days: users!.newLast7Days, activeNow: users!.activeNow, activeLastHour: users!.activeLastHour, activeLast24Hours: users!.activeLast24Hours, activeLast7Days: users!.activeLast7Days, disabled: users!.disabled },
+    activity: { measuredAt: new Date().toISOString(), activeNow: activeNowRows.filter((row) => row.lastActiveAt).map((row) => ({ id: row.id, email: row.email, lastActiveAt: row.lastActiveAt!.toISOString() })) },
     renders: {
       total: totalRenders,
       today: today?.count ?? 0,

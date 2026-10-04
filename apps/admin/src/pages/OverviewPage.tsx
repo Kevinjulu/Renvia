@@ -74,6 +74,8 @@ export function OverviewPage() {
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {data.alerts.length > 0 && <AlertStrip alerts={data.alerts} />}
 
+          <ActiveCustomerActivity data={data} />
+
           <LiveCapacity data={data} />
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -293,12 +295,32 @@ function LiveCapacity({ data }: { data: AdminOverviewResponse }) {
       : `${token.usedPercent}% used · ${formatUsd(token.remainingUsd)} left`;
   return <Card title="Live capacity" icon={Activity} actions={<span className="text-xs text-faint">Synced {formatRelative(token.measuredAt)} · every 30s</span>}>
     <div className="grid gap-5 sm:grid-cols-3">
-      <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.users.activeLast7Days)}</p><p className="mt-1 text-sm font-medium text-primary">Active users</p><p className="mt-1 text-xs text-faint">Projects touched in the last 7 days</p></div>
+      <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.users.activeLast7Days)}</p><p className="mt-1 text-sm font-medium text-primary">Active customers</p><p className="mt-1 text-xs text-faint">Authenticated activity in the last 7 days</p></div>
       <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.credits.outstanding)}</p><p className="mt-1 text-sm font-medium text-primary">Customer credits available</p><p className="mt-1 text-xs text-faint">{formatNumber(data.credits.spentLast7Days)} used · {formatNumber(data.credits.grantedLast7Days)} granted this week</p></div>
       <div><p className="text-2xl font-bold tabular-nums text-primary">{token.budgetUsd > 0 ? formatUsd(token.remainingUsd) : "—"}</p><p className="mt-1 text-sm font-medium text-primary">Tracked FAL budget remaining</p><p className="mt-1 text-xs text-faint">{tokenDetail}</p></div>
     </div>
     <p className="mt-5 border-t border-hairline pt-3 text-xs text-faint">API budget is calculated from recorded render and segmentation costs against the configured FAL budget. It is not an unverified provider-wallet balance.</p>
   </Card>;
+}
+
+function ActiveCustomerActivity({ data }: { data: AdminOverviewResponse }) {
+  const activity = data.activity;
+  return <Card title="Customer activity" icon={Users} actions={<span className="text-xs text-faint">Authenticated product activity · {formatRelative(activity.measuredAt)}</span>}>
+    <div className="grid gap-4 sm:grid-cols-3">
+      <ActivityMetric label="Active now" value={data.users.activeNow} detail="Last 5 minutes" tone="emerald" />
+      <ActivityMetric label="Active in 1 hour" value={data.users.activeLastHour} detail="Recent product activity" tone="blue" />
+      <ActivityMetric label="Active in 24 hours" value={data.users.activeLast24Hours} detail={`${data.users.activeLast7Days} in 7 days`} tone="neutral" />
+    </div>
+    <div className="mt-5 border-t border-hairline pt-3">
+      {activity.activeNow.length ? <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{activity.activeNow.map((user) => <li key={user.id}><Link to={`/users/${user.id}`} className="block rounded-lg bg-emerald-50 px-3 py-2 text-sm transition hover:bg-emerald-100"><span className="block truncate font-medium text-emerald-900">{user.email}</span><span className="block text-xs text-emerald-700">Active {formatRelative(user.lastActiveAt)}</span></Link></li>)}</ul> : <p className="text-sm text-muted">No authenticated customers have made a product request in the last five minutes.</p>}
+      <p className="mt-3 text-xs text-faint">This does not count anonymous landing-page visitors because they cannot truthfully be attributed to a user.</p>
+    </div>
+  </Card>;
+}
+
+function ActivityMetric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: "emerald" | "blue" | "neutral" }) {
+  const color = tone === "emerald" ? "text-emerald-700" : tone === "blue" ? "text-blueprint" : "text-primary";
+  return <div className="rounded-xl border border-hairline bg-surface px-4 py-3"><p className={`text-2xl font-bold tabular-nums ${color}`}>{formatNumber(value)}</p><p className="mt-1 text-sm font-medium text-primary">{label}</p><p className="mt-0.5 text-xs text-faint">{detail}</p></div>;
 }
 
 function AlertStrip({ alerts }: { alerts: AdminOverviewResponse["alerts"] }) {

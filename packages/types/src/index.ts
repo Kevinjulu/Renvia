@@ -614,7 +614,9 @@ export interface AdminUpdateUserRequest {
 }
 
 export interface AdminOverviewResponse {
-  users: { total: number; newLast7Days: number; activeLast7Days: number; disabled: number };
+  users: { total: number; newLast7Days: number; activeNow: number; activeLastHour: number; activeLast24Hours: number; activeLast7Days: number; disabled: number };
+  /** Authenticated customer activity only—anonymous public visitors are not attributable to a user. */
+  activity: { measuredAt: string; activeNow: { id: string; email: string; lastActiveAt: string }[] };
   renders: {
     total: number;
     today: number;
