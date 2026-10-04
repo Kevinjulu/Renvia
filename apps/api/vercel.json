@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "pnpm --filter @renvia/db build",
+  "buildCommand": "pnpm --filter @renvia/types build && pnpm --filter @renvia/db build",
   "outputDirectory": "public",
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/[...route]" }],
   "crons": [{ "path": "/api/cron/sweep-renders", "schedule": "0 3 * * *" }]
