@@ -93,27 +93,38 @@ const FLUX_3_EDIT: ModelSpec = {
 };
 
 /**
- * Dedicated strict-fidelity route. EasyControl's built-in Canny preprocessor turns the source
- * into spatial guidance, while `reference_image_url` carries the (single strongest) material
- * reference separately. This keeps geometry and visual treatment from competing as one image.
+ * Dedicated strict-fidelity route.
+ *
+ * FAL rejects a request that combines EasyControl with its `reference_image_url` (its
+ * "reference-only" mode). A source-only strict render can therefore use Canny spatial
+ * control, but a strict render with a material reference must use the source image-to-image
+ * path plus reference-only guidance instead. In that compatible branch the low denoise value
+ * and the server-composed source-design contract retain the source building; the reference is
+ * limited to its visual treatment by the prompt.
  */
 const FLUX_GENERAL_FIDELITY: ModelSpec = {
   id: "fal-ai/flux-general/image-to-image",
   // fal bills this endpoint at $0.075 per rounded-up megapixel; Studio requests one 1K image.
   costMicros: 75_000,
-  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio, seed }) => ({
-    image_url: imageUrl,
-    prompt,
-    // Low denoise keeps the source image as the base; Canny locks its spatial lines.
-    strength: 0.25,
-    num_inference_steps: 28,
-    guidance_scale: 3.5,
-    easycontrols: [{ control_method_url: "canny", image_url: imageUrl, image_control_type: "spatial", scale: 1 }],
-    ...(referenceUrls[0] ? { reference_image_url: referenceUrls[0], reference_strength: 0.65 } : {}),
-    ...(SDXL_IMAGE_SIZE[aspectRatio] ? { image_size: SDXL_IMAGE_SIZE[aspectRatio] } : {}),
-    output_format: "jpeg",
-    ...(seed !== undefined ? { seed } : {}),
-  }),
+  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio, seed }) => {
+    const materialReference = referenceUrls[0];
+    return {
+      image_url: imageUrl,
+      prompt,
+      // Reference-only guidance and EasyControl are mutually exclusive in FAL. With a
+      // reference, lower denoise makes the source image the structural anchor; without one,
+      // Canny gives the strongest available spatial lock.
+      strength: materialReference ? 0.16 : 0.25,
+      num_inference_steps: 28,
+      guidance_scale: 3.5,
+      ...(materialReference
+        ? { reference_image_url: materialReference, reference_strength: 0.65 }
+        : { easycontrols: [{ control_method_url: "canny", image_url: imageUrl, image_control_type: "spatial", scale: 1 }] }),
+      ...(SDXL_IMAGE_SIZE[aspectRatio] ? { image_size: SDXL_IMAGE_SIZE[aspectRatio] } : {}),
+      output_format: "jpeg",
+      ...(seed !== undefined ? { seed } : {}),
+    };
+  },
 };
 
 // Bria preserves the existing architecture instead of generating a new design. The caller
