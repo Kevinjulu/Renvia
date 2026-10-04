@@ -5,6 +5,7 @@ import { renders } from "./routes/renders.js";
 import { segmentations } from "./routes/segmentations.js";
 import { uploads } from "./routes/uploads.js";
 import { falWebhook } from "./routes/webhooks/fal.js";
+import { paypalWebhook } from "./routes/webhooks/paypal.js";
 import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
@@ -32,6 +33,12 @@ export interface Env {
   ALLOWED_ORIGINS: string;
   /** Bearer token the sweep-renders cron must present; unset disables the endpoint. */
   CRON_SECRET?: string;
+  /** PayPal REST credentials — server-only, never exposed to the browser. */
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_CLIENT_SECRET?: string;
+  PAYPAL_WEBHOOK_ID?: string;
+  /** Defaults to live. Set `sandbox` only for the PayPal sandbox application. */
+  PAYPAL_ENV?: "sandbox" | "live";
 }
 
 export interface AuthVariables {
@@ -72,6 +79,7 @@ app.route("/renders", renders);
 app.route("/segmentations", segmentations);
 app.route("/uploads", uploads);
 app.route("/webhooks/fal", falWebhook);
+app.route("/webhooks/paypal", paypalWebhook);
 app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);

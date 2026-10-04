@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { AdminAuditAction, AdminAuditEvent, AdminAuditRange } from "@renvia/types";
 import {
+  AlertTriangle,
   ChevronDown,
   Coins,
   Search,
@@ -29,6 +30,9 @@ const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "credits.adjust", label: "Credits" },
   { value: "user.update", label: "Users" },
   { value: "settings.update", label: "Settings" },
+  { value: "render.refresh", label: "Render recovery" },
+  { value: "render.cancel", label: "Render cancellation" },
+  { value: "billing.payment", label: "Payments" },
 ];
 
 const RANGES: { value: RangeFilter; label: string }[] = [
@@ -60,6 +64,11 @@ const ACTION_META: Record<
     icon: Settings,
     chip: "bg-surface-muted text-secondary",
   },
+  "render.refresh": { label: "Render refresh", tone: "blue", icon: Settings, chip: "bg-blueprint-soft text-blueprint" },
+  "render.cancel": { label: "Render cancel", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "billing.webhook": { label: "Billing webhook", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
+  "billing.payment": { label: "Billing payment", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "billing.entitlement": { label: "Entitlement", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },
 };
 
 export function AuditPage() {

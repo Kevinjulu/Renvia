@@ -226,7 +226,12 @@ export interface DeleteCanvasNodeResponse {
   id: string;
 }
 
-export type UserRole = "user" | "admin";
+/**
+ * Roles are deliberately capability-oriented rather than a single all-powerful
+ * operator bucket. `admin` remains the break-glass role; the other staff roles
+ * are restricted by the API as well as by the admin UI.
+ */
+export type UserRole = "user" | "analyst" | "support" | "billing" | "admin";
 
 /** Every model currently costs ~$0.04 per image, so credits map 1:1 to images. */
 export const CREDITS_PER_IMAGE = 1;
@@ -570,7 +575,7 @@ export interface AdminUpdateUserRequest {
 }
 
 export interface AdminOverviewResponse {
-  users: { total: number; newLast7Days: number; disabled: number };
+  users: { total: number; newLast7Days: number; activeLast7Days: number; disabled: number };
   renders: {
     total: number;
     today: number;
@@ -589,7 +594,17 @@ export interface AdminOverviewResponse {
     byModel: { model: string; renders: number; spentUsd: number }[];
   };
   /** Credits currently held by users, and all-time granted/spent. */
-  credits: { outstanding: number; granted: number; spent: number };
+  credits: { outstanding: number; granted: number; spent: number; grantedLast7Days: number; spentLast7Days: number };
+  /** Live, internally tracked fal spend against the configured API-token budget. */
+  tokenUsage: {
+    provider: "fal";
+    configured: boolean;
+    budgetUsd: number;
+    spentUsd: number;
+    remainingUsd: number;
+    usedPercent: number | null;
+    measuredAt: string;
+  };
   /** Last 14 UTC days, oldest first. */
   daily: { date: string; renders: number; spentUsd: number }[];
   topUsers: { id: string; email: string; renders: number; spentUsd: number }[];
@@ -833,7 +848,15 @@ export interface AdminSegmentationDetailResponse {
   segmentation: AdminSegmentation;
 }
 
-export type AdminAuditAction = "credits.adjust" | "user.update" | "settings.update";
+export type AdminAuditAction =
+  | "credits.adjust"
+  | "user.update"
+  | "settings.update"
+  | "render.refresh"
+  | "render.cancel"
+  | "billing.webhook"
+  | "billing.payment"
+  | "billing.entitlement";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -859,4 +882,12 @@ export interface AdminAuditResponse {
     lastSettingsAt: string | null;
     actors: { id: string; email: string; count: number }[];
   };
+}
+
+/** Billing operations view. Provider event bodies never leave the API. */
+export interface AdminBillingResponse {
+  summary: { paidUsd: number; refundedUsd: number; pendingWebhooks: number; failedWebhooks: number };
+  plans: { id: string; name: string; slug: string; priceCents: number; currency: string; active: boolean; subscribers: number }[];
+  payments: { id: string; userEmail: string; provider: string; providerPaymentId: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
+  webhooks: { id: string; provider: string; eventType: string; status: "processed" | "failed" | "pending"; attempts: number; failureMessage: string | null; createdAt: string }[];
 }

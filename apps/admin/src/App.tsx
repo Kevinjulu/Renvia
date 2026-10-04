@@ -18,6 +18,7 @@ import { CreditsPage } from "./pages/CreditsPage";
 import { SegmentationsPage } from "./pages/SegmentationsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { BillingPage } from "./pages/BillingPage";
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -56,7 +57,7 @@ function AdminGate() {
     );
   }
   if (!me) return <AppLoader message="Checking access" />;
-  if (me.role !== "admin" || me.disabled) {
+  if (me.role === "user" || me.disabled) {
     return (
       <FullScreen>
         <div className="max-w-sm rounded-2xl border border-hairline bg-canvas p-8 text-center shadow-soft">
@@ -86,6 +87,7 @@ function AdminGate() {
           <Route path="/renders" element={<RendersPage />} />
           <Route path="/segmentations" element={<SegmentationsPage />} />
           <Route path="/credits" element={<CreditsPage />} />
+          <Route path="/billing" element={<BillingPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -167,7 +169,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
 
       <p className="mb-2 mt-5 px-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Navigate</p>
       <nav className="flex flex-1 flex-col gap-0.5 px-3 pb-4" aria-label="Admin sections">
-        {ADMIN_NAV.map((item) => (
+        {ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">)).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -204,7 +206,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
           <UserButton appearance={{ elements: { avatarBox: "h-8 w-8" } }} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium text-white">{me.email}</p>
-            <p className="text-[10px] text-ink-400">Signed in as admin</p>
+            <p className="text-[10px] capitalize text-ink-400">Signed in as {me.role}</p>
           </div>
         </div>
       </div>

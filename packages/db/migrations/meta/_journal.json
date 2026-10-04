@@ -141,6 +141,13 @@
       "when": 1791158400000,
       "tag": "0019_billing_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791244800000,
+      "tag": "0020_operator_roles_paypal",
+      "breakpoints": true
     }
   ]
 }

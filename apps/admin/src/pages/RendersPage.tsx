@@ -23,6 +23,7 @@ import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
+import { useAdmin } from "../lib/useAdmin";
 
 const PAGE_SIZE = 25;
 
@@ -108,7 +109,7 @@ export function RendersPage() {
         limit: PAGE_SIZE,
         offset,
       }),
-    [api, search, status, kind, stuck, model, userId, projectId, sort, order, offset],
+    [api, search, status, kind, stuck, model, userId, projectId, sort, order, offset], 20_000,
   );
 
   const toggleSort = (key: AdminRenderSort) => {
@@ -501,9 +502,12 @@ function RowActions({
 
 function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: () => void }) {
   const api = useAdminApi();
+  const me = useAdmin();
   const { data, error, loading, reload } = useLoad(() => api.getRender(renderId), [api, renderId]);
   const render = data?.render;
   const [copied, setCopied] = useState(false);
+  const [recovering, setRecovering] = useState<"refresh" | "cancel" | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
   const copyId = async () => {
     if (!render) return;
@@ -514,6 +518,18 @@ function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: 
     } catch {
       /* ignore */
     }
+  };
+  const recover = async (action: "refresh" | "cancel") => {
+    if (!render) return;
+    if (action === "cancel" && !window.confirm("Cancel this in-flight render? The customer will receive the normal credit refund.")) return;
+    setRecovering(action); setRecoveryError(null);
+    try {
+      if (action === "refresh") await api.refreshRender(render.id);
+      else await api.cancelRender(render.id);
+      reload();
+    } catch (reason) {
+      setRecoveryError(reason instanceof Error ? reason.message : "Render recovery failed");
+    } finally { setRecovering(null); }
   };
 
   return (
@@ -590,6 +606,7 @@ function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: 
                   {render.errorMessage}
                 </div>
               )}
+              {recoveryError && <ErrorNote>{recoveryError}</ErrorNote>}
 
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <DetailField label="User">
@@ -650,6 +667,14 @@ function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: 
                   {copied ? <Check size={15} /> : <Copy size={15} />}
                   {copied ? "Copied ID" : "Copy ID"}
                 </button>
+                {(["admin", "support"] as const).includes(me.role as "admin" | "support") && (render.status === "pending" || render.status === "processing") && <>
+                  <button type="button" disabled={recovering !== null} onClick={() => void recover("refresh")} className="inline-flex items-center gap-1.5 rounded-xl border border-hairline bg-canvas px-3.5 py-2 text-sm font-medium text-primary shadow-card transition hover:bg-surface disabled:opacity-50">
+                    {recovering === "refresh" ? "Refreshing…" : "Refresh provider status"}
+                  </button>
+                  <button type="button" disabled={recovering !== null} onClick={() => void recover("cancel")} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50">
+                    {recovering === "cancel" ? "Cancelling…" : "Cancel and refund"}
+                  </button>
+                </>}
               </div>
             </div>
           )}

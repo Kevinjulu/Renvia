@@ -109,6 +109,24 @@ Env (`apps/admin/.env.local`, all public): `VITE_CLERK_PUBLISHABLE_KEY`,
 (e.g. `http://localhost:5174` locally, the admin domain on Vercel) — the API
 uses that list for CORS and to reject session tokens minted for other origins.
 
+### PayPal webhooks
+
+The API accepts PayPal callbacks at `POST /api/webhooks/paypal`. It verifies every
+delivery server-to-server before recording or settling it; browser redirects and
+unverified callbacks never grant credits or an entitlement. Configure these **API
+project** environment variables (never `VITE_*`):
+
+- `PAYPAL_CLIENT_ID`
+- `PAYPAL_CLIENT_SECRET`
+- `PAYPAL_WEBHOOK_ID` — the webhook ID, not the client ID
+- `PAYPAL_ENV=sandbox` for the sandbox app, or omit it for live
+
+Subscribe the PayPal app to at least `PAYMENT.CAPTURE.COMPLETED` and
+`PAYMENT.CAPTURE.REFUNDED`, with the deployed HTTPS URL ending in
+`/api/webhooks/paypal`. The Billing tab shows delivery failures without exposing
+provider event payloads. A capture only settles when its signed event matches an
+existing Renvia checkout's PayPal order ID, currency, and amount.
+
 ## Credits
 
 1 credit = 1 image. New users get the signup bonus (default 25) once; admins

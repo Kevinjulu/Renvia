@@ -11,7 +11,7 @@ interface LoadState<T> {
  * Runs `load` whenever `deps` change and keeps the last successful result while
  * reloading, so tables don't flash empty between pages or searches.
  */
-export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): LoadState<T> {
+export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0): LoadState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,5 +42,10 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): LoadState<T
   }, [...deps, version]);
 
   const reload = useCallback(() => setVersion((value) => value + 1), []);
+  useEffect(() => {
+    if (!pollMs) return;
+    const timer = window.setInterval(() => setVersion((value) => value + 1), pollMs);
+    return () => window.clearInterval(timer);
+  }, [pollMs]);
   return { data, error, loading, reload };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { AlertTriangle, Shield, ShieldOff } from "lucide-react";
-import type { AdminUser } from "@renvia/types";
+import type { AdminUser, UserRole } from "@renvia/types";
 import { Button } from "./ui";
 import { ApiError, useAdminApi } from "../lib/api";
 
@@ -13,11 +13,17 @@ interface RoleChangeModalProps {
   onDone: () => void;
 }
 
-const PROMOTE_CONSEQUENCES = [
+const ADMIN_CONSEQUENCES = [
   "Full access to this admin dashboard (users, credits, settings, audit).",
   "Unlimited free renders and selections — not charged credits.",
   "Can grant credits, disable accounts, and promote or demote other admins.",
   "Exempt from daily limits and maintenance pauses.",
+];
+
+const OPERATOR_CONSEQUENCES = [
+  "Dashboard access is limited to the permissions for the selected operator role.",
+  "They cannot change their scope from the dashboard.",
+  "They remain subject to normal customer credit and usage rules.",
 ];
 
 const DEMOTE_CONSEQUENCES = [
@@ -35,11 +41,18 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
   const titleId = useId();
   const confirmId = useId();
   const [typed, setTyped] = useState("");
+  const [role, setRole] = useState<UserRole>(action === "promote" ? "admin" : "user");
   const [ack, setAck] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const promoting = action === "promote";
+  const promoting = role !== "user";
+  const isAdminRole = role === "admin";
+  const consequences = promoting
+    ? isAdminRole
+      ? ADMIN_CONSEQUENCES
+      : OPERATOR_CONSEQUENCES
+    : DEMOTE_CONSEQUENCES;
   const emailMatch = typed.trim().toLowerCase() === user.email.trim().toLowerCase();
   const canSubmit = emailMatch && ack && !saving && !(promoting && user.disabled);
 
@@ -58,7 +71,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
     setError(null);
     try {
       await api.updateUser(user.id, {
-        role: promoting ? "admin" : "user",
+        role,
         confirmEmail: typed.trim(),
       });
       onDone();
@@ -94,7 +107,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
           </span>
           <div className="min-w-0">
             <h2 id={titleId} className="text-lg font-semibold text-primary">
-              {promoting ? "Promote to admin" : "Remove admin access"}
+              {promoting ? "Assign operator role" : "Remove operator access"}
             </h2>
             <p className="mt-1 break-all text-sm text-muted">{user.email}</p>
           </div>
@@ -108,7 +121,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <span>
             {promoting
-              ? "This is a privileged action. The new admin can manage every account and spend on the fal budget without credit charges."
+              ? isAdminRole ? "Admin is the break-glass role with unrestricted operational access." : "This grants a scoped operator role; API permissions remain enforced server-side."
               : "They will lose dashboard access immediately. Make sure another admin remains."}
           </span>
         </div>
@@ -120,9 +133,10 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
         )}
 
         <div className="mt-5">
+          <label className="block text-sm"><span className="font-medium text-primary">Role to assign</span><select value={role} onChange={(event) => setRole(event.target.value as UserRole)} className="mt-1.5 w-full rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm text-primary outline-none focus:border-blueprint focus:bg-canvas"><option value="user">User — no operator access</option><option value="analyst">Analyst — read-only operations</option><option value="support">Support — users and render recovery</option><option value="billing">Billing — payments and credit operations</option><option value="admin">Admin — unrestricted</option></select></label>
           <p className="text-sm font-medium text-primary">What changes</p>
           <ul className="mt-2 space-y-2">
-            {(promoting ? PROMOTE_CONSEQUENCES : DEMOTE_CONSEQUENCES).map((item) => (
+            {consequences.map((item) => (
               <li key={item} className="flex gap-2 text-sm text-secondary">
                 <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-faint" />
                 <span>{item}</span>
@@ -140,7 +154,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
           />
           <span className="text-sm text-primary">
             I understand these privileges and am deliberately{" "}
-            {promoting ? "appointing this person as an admin" : "removing their admin access"}.
+            {promoting ? `assigning the ${role} role` : "removing their operator access"}.
           </span>
         </label>
 
@@ -178,12 +192,8 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
           </Button>
           <Button type="submit" variant={promoting ? "primary" : "danger"} disabled={!canSubmit}>
             {saving
-              ? promoting
-                ? "Promoting…"
-                : "Removing…"
-              : promoting
-                ? "Promote to admin"
-                : "Remove admin"}
+              ? "Saving…"
+              : promoting ? `Assign ${role}` : "Remove access"}
           </Button>
         </div>
       </form>

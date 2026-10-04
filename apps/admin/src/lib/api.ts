@@ -6,6 +6,7 @@ import type {
   AdminAuditResponse,
   AdminBulkGrantCreditsRequest,
   AdminBulkGrantCreditsResponse,
+  AdminBillingResponse,
   AdminCreditDirection,
   AdminCreditOrder,
   AdminCreditSort,
@@ -92,7 +93,7 @@ export function useAdminApi() {
       getOverview: () => request<AdminOverviewResponse>(getToken, "/admin/overview"),
       listUsers: (params: {
         search?: string;
-        role?: "user" | "admin";
+        role?: "user" | "analyst" | "support" | "billing" | "admin";
         status?: "active" | "disabled";
         balance?: "low" | "zero";
         sort?: AdminUserSort;
@@ -128,6 +129,8 @@ export function useAdminApi() {
           })}`,
         ),
       getRender: (id: string) => request<AdminRenderDetailResponse>(getToken, `/admin/renders/${id}`),
+      refreshRender: (id: string) => request<AdminRenderDetailResponse>(getToken, `/admin/renders/${id}/refresh`, { method: "POST" }),
+      cancelRender: (id: string) => request<AdminRenderDetailResponse>(getToken, `/admin/renders/${id}/cancel`, { method: "POST" }),
       listProjects: (params: {
         search?: string;
         health?: AdminProjectHealth;
@@ -147,6 +150,7 @@ export function useAdminApi() {
         limit?: number;
         offset?: number;
       }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
+      getBilling: () => request<AdminBillingResponse>(getToken, "/admin/billing"),
       listSegmentations: (params: {
         status?: SegmentationStatus;
         mode?: AdminSegmentationMode;

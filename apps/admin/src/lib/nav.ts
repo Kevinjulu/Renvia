@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, Users, Wallet } from "lucide-react";
+import type { UserRole } from "@renvia/types";
+import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, Users, Wallet } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -14,6 +15,7 @@ export interface AdminNavItem {
   hint: string;
   /** Banner image in /banners (served from admin public). */
   banner: string;
+  roles: readonly Exclude<UserRole, "user">[];
 }
 
 /** Single source of truth for sidebar + page heroes across the eight tabs. */
@@ -27,6 +29,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Live pulse of usage, fal spend, and pipeline health — start here when something looks off.",
     hint: "Health & spend at a glance",
     banner: "/banners/exterior-1.jpg",
+    roles: ["analyst", "support", "billing", "admin"],
   },
   {
     to: "/users",
@@ -37,6 +40,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Accounts, credits, roles, and access — promote admins, disable accounts, and top up balances.",
     hint: "Roles, credits, access",
     banner: "/banners/community.jpg",
+    roles: ["support", "billing", "admin"],
   },
   {
     to: "/projects",
@@ -47,6 +51,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Every studio workspace with its owner, spend, and render health — open one to inspect activity.",
     hint: "Workspaces & owners",
     banner: "/banners/cabin.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/renders",
@@ -57,6 +62,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Triage the generation pipeline — stuck jobs, failures, model cost, and full job detail.",
     hint: "Jobs, failures, stuck",
     banner: "/banners/elevation.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/segmentations",
@@ -67,6 +73,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Automatic selections from Auto select — prompts, clicks, masks, and SAM spend.",
     hint: "Auto-select masks",
     banner: "/banners/exterior-2.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/credits",
@@ -77,6 +84,18 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "The ledger of every grant, charge, and refund — what’s outstanding and what flowed through.",
     hint: "Grants, charges, refunds",
     banner: "/banners/lakeside.jpg",
+    roles: ["analyst", "billing", "admin"],
+  },
+  {
+    to: "/billing",
+    label: "Billing",
+    icon: CreditCard,
+    end: false,
+    title: "Billing operations",
+    description: "Payments, active plans, and signed provider-webhook delivery health.",
+    hint: "Revenue & PayPal events",
+    banner: "/banners/lakeside.jpg",
+    roles: ["billing", "admin"],
   },
   {
     to: "/audit",
@@ -87,6 +106,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "A permanent trail of operator actions — credit grants, role changes, and settings updates.",
     hint: "Who changed what",
     banner: "/banners/exterior-3.jpg",
+    roles: ["analyst", "billing", "admin"],
   },
   {
     to: "/settings",
@@ -97,6 +117,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     description: "Live ops controls — engine mode, budgets, limits, maintenance, and alerts. No redeploy needed.",
     hint: "Mode, budget, limits",
     banner: "/banners/exterior-1.jpg",
+    roles: ["admin"],
   },
 ];
 

@@ -9,6 +9,7 @@ import type {
   AdminAuditEvent,
   AdminAuditRange,
   AdminBulkGrantCreditsResponse,
+  AdminBillingResponse,
   AdminCreditDirection,
   AdminCreditEntry,
   AdminCreditOrder,
@@ -34,6 +35,7 @@ import type {
   CreditLedgerReason,
   RenderStatus,
   SegmentationStatus,
+  UserRole,
 } from "@renvia/types";
 import type { AuthVariables, Env } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -42,6 +44,7 @@ import { modelsFor } from "../lib/models.js";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsRow } from "../lib/settings.js";
 import { getUsage, resolveLimits } from "../lib/limits.js";
 import { presentUploadUrl } from "../lib/storage.js";
+import { cancelRender, refreshRender } from "../lib/engine.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type AdminContext = { Bindings: Env; Variables: AuthVariables & { admin: UserRow; db: Database } };
@@ -65,11 +68,45 @@ function isSegStuck(status: SegmentationStatus, createdAt: Date, minutes: number
   return createdAt.getTime() < Date.now() - minutes * 60 * 1000;
 }
 
-/** Only active admins get past this — the role lives in our users table, not in Clerk. */
-const requireAdmin = createMiddleware<AdminContext>(async (c, next) => {
+type AdminPermission =
+  | "overview.read"
+  | "users.read"
+  | "users.manage"
+  | "renders.read"
+  | "renders.recover"
+  | "projects.read"
+  | "segmentations.read"
+  | "credits.read"
+  | "credits.manage"
+  | "audit.read"
+  | "settings.read"
+  | "settings.manage"
+  | "billing.read";
+
+const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
+  user: [],
+  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read"],
+  support: ["overview.read", "users.read", "renders.read", "renders.recover", "projects.read", "segmentations.read"],
+  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read"],
+  admin: [
+    "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read",
+  ],
+};
+
+function hasPermission(role: UserRole, permission: AdminPermission): boolean {
+  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+}
+
+function denyUnless(c: { get: (key: "admin") => UserRow }, permission: AdminPermission) {
+  return hasPermission(c.get("admin").role as UserRole, permission) ? null : { error: "Forbidden" };
+}
+
+/** Only active staff get past this — capability checks happen on every route below. */
+const requireOperator = createMiddleware<AdminContext>(async (c, next) => {
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
-  if (user.role !== "admin" || user.disabled) {
+  if (!hasPermission(user.role as UserRole, "overview.read") || user.disabled) {
     return c.json({ error: "Forbidden" }, 403);
   }
   c.set("admin", user);
@@ -77,7 +114,7 @@ const requireAdmin = createMiddleware<AdminContext>(async (c, next) => {
   await next();
 });
 
-admin.use("*", requireAuth, requireAdmin);
+admin.use("*", requireAuth, requireOperator);
 
 // ── Shared query pieces ──────────────────────────────────────────────────────────
 
@@ -193,6 +230,7 @@ const paging = z.object({
 // ── Overview ─────────────────────────────────────────────────────────────────────
 
 admin.get("/overview", async (c) => {
+  const denied = denyUnless(c, "overview.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const settings = await getSettings(db);
   const startOfToday = sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`;
@@ -216,6 +254,7 @@ admin.get("/overview", async (c) => {
       .select({
         total: sql<number>`count(*)::int`,
         newLast7Days: sql<number>`count(*) filter (where ${schema.users.createdAt} >= now() - interval '7 days')::int`,
+      activeLast7Days: sql<number>`count(*) filter (where exists (select 1 from projects p where p.owner_id = ${schema.users.id} and p.updated_at >= now() - interval '7 days'))::int`,
         disabled: sql<number>`count(*) filter (where ${schema.users.disabled})::int`,
         outstanding: sql<number>`coalesce(sum(${schema.users.creditBalance}), 0)::int`,
       })
@@ -242,6 +281,8 @@ admin.get("/overview", async (c) => {
       .select({
         granted: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.reason} not in ('render_refund', 'segment_refund')), 0)::int`,
         spent: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.reason} in ('render', 'render_refund', 'segment', 'segment_refund')), 0)::int`,
+        grantedLast7Days: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.createdAt} >= now() - interval '7 days' and ${schema.creditLedger.reason} not in ('render_refund', 'segment_refund')), 0)::int`,
+        spentLast7Days: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} < 0 and ${schema.creditLedger.createdAt} >= now() - interval '7 days'), 0)::int`,
       })
       .from(schema.creditLedger),
     db.execute<{ date: string; renders: number; spent_micros: string }>(sql`
@@ -305,7 +346,12 @@ admin.get("/overview", async (c) => {
   const totalRenders = Object.values(byStatus).reduce((sum, count) => sum + count, 0);
   const finished = byStatus.succeeded + byStatus.failed;
   const failureRate = finished > 0 ? byStatus.failed / finished : 0;
-  const spentMicros = modelRows.reduce((sum, row) => sum + Number(row.spentMicros), 0);
+  // The configured FAL budget pays for both render and segmentation calls. Keep
+  // this single number aligned with Settings and do not present render-only cost
+  // as the remaining provider-token budget.
+  const spentMicros =
+    modelRows.reduce((sum, row) => sum + Number(row.spentMicros), 0) +
+    Number(segSpend?.spentMicros ?? 0);
   const mode = effectiveEngineMode(c.env, settings);
   const spentUsd = spentMicros / MICROS_PER_USD;
   const budgetUsd = effectiveBudgetUsd(c.env, settings);
@@ -394,7 +440,7 @@ admin.get("/overview", async (c) => {
   }));
 
   const response: AdminOverviewResponse = {
-    users: { total: users!.total, newLast7Days: users!.newLast7Days, disabled: users!.disabled },
+    users: { total: users!.total, newLast7Days: users!.newLast7Days, activeLast7Days: users!.activeLast7Days, disabled: users!.disabled },
     renders: {
       total: totalRenders,
       today: today?.count ?? 0,
@@ -415,7 +461,16 @@ admin.get("/overview", async (c) => {
         spentUsd: Number(row.spentMicros) / MICROS_PER_USD,
       })),
     },
-    credits: { outstanding: users!.outstanding, granted: credits?.granted ?? 0, spent: credits?.spent ?? 0 },
+    credits: { outstanding: users!.outstanding, granted: credits?.granted ?? 0, spent: credits?.spent ?? 0, grantedLast7Days: credits?.grantedLast7Days ?? 0, spentLast7Days: credits?.spentLast7Days ?? 0 },
+    tokenUsage: {
+      provider: "fal",
+      configured: Boolean(c.env.FAL_KEY?.trim()),
+      budgetUsd,
+      spentUsd,
+      remainingUsd: Math.max(0, budgetUsd - spentUsd),
+      usedPercent: budgetUsd > 0 ? Math.min(100, Math.round(budgetRatio * 1000) / 10) : null,
+      measuredAt: new Date().toISOString(),
+    },
     daily: dailyRows.rows.map((row) => ({
       date: row.date,
       renders: Number(row.renders),
@@ -449,10 +504,11 @@ function formatUsdAlert(value: number): string {
 // ── Users ────────────────────────────────────────────────────────────────────────
 
 admin.get("/users", async (c) => {
+  const denied = denyUnless(c, "users.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const search = c.req.query("search")?.trim();
-  const role = z.enum(["user", "admin"]).optional().parse(c.req.query("role") || undefined);
+  const role = z.enum(["user", "analyst", "support", "billing", "admin"]).optional().parse(c.req.query("role") || undefined);
   const status = z.enum(["active", "disabled"]).optional().parse(c.req.query("status") || undefined);
   const balance = z.enum(["low", "zero"]).optional().parse(c.req.query("balance") || undefined);
   const sort = z
@@ -536,6 +592,7 @@ admin.get("/users", async (c) => {
 });
 
 admin.post("/users/bulk-credits", async (c) => {
+  const denied = denyUnless(c, "credits.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const adminUser = c.get("admin");
   const body = z
@@ -548,38 +605,40 @@ admin.post("/users/bulk-credits", async (c) => {
 
   const uniqueIds = [...new Set(body.userIds)];
   const existing = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, uniqueIds));
-  if (existing.length === 0) return c.json({ error: "No matching users" }, 404);
-
-  for (const user of existing) {
-    await db.batch([
-      db
-        .update(schema.users)
-        .set({ creditBalance: sql`${schema.users.creditBalance} + ${body.amount}` })
-        .where(eq(schema.users.id, user.id)),
-      db.insert(schema.creditLedger).values({
-        userId: user.id,
-        amount: body.amount,
-        reason: "admin_grant",
-        note: body.note,
-        actorId: adminUser.id,
-      }),
-    ]);
+  if (existing.length !== uniqueIds.length) return c.json({ error: "One or more selected users no longer exist" }, 404);
+  const settings = await getSettings(db);
+  if (settings.maxCreditBalance !== null) {
+    const balances = await db.select({ id: schema.users.id, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, uniqueIds));
+    const aboveCap = balances.find((user) => user.creditBalance + body.amount > settings.maxCreditBalance!);
+    if (aboveCap) {
+      return c.json({ error: `A selected balance would exceed the ${settings.maxCreditBalance}-credit cap`, code: "balance_cap" }, 400);
+    }
   }
 
-  await recordAdminEvent(db, {
-    actorId: adminUser.id,
-    action: "credits.adjust",
-    targetType: "users",
-    targetId: null,
-    summary: `Granted ${body.amount} credits to ${existing.length} users`,
-    detail: { amount: body.amount, note: body.note, userIds: existing.map((user) => user.id), emails: existing.map((user) => user.email) },
-  });
+  // Neon executes a batch as one transaction. The ledger rows and the audit event
+  // therefore cannot be separated from a partially completed bulk grant.
+  const writes = existing.flatMap((user) => [
+    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${body.amount}` }).where(eq(schema.users.id, user.id)),
+    db.insert(schema.creditLedger).values({ userId: user.id, amount: body.amount, reason: "admin_grant", note: body.note, actorId: adminUser.id }),
+  ]);
+  await db.batch([
+    ...writes,
+    db.insert(schema.adminEvents).values({
+      actorId: adminUser.id,
+      action: "credits.adjust",
+      targetType: "users",
+      targetId: null,
+      summary: `Granted ${body.amount} credits to ${existing.length} users`,
+      detail: { amount: body.amount, note: body.note, userIds: existing.map((user) => user.id), emails: existing.map((user) => user.email) },
+    }),
+  ]);
 
   const response: AdminBulkGrantCreditsResponse = { updated: existing.length };
   return c.json(response);
 });
 
 admin.get("/users/:id", async (c) => {
+  const denied = denyUnless(c, "users.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
   const [user, settings] = await Promise.all([findAdminUser(db, id), getSettings(db)]);
@@ -656,16 +715,17 @@ async function recordAdminEvent(
 }
 
 admin.post("/users/:id/credits", async (c) => {
+  const denied = denyUnless(c, "credits.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
   const { amount, note } = grantSchema.parse(await c.req.json());
   const adminUser = c.get("admin");
+  const target = await findAdminUser(db, id);
+  if (!target) return c.json({ error: "Not found" }, 404);
 
   // The balance ceiling applies to grants only — a removal is always allowed.
   if (amount > 0) {
     const settings = await getSettings(db);
-    const target = await findAdminUser(db, id);
-    if (!target) return c.json({ error: "Not found" }, 404);
     if (settings.maxCreditBalance !== null && target.creditBalance + amount > settings.maxCreditBalance) {
       return c.json(
         {
@@ -688,6 +748,14 @@ admin.post("/users/:id/credits", async (c) => {
         .where(eq(schema.users.id, id))
         .returning({ id: schema.users.id }),
       db.insert(schema.creditLedger).values({ userId: id, amount, reason: "admin_grant", note, actorId: adminUser.id }),
+      db.insert(schema.adminEvents).values({
+        actorId: adminUser.id,
+        action: "credits.adjust",
+        targetType: "user",
+        targetId: id,
+        summary: `${amount > 0 ? "Granted" : "Removed"} ${Math.abs(amount)} credits for ${target.email}`,
+        detail: { amount, note, email: target.email },
+      }),
     ]);
     if (updated.length === 0) return c.json({ error: "Not found" }, 404);
   } catch (error) {
@@ -699,23 +767,13 @@ admin.post("/users/:id/credits", async (c) => {
     throw error;
   }
 
-  const user = await findAdminUser(db, id);
-  await recordAdminEvent(db, {
-    actorId: adminUser.id,
-    action: "credits.adjust",
-    targetType: "user",
-    targetId: id,
-    summary: `${amount > 0 ? "Granted" : "Removed"} ${Math.abs(amount)} credits for ${user?.email ?? id}`,
-    detail: { amount, note, email: user?.email ?? null },
-  });
-
-  return c.json({ user });
+  return c.json({ user: await findAdminUser(db, id) });
 });
 
 const updateUserSchema = z
   .object({
     disabled: z.boolean().optional(),
-    role: z.enum(["user", "admin"]).optional(),
+    role: z.enum(["user", "analyst", "support", "billing", "admin"]).optional(),
     confirmEmail: z.string().trim().email().optional(),
     // 0 blocks the user outright; null clears the override so the global setting applies.
     dailyRenderLimitOverride: z.number().int().min(0).max(10_000).nullable().optional(),
@@ -747,6 +805,7 @@ const LIMIT_OVERRIDE_LABELS = [
 ] as const;
 
 admin.patch("/users/:id", async (c) => {
+  const denied = denyUnless(c, "users.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
   const body = updateUserSchema.parse(await c.req.json());
@@ -853,6 +912,7 @@ admin.patch("/users/:id", async (c) => {
 // ── Renders ──────────────────────────────────────────────────────────────────────
 
 admin.get("/renders", async (c) => {
+  const denied = denyUnless(c, "renders.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const settings = await getSettings(db);
   const stuckMinutes = settings.stuckTimeoutMinutes;
@@ -958,12 +1018,61 @@ admin.get("/renders", async (c) => {
 });
 
 admin.get("/renders/:id", async (c) => {
+  const denied = denyUnless(c, "renders.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
   const settings = await getSettings(db);
   const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
   if (!row) return c.json({ error: "Render not found" }, 404);
   return c.json({ render: await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) });
+});
+
+/**
+ * Operator recovery uses the same idempotent engine paths as customer polling.
+ * It never fabricates a result or a refund: refresh asks fal for the authoritative
+ * state; cancel is best-effort at fal and records the normal failed/refund outcome.
+ */
+admin.post("/renders/:id/refresh", async (c) => {
+  const denied = denyUnless(c, "renders.recover"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [render] = await db.select().from(schema.renders).where(eq(schema.renders.id, id)).limit(1);
+  if (!render) return c.json({ error: "Render not found" }, 404);
+  const refreshed = await refreshRender(c.env, db, render, new URL(c.req.url).origin);
+  await recordAdminEvent(db, {
+    actorId: c.get("admin").id,
+    action: "render.refresh",
+    targetType: "render",
+    targetId: id,
+    summary: `Refreshed render ${id}`,
+    detail: { statusBefore: render.status, statusAfter: refreshed.status },
+  });
+  const settings = await getSettings(db);
+  const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
+  return c.json({ render: row ? await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) : refreshed });
+});
+
+admin.post("/renders/:id/cancel", async (c) => {
+  const denied = denyUnless(c, "renders.recover"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [render] = await db.select().from(schema.renders).where(eq(schema.renders.id, id)).limit(1);
+  if (!render) return c.json({ error: "Render not found" }, 404);
+  if (render.status !== "pending" && render.status !== "processing") {
+    return c.json({ error: "Only pending or processing renders can be cancelled" }, 409);
+  }
+  const cancelled = await cancelRender(c.env, db, render);
+  await recordAdminEvent(db, {
+    actorId: c.get("admin").id,
+    action: "render.cancel",
+    targetType: "render",
+    targetId: id,
+    summary: `Cancelled render ${id}`,
+    detail: { statusBefore: render.status, statusAfter: cancelled.status, creditsCharged: render.creditsCharged },
+  });
+  const settings = await getSettings(db);
+  const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
+  return c.json({ render: row ? await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) : cancelled });
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────────
@@ -1058,6 +1167,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
 }
 
 admin.get("/settings", async (c) => {
+  const denied = denyUnless(c, "settings.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   return c.json(await toAdminSettings(c.env, db, await getSettings(db)));
 });
@@ -1106,6 +1216,7 @@ const updateSettingsSchema = z
   });
 
 admin.put("/settings", async (c) => {
+  const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const body = updateSettingsSchema.parse(await c.req.json());
   const adminUser = c.get("admin");
@@ -1250,6 +1361,7 @@ function projectSelect(db: Database, stats: ProjectStats) {
 }
 
 admin.get("/projects", async (c) => {
+  const denied = denyUnless(c, "projects.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const search = c.req.query("search")?.trim();
@@ -1331,6 +1443,7 @@ admin.get("/projects", async (c) => {
 });
 
 admin.get("/projects/:id", async (c) => {
+  const denied = denyUnless(c, "projects.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const id = z.string().uuid().parse(c.req.param("id"));
   const settings = await getSettings(db);
@@ -1382,6 +1495,7 @@ function toAdminCreditEntry(
 }
 
 admin.get("/credits", async (c) => {
+  const denied = denyUnless(c, "credits.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const reason = z.enum(CREDIT_REASONS).optional().parse(c.req.query("reason") || undefined);
@@ -1465,6 +1579,40 @@ admin.get("/credits", async (c) => {
   });
 });
 
+// ── Billing operations ──────────────────────────────────────────────────────────
+
+admin.get("/billing", async (c) => {
+  const denied = denyUnless(c, "billing.read"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const [plans, payments, webhooks, [totals]] = await Promise.all([
+    db
+      .select({ id: schema.billingPlans.id, name: schema.billingPlans.name, slug: schema.billingPlans.slug, priceCents: schema.billingPlans.priceCents, currency: schema.billingPlans.currency, active: schema.billingPlans.isActive, subscribers: sql<number>`count(${schema.userEntitlements.id})::int` })
+      .from(schema.billingPlans)
+      .leftJoin(schema.userEntitlements, and(eq(schema.userEntitlements.planId, schema.billingPlans.id), eq(schema.userEntitlements.status, "active")))
+      .groupBy(schema.billingPlans.id)
+      .orderBy(asc(schema.billingPlans.priceCents)),
+    db
+      .select({ id: schema.billingPayments.id, userEmail: schema.users.email, provider: schema.billingPayments.provider, providerPaymentId: schema.billingPayments.providerPaymentId, status: schema.billingPayments.status, amountCents: schema.billingPayments.amountCents, currency: schema.billingPayments.currency, createdAt: schema.billingPayments.createdAt, paidAt: schema.billingPayments.paidAt })
+      .from(schema.billingPayments).innerJoin(schema.users, eq(schema.billingPayments.userId, schema.users.id)).orderBy(desc(schema.billingPayments.createdAt)).limit(30),
+    db
+      .select({ id: schema.billingWebhookEvents.id, provider: schema.billingWebhookEvents.provider, eventType: schema.billingWebhookEvents.eventType, processedAt: schema.billingWebhookEvents.processedAt, failedAt: schema.billingWebhookEvents.failedAt, attempts: schema.billingWebhookEvents.attempts, failureMessage: schema.billingWebhookEvents.failureMessage, createdAt: schema.billingWebhookEvents.createdAt })
+      .from(schema.billingWebhookEvents).orderBy(desc(schema.billingWebhookEvents.createdAt)).limit(30),
+    db.select({ paid: sql<number>`coalesce(sum(${schema.billingPayments.amountCents}) filter (where ${schema.billingPayments.status} = 'paid'), 0)::int`, refunded: sql<number>`coalesce(sum(${schema.billingPayments.amountCents}) filter (where ${schema.billingPayments.status} = 'refunded'), 0)::int` }).from(schema.billingPayments),
+  ]);
+  const response: AdminBillingResponse = {
+    summary: {
+      paidUsd: (totals?.paid ?? 0) / 100,
+      refundedUsd: (totals?.refunded ?? 0) / 100,
+      pendingWebhooks: webhooks.filter((event) => !event.processedAt && !event.failedAt).length,
+      failedWebhooks: webhooks.filter((event) => Boolean(event.failedAt)).length,
+    },
+    plans: plans.map((plan) => ({ ...plan, active: plan.active })),
+    payments: payments.map((payment) => ({ ...payment, createdAt: payment.createdAt.toISOString(), paidAt: payment.paidAt?.toISOString() ?? null })),
+    webhooks: webhooks.map((event) => ({ id: event.id, provider: event.provider, eventType: event.eventType, status: event.processedAt ? "processed" : event.failedAt ? "failed" : "pending", attempts: event.attempts, failureMessage: event.failureMessage, createdAt: event.createdAt.toISOString() })),
+  };
+  return c.json(response);
+});
+
 // ── Segmentations ────────────────────────────────────────────────────────────────
 
 function toAdminSegmentation(
@@ -1493,6 +1641,7 @@ function toAdminSegmentation(
 }
 
 admin.get("/segmentations", async (c) => {
+  const denied = denyUnless(c, "segmentations.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const settings = await getSettings(db);
   const stuckMinutes = settings.stuckTimeoutMinutes;
@@ -1599,6 +1748,7 @@ admin.get("/segmentations", async (c) => {
 });
 
 admin.get("/segmentations/:id", async (c) => {
+  const denied = denyUnless(c, "segmentations.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const settings = await getSettings(db);
   const id = z.string().uuid().parse(c.req.param("id"));
@@ -1633,10 +1783,11 @@ function toAdminAuditEvent(event: typeof schema.adminEvents.$inferSelect, actorE
 }
 
 admin.get("/audit", async (c) => {
+  const denied = denyUnless(c, "audit.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const action = z
-    .enum(["credits.adjust", "user.update", "settings.update"])
+    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "billing.webhook", "billing.payment", "billing.entitlement"])
     .optional()
     .parse(c.req.query("action") || undefined) as AdminAuditAction | undefined;
   const actorId = z.string().uuid().optional().parse(c.req.query("actorId") || undefined);
@@ -1723,6 +1874,11 @@ admin.get("/audit", async (c) => {
     "credits.adjust": 0,
     "user.update": 0,
     "settings.update": 0,
+    "render.refresh": 0,
+    "render.cancel": 0,
+    "billing.webhook": 0,
+    "billing.payment": 0,
+    "billing.entitlement": 0,
   };
   for (const row of actionRows) {
     if (row.action in byAction) byAction[row.action as AdminAuditAction] = row.count;

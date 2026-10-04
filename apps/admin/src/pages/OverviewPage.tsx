@@ -28,7 +28,7 @@ const MODE_LABEL = { mock: "Mock (free)", dev: "Dev (cheap model)", prod: "Produ
 
 export function OverviewPage() {
   const api = useAdminApi();
-  const { data, error, loading, reload } = useLoad(() => api.getOverview(), [api]);
+  const { data, error, loading, reload } = useLoad(() => api.getOverview(), [api], 30_000);
   const nav = navForPath("/");
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
@@ -73,6 +73,8 @@ export function OverviewPage() {
       ) : (
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {data.alerts.length > 0 && <AlertStrip alerts={data.alerts} />}
+
+          <LiveCapacity data={data} />
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
@@ -280,6 +282,23 @@ export function OverviewPage() {
       )}
     </>
   );
+}
+
+function LiveCapacity({ data }: { data: AdminOverviewResponse }) {
+  const token = data.tokenUsage;
+  const tokenDetail = !token.configured
+    ? "FAL key is not configured"
+    : token.budgetUsd <= 0
+      ? "No paid-token budget configured"
+      : `${token.usedPercent}% used · ${formatUsd(token.remainingUsd)} left`;
+  return <Card title="Live capacity" icon={Activity} actions={<span className="text-xs text-faint">Synced {formatRelative(token.measuredAt)} · every 30s</span>}>
+    <div className="grid gap-5 sm:grid-cols-3">
+      <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.users.activeLast7Days)}</p><p className="mt-1 text-sm font-medium text-primary">Active users</p><p className="mt-1 text-xs text-faint">Projects touched in the last 7 days</p></div>
+      <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.credits.outstanding)}</p><p className="mt-1 text-sm font-medium text-primary">Customer credits available</p><p className="mt-1 text-xs text-faint">{formatNumber(data.credits.spentLast7Days)} used · {formatNumber(data.credits.grantedLast7Days)} granted this week</p></div>
+      <div><p className="text-2xl font-bold tabular-nums text-primary">{token.budgetUsd > 0 ? formatUsd(token.remainingUsd) : "—"}</p><p className="mt-1 text-sm font-medium text-primary">Tracked FAL budget remaining</p><p className="mt-1 text-xs text-faint">{tokenDetail}</p></div>
+    </div>
+    <p className="mt-5 border-t border-hairline pt-3 text-xs text-faint">API budget is calculated from recorded render and segmentation costs against the configured FAL budget. It is not an unverified provider-wallet balance.</p>
+  </Card>;
 }
 
 function AlertStrip({ alerts }: { alerts: AdminOverviewResponse["alerts"] }) {

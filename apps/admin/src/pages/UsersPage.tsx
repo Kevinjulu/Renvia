@@ -26,7 +26,7 @@ import { useLoad } from "../lib/useLoad";
 const PAGE_SIZE = 25;
 const LOW_BALANCE = 5;
 
-type RoleFilter = "" | "user" | "admin";
+type RoleFilter = "" | "user" | "analyst" | "support" | "billing" | "admin";
 type StatusFilter = "" | "active" | "disabled";
 type BalanceFilter = "" | "low" | "zero";
 
@@ -194,6 +194,9 @@ export function UsersPage() {
               [
                 ["", "All"],
                 ["user", "Users"],
+                ["analyst", "Analysts"],
+                ["support", "Support"],
+                ["billing", "Billing"],
                 ["admin", "Admins"],
               ] as const
             ).map(([value, label]) => (
@@ -297,7 +300,7 @@ export function UsersPage() {
                         <td className="px-5 py-3 text-muted">{formatRelative(user.lastRenderAt)}</td>
                         <td className="px-5 py-3">
                           <div className="flex flex-wrap gap-1.5">
-                            {user.role === "admin" && <Pill tone="blue">Admin</Pill>}
+                            {user.role !== "user" && <Pill tone="blue">{user.role}</Pill>}
                             {user.disabled ? <Pill tone="red">Disabled</Pill> : <Pill tone="emerald">Active</Pill>}
                             {user.role !== "admin" && user.creditBalance < LOW_BALANCE && <Pill tone="amber">Low</Pill>}
                           </div>
