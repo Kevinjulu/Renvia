@@ -156,6 +156,14 @@ function CommandPalette({ me, onClose }: { me: MeResponse; onClose: () => void }
 }
 
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {
+  const visible = ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">));
+  const groups = [
+    { label: "Start here", paths: ["/", "/operations"] },
+    { label: "Operations", paths: ["/renders", "/segmentations", "/incidents"] },
+    { label: "Customers", paths: ["/users", "/projects", "/credits"] },
+    { label: "Commerce", paths: ["/billing", "/financials"] },
+    { label: "Control", paths: ["/audit", "/settings"] },
+  ].map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) })).filter((group) => group.items.length > 0);
   return (
     <aside
       className={`ink-scroll fixed left-0 top-0 z-40 flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-ink-950 transition-transform duration-300 lg:sticky lg:z-0 lg:translate-x-0 ${
@@ -183,16 +191,17 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
         </div>
       </div>
 
-      <p className="mb-2 mt-5 px-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400">Navigate</p>
-      <nav className="flex flex-1 flex-col gap-0.5 px-3 pb-4" aria-label="Admin sections">
-        {ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">)).map((item) => (
+      <nav className="flex flex-1 flex-col gap-3 px-3 pb-4 pt-4" aria-label="Admin sections">
+        {groups.map((group) => <section key={group.label}>
+          <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500">{group.label}</p>
+          <div className="flex flex-col gap-0.5">{group.items.map((item) => item && (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
             onClick={onClose}
             className={({ isActive }) =>
-              `group relative flex items-start gap-3 rounded-xl px-3 py-2.5 transition ${
+              `group relative flex items-center gap-3 rounded-xl px-3 py-2 transition ${
                 isActive ? "bg-ink-800 text-white shadow-lift" : "text-ink-300 hover:bg-ink-800/55 hover:text-white"
               }`
             }
@@ -203,18 +212,15 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
                 <item.icon
                   size={18}
                   strokeWidth={2}
-                  className={`mt-0.5 shrink-0 ${isActive ? "text-white" : "text-ink-400 group-hover:text-white"}`}
+                  className={`shrink-0 ${isActive ? "text-white" : "text-ink-400 group-hover:text-white"}`}
                 />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium leading-tight">{item.label}</span>
-                  <span className={`mt-0.5 block text-[11px] leading-snug ${isActive ? "text-ink-300" : "text-ink-500 group-hover:text-ink-400"}`}>
-                    {item.hint}
-                  </span>
                 </span>
               </>
             )}
           </NavLink>
-        ))}
+        ))}</div></section>)}
       </nav>
 
       <div className="mt-auto border-t border-ink-800 bg-ink-950/80 p-4">
