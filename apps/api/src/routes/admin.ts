@@ -1818,8 +1818,11 @@ admin.get("/financials", async (c) => {
   ]);
   const paid = payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + payment.amount, 0) / 100;
   const refunded = payments.filter((payment) => payment.status === "refunded").reduce((sum, payment) => sum + payment.amount, 0) / 100;
-  const estimatedCost = costs.reduce((sum, row) => sum + row.cost, 0) / MICROS_PER_USD;
-  const dailyBurnUsd = costs.filter((row) => row.day >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)).reduce((sum, row) => sum + row.cost, 0) / MICROS_PER_USD / 7;
+  // Neon/Postgres returns bigint aggregates as strings. Convert before arithmetic:
+  // adding them directly concatenates digits and produces fictional financial totals.
+  const micros = (value: number | string | null | undefined) => Number(value ?? 0);
+  const estimatedCost = costs.reduce((sum, row) => sum + micros(row.cost), 0) / MICROS_PER_USD;
+  const dailyBurnUsd = costs.filter((row) => row.day >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)).reduce((sum, row) => sum + micros(row.cost), 0) / MICROS_PER_USD / 7;
   const budget = effectiveBudgetUsd(c.env, settings);
   const dailyPayments = new Map<string, { revenueUsd: number; refundsUsd: number; failedPayments: number }>();
   for (const payment of payments) {
@@ -1830,12 +1833,12 @@ admin.get("/financials", async (c) => {
     dailyPayments.set(day, current);
   }
   const byProduct = (key: "plan" | "pack") => Object.entries(products.reduce<Record<string, number>>((all, item) => { const label = item[key] ?? "Unattributed"; if (item.status === "paid") all[label] = (all[label] ?? 0) + item.amount / 100; return all; }, {})).map(([label, revenueUsd]) => ({ label, revenueUsd, estimatedCostUsd: 0, marginUsd: revenueUsd }));
-  const costByCustomer = new Map(customerCosts.map((row) => [row.userId, row.cost / MICROS_PER_USD]));
+  const costByCustomer = new Map(customerCosts.map((row) => [row.userId, micros(row.cost) / MICROS_PER_USD]));
   const response: AdminFinancialsResponse = {
     revenue: { capturedUsd: paid, refundedUsd: refunded, netUsd: paid - refunded, mrrUsd: entitlements.filter((item) => item.status === "active").reduce((sum, item) => sum + item.price / 100, 0), failedPayments: payments.filter((payment) => payment.status === "failed").length, conversionRate: payments.length ? payments.filter((payment) => payment.status === "paid").length / payments.length : 0, churnedSubscribers: entitlements.filter((item) => item.status === "canceled" || item.status === "expired").length },
-    estimatedCost: { falUsd: estimatedCost, dailyBurnUsd, trackedBudgetUsd: budget, projectedBudgetExhaustion: budget !== null && dailyBurnUsd > 0 ? new Date(Date.now() + Math.max(0, budget - ((allTimeSpend?.spentMicros ?? 0) / MICROS_PER_USD)) / dailyBurnUsd * 86_400_000).toISOString() : null, reconciliationStatus: "not_connected" },
-    margins: { byPlan: byProduct("plan"), byPack: byProduct("pack"), byModel: models.map((row) => ({ label: row.label ?? "Unknown model", estimatedCostUsd: row.cost / MICROS_PER_USD, renders: row.renders })), byCustomer: customerRevenue.map((row) => ({ userId: row.userId, email: row.email, revenueUsd: row.revenue / 100, estimatedCostUsd: costByCustomer.get(row.userId) ?? 0, marginUsd: row.revenue / 100 - (costByCustomer.get(row.userId) ?? 0) })).sort((a, b) => b.revenueUsd - a.revenueUsd).slice(0, 50) },
-    daily: [...new Set([...costs.map((row) => row.day), ...dailyPayments.keys()])].sort().map((day) => { const cost = costs.find((row) => row.day === day)?.cost ?? 0; const money = dailyPayments.get(day) ?? { revenueUsd: 0, refundsUsd: 0, failedPayments: 0 }; return { day, estimatedCostUsd: cost / MICROS_PER_USD, ...money }; }),
+    estimatedCost: { falUsd: estimatedCost, dailyBurnUsd, trackedBudgetUsd: budget, projectedBudgetExhaustion: budget !== null && dailyBurnUsd > 0 ? new Date(Date.now() + Math.max(0, budget - (micros(allTimeSpend?.spentMicros) / MICROS_PER_USD)) / dailyBurnUsd * 86_400_000).toISOString() : null, reconciliationStatus: "not_connected" },
+    margins: { byPlan: byProduct("plan"), byPack: byProduct("pack"), byModel: models.map((row) => ({ label: row.label ?? "Unknown model", estimatedCostUsd: micros(row.cost) / MICROS_PER_USD, renders: row.renders })), byCustomer: customerRevenue.map((row) => ({ userId: row.userId, email: row.email, revenueUsd: row.revenue / 100, estimatedCostUsd: costByCustomer.get(row.userId) ?? 0, marginUsd: row.revenue / 100 - (costByCustomer.get(row.userId) ?? 0) })).sort((a, b) => b.revenueUsd - a.revenueUsd).slice(0, 50) },
+    daily: [...new Set([...costs.map((row) => row.day), ...dailyPayments.keys()])].sort().map((day) => { const cost = micros(costs.find((row) => row.day === day)?.cost); const money = dailyPayments.get(day) ?? { revenueUsd: 0, refundsUsd: 0, failedPayments: 0 }; return { day, estimatedCostUsd: cost / MICROS_PER_USD, ...money }; }),
   };
   return c.json(response);
 });
