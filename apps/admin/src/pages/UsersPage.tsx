@@ -81,7 +81,7 @@ export function UsersPage() {
     setParams(next);
   };
 
-  const { data, error, loading, reload } = useLoad(
+  const { data, error, loading, reload, lastUpdated } = useLoad(
     () =>
       api.listUsers({
         search: search || undefined,
@@ -93,7 +93,7 @@ export function UsersPage() {
         limit: PAGE_SIZE,
         offset,
       }),
-    [api, search, role, status, balance, sort, order, offset],
+    [api, search, role, status, balance, sort, order, offset], 20_000,
   );
 
   const pageIds = useMemo(() => data?.users.map((user) => user.id) ?? [], [data]);
@@ -143,7 +143,7 @@ export function UsersPage() {
 
   return (
     <>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+      <PageHero title={nav.title} description={nav.description} image={nav.banner} actions={lastUpdated ? <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span> : undefined} />
 
       {actionError && (
         <div className="mb-4">

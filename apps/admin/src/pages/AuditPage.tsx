@@ -118,7 +118,7 @@ export function AuditPage() {
     setParams(next);
   };
 
-  const { data, error, loading, reload } = useLoad(
+  const { data, error, loading, reload, lastUpdated } = useLoad(
     () =>
       api.listAudit({
         search: search || undefined,
@@ -128,7 +128,7 @@ export function AuditPage() {
         limit: PAGE_SIZE,
         offset,
       }),
-    [api, search, action, actorId, range, offset],
+    [api, search, action, actorId, range, offset], 20_000,
   );
 
   const groups = useMemo(() => groupByDay(data?.events ?? []), [data]);
@@ -136,7 +136,7 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHero title={navForPath("/audit").title} description={navForPath("/audit").description} image={navForPath("/audit").banner} />
+      <PageHero title={navForPath("/audit").title} description={navForPath("/audit").description} image={navForPath("/audit").banner} actions={lastUpdated ? <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span> : undefined} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
