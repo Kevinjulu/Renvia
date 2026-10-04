@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createDb } from "@renvia/db";
 import type { Env } from "../index.js";
 import { sweepStaleRenders } from "../lib/engine.js";
+import { syncOperationalIncidents } from "../lib/incidents.js";
 
 export const cron = new Hono<{ Bindings: Env }>();
 
@@ -18,5 +19,6 @@ cron.get("/sweep-renders", async (c) => {
   }
   const db = createDb(c.env.DATABASE_URL);
   const swept = await sweepStaleRenders(c.env, db, new URL(c.req.url).origin);
-  return c.json({ swept });
+  const incidents = await syncOperationalIncidents(c.env, db);
+  return c.json({ swept, incidents });
 });

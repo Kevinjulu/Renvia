@@ -49,7 +49,7 @@ import { cancelRender, refreshRender } from "../lib/engine.js";
 import { paypalReady, paypalRequest } from "../lib/paypal.js";
 import { assertPaypalPurchaseRefundable, reversePaypalPurchaseCredits } from "../lib/paypalSettlement.js";
 import { runSegmentation } from "../lib/segment.js";
-import { deliverIncidentNotification, openOperationalIncident, recordIncidentEvent, resolveIncidentsForSource } from "../lib/incidents.js";
+import { deliverIncidentNotification, recordIncidentEvent, resolveIncidentsForSource, syncOperationalIncidents } from "../lib/incidents.js";
 import { replayVerifiedPaypalEvent } from "./webhooks/paypal.js";
 
 type UserRow = typeof schema.users.$inferSelect;
@@ -1866,64 +1866,6 @@ admin.post("/segmentations/:id/recover", async (c) => {
 
 // ── Incident center ──────────────────────────────────────────────────────────────
 
-async function syncOperationalIncidents(c: { env: Env; get: (key: "db") => Database }) {
-  const db = c.get("db");
-  const settings = await getSettings(db);
-  const [webhooks, segmentations, renders] = await Promise.all([
-    db.select().from(schema.billingWebhookEvents).where(sql`${schema.billingWebhookEvents.failedAt} is not null`).limit(100),
-    db.select().from(schema.segmentations).where(or(
-      eq(schema.segmentations.status, "failed"),
-      and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${stuckBeforeSql(settings.stuckTimeoutMinutes)}`),
-    )).limit(100),
-    db.select().from(schema.renders).where(or(
-      eq(schema.renders.status, "failed"),
-      and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${stuckBeforeSql(settings.stuckTimeoutMinutes)}`),
-    )).limit(100),
-  ]);
-  let opened = 0;
-  const record = async (input: Parameters<typeof openOperationalIncident>[1]) => {
-    const result = await openOperationalIncident(db, input);
-    if (result.created) {
-      opened += 1;
-      await deliverIncidentNotification(c.env, db, result.incident, "New operational incident");
-    }
-  };
-  for (const event of webhooks) await record({
-    fingerprint: `webhook:${event.id}`,
-    sourceType: "webhook",
-    sourceId: event.id,
-    severity: "high",
-    title: `Failed ${event.provider} webhook`,
-    summary: event.failureMessage ?? `${event.eventType} has not been processed`,
-    context: { provider: event.provider, eventType: event.eventType, attempts: event.attempts },
-  });
-  for (const segmentation of segmentations) {
-    const stuck = isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt, settings.stuckTimeoutMinutes);
-    await record({
-      fingerprint: `segmentation:${segmentation.id}`,
-      sourceType: "segmentation",
-      sourceId: segmentation.id,
-      severity: stuck ? "high" : "medium",
-      title: stuck ? "Stuck automatic selection" : "Failed automatic selection",
-      summary: segmentation.errorMessage ?? `Segmentation ${segmentation.id} needs recovery`,
-      context: { status: segmentation.status, model: segmentation.model, creditsCharged: segmentation.creditsCharged },
-    });
-  }
-  for (const render of renders) {
-    const stuck = isRenderStuck(render.status as RenderStatus, render.updatedAt, settings.stuckTimeoutMinutes);
-    await record({
-      fingerprint: `render:${render.id}`,
-      sourceType: "render",
-      sourceId: render.id,
-      severity: stuck ? "high" : "medium",
-      title: stuck ? "Stuck render" : "Failed render",
-      summary: render.errorMessage ?? `Render ${render.id} needs recovery`,
-      context: { status: render.status, model: render.model, falRequestId: render.falRequestId },
-    });
-  }
-  return { opened, scanned: { webhooks: webhooks.length, segmentations: segmentations.length, renders: renders.length } };
-}
-
 async function incidentResponse(db: Database, status?: "open" | "acknowledged" | "resolved"): Promise<AdminIncidentsResponse> {
   const incidents = await db.select().from(schema.incidents).where(status ? eq(schema.incidents.status, status) : undefined).orderBy(desc(schema.incidents.lastSeenAt)).limit(100);
   const ids = incidents.map((incident) => incident.id);
@@ -1981,7 +1923,7 @@ admin.get("/incidents", async (c) => {
 
 admin.post("/incidents/sync", async (c) => {
   const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
-  return c.json(await syncOperationalIncidents(c));
+  return c.json(await syncOperationalIncidents(c.env, c.get("db")));
 });
 
 async function managedIncident(c: { get: (key: "db") => Database }, id: string) {

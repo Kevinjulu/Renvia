@@ -1,6 +1,7 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
+import { getSettings } from "./settings.js";
 
 type IncidentRow = typeof schema.incidents.$inferSelect;
 type IncidentSourceType = "render" | "segmentation" | "webhook" | "system";
@@ -89,4 +90,33 @@ export async function deliverIncidentNotification(env: Env, db: Database, incide
     db.insert(schema.incidentEvents).values({ incidentId: incident.id, action: "notification", note: reason, detail: { status, destination } }),
   ]);
   return status;
+}
+
+/** Finds production failures independently of the Admin UI; safe to run from a protected cron. */
+export async function syncOperationalIncidents(env: Env, db: Database) {
+  const settings = await getSettings(db);
+  const cutoff = sql`now() - (${settings.stuckTimeoutMinutes}::int * interval '1 minute')`;
+  const [webhooks, segmentations, renders] = await Promise.all([
+    db.select().from(schema.billingWebhookEvents).where(sql`${schema.billingWebhookEvents.failedAt} is not null`).limit(100),
+    db.select().from(schema.segmentations).where(or(eq(schema.segmentations.status, "failed"), and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${cutoff}`))).limit(100),
+    db.select().from(schema.renders).where(or(eq(schema.renders.status, "failed"), and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${cutoff}`))).limit(100),
+  ]);
+  let opened = 0;
+  const record = async (input: Parameters<typeof openOperationalIncident>[1]) => {
+    const result = await openOperationalIncident(db, input);
+    if (result.created) {
+      opened += 1;
+      await deliverIncidentNotification(env, db, result.incident, "New operational incident");
+    }
+  };
+  for (const event of webhooks) await record({ fingerprint: `webhook:${event.id}`, sourceType: "webhook", sourceId: event.id, severity: "high", title: `Failed ${event.provider} webhook`, summary: event.failureMessage ?? `${event.eventType} has not been processed`, context: { provider: event.provider, eventType: event.eventType, attempts: event.attempts } });
+  for (const segmentation of segmentations) {
+    const stuck = segmentation.status === "pending" && segmentation.createdAt.getTime() < Date.now() - settings.stuckTimeoutMinutes * 60_000;
+    await record({ fingerprint: `segmentation:${segmentation.id}`, sourceType: "segmentation", sourceId: segmentation.id, severity: stuck ? "high" : "medium", title: stuck ? "Stuck automatic selection" : "Failed automatic selection", summary: segmentation.errorMessage ?? `Segmentation ${segmentation.id} needs recovery`, context: { status: segmentation.status, model: segmentation.model, creditsCharged: segmentation.creditsCharged } });
+  }
+  for (const render of renders) {
+    const stuck = (render.status === "pending" || render.status === "processing") && render.updatedAt.getTime() < Date.now() - settings.stuckTimeoutMinutes * 60_000;
+    await record({ fingerprint: `render:${render.id}`, sourceType: "render", sourceId: render.id, severity: stuck ? "high" : "medium", title: stuck ? "Stuck render" : "Failed render", summary: render.errorMessage ?? `Render ${render.id} needs recovery`, context: { status: render.status, model: render.model, falRequestId: render.falRequestId } });
+  }
+  return { opened, scanned: { webhooks: webhooks.length, segmentations: segmentations.length, renders: renders.length } };
 }
