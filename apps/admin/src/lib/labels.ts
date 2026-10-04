@@ -10,6 +10,7 @@ export const CREDIT_REASON_LABELS: Partial<Record<CreditLedgerReason, string>> =
   segment: "Segmentation",
   segment_refund: "Refund (segmentation)",
   purchase: "Purchase",
+  purchase_refund: "Purchase refund reversal",
   subscription_grant: "Monthly plan credits",
   subscription_expiry: "Unused monthly credits expired",
 };

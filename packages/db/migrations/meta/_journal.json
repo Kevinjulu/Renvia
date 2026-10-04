@@ -148,6 +148,27 @@
       "when": 1791244800000,
       "tag": "0020_operator_roles_paypal",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791331200000,
+      "tag": "0021_billing_checkout_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791417600000,
+      "tag": "0022_paypal_plan_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791504000000,
+      "tag": "0023_payment_linked_credit_reversals",
+      "breakpoints": true
     }
   ]
 }

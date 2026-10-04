@@ -5,6 +5,7 @@ import { DashboardTopBar } from "../dashboard/DashboardTopBar";
 import { AssetsSection } from "../dashboard/AssetsSection";
 import { TemplatesSection } from "../dashboard/TemplatesSection";
 import { StudioPreferencesSection } from "../dashboard/StudioPreferencesSection";
+import { BillingSection } from "../dashboard/BillingSection";
 import { useApiClient } from "../lib/apiClient";
 
 export type SectionKey = "explore" | "templates" | "assets" | "ai-tools" | "team" | "settings" | "billing" | "activity";
@@ -30,7 +31,7 @@ export function DashboardSectionRoute({ section }: { section: SectionKey }) {
     {section === "templates" && <TemplatesSection onNotice={setNotice} />}
     {section === "team" && <form className="feature-form-card" onSubmit={invite}><h2>Invite a collaborator</h2><label>Email address<input name="email" type="email" placeholder="designer@studio.com" required/></label><label>Role<select name="role"><option>Editor</option><option>Viewer</option><option>Administrator</option></select></label><button type="submit">Prepare invitation</button></form>}
     {section === "settings" && <StudioPreferencesSection onSaved={setNotice} />}
-    {section === "billing" && <div className="feature-plan-grid"><Plan name="Starter" price="$0" detail="25 one-time welcome credits, up to 5 render jobs per day, and 2 active projects."/><Plan name="Studio" price="$29" detail="Planned: 200 flexible monthly credits. Strict fidelity will use 2 credits." featured onChoose={() => setNotice("Studio pricing is planned. Checkout will only open once billing and plan entitlements are connected.")}/><Plan name="Enterprise" price="Custom" detail="Planned team collaboration, private storage, and dedicated support." onChoose={() => setNotice("Enterprise is planned. Contact details will be available with the commercial launch.")}/></div>}
+    {section === "billing" && <BillingSection api={api} />}
     {section === "activity" && <div className="feature-activity-list">{["You edited Project (2)","Lakeside Villa render completed","Modern Residence was created","Apartment Interior file uploaded","Workspace preferences updated"].map((item, index) => <article key={item}><span>{index + 1}</span><div><strong>{item}</strong><small>{index === 0 ? "5 days ago" : `${index + 1} weeks ago`}</small></div></article>)}</div>}
   </main></div></div>;
 }

@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react";
 import type {
   CreateCanvasNodeRequest,
+  BillingCatalogResponse,
   CreateCanvasNodeResponse,
   CreateProjectRequest,
   CreateReferenceImageRequest,
@@ -129,6 +130,9 @@ export function useApiClient() {
   return {
     getMe: () => request<MeResponse>(getToken, "/me"),
     getMyCredits: () => request<MeCreditsResponse>(getToken, "/me/credits"),
+    getBillingCatalog: () => request<BillingCatalogResponse>(getToken, "/billing/catalog"),
+    createPaypalCheckout: (body: { kind: "credit_pack" | "subscription"; product: string; idempotencyKey: string }) => request<{ checkoutId: string; status: string; approvalUrl: string | null }>(getToken, "/billing/checkouts/paypal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    capturePaypalCheckout: (id: string) => request<{ checkoutId: string; status: "paid" }>(getToken, `/billing/checkouts/${id}/capture`, { method: "POST" }),
     createRender: (body: CreateRenderRequest) =>
       request<CreateRenderResponse>(getToken, "/renders", {
         method: "POST",

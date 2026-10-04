@@ -4,8 +4,8 @@ export const users = pgTable("users", {
     id: uuid("id").primaryKey().defaultRandom(),
     clerkId: text("clerk_id").notNull().unique(),
     email: text("email").notNull(),
-    role: text("role", { enum: ["user", "admin"] }).notNull().default("user"),
-    /** Spendable credits (1 credit = 1 image); every change is mirrored in credit_ledger. */
+    role: text("role", { enum: ["user", "analyst", "support", "billing", "admin"] }).notNull().default("user"),
+    /** Spendable credits; standard renders cost 1, while premium actions can cost more. Every change is mirrored in credit_ledger. */
     creditBalance: integer("credit_balance").notNull().default(0),
     disabled: boolean("disabled").notNull().default(false),
     /** Per-user override of app_settings.daily_render_limit; null = use the global setting. */
@@ -74,7 +74,7 @@ export const renders = pgTable("renders", {
     creditsCharged: integer("credits_charged").notNull().default(0),
     /**
      * The seed actually used: what the caller requested, or what the model echoed back when
-     * none was given. Null when the model doesn't report one (nano-banana/edit) and none was
+     * none was given. Null when the model doesn't report one and none was
      * requested — that render can't be exactly reproduced.
      *
      * bigint, not integer: fal echoes back unsigned 32-bit seeds up to ~4.29 billion, which
@@ -105,6 +105,16 @@ export const referenceImages = pgTable("reference_images", {
         .default("upload"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+/**
+ * Very short-lived budget holds used while a request converts a budget check into a render
+ * or segmentation row. They close the race where simultaneous requests could all observe
+ * the same remaining fal budget.
+ */
+export const budgetReservations = pgTable("budget_reservations", {
+    id: uuid("id").primaryKey(),
+    costMicros: integer("cost_micros").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [check("budget_reservations_cost_non_negative", sql `${table.costMicros} >= 0`)]);
 /**
  * Automatic selections (SAM 3 on fal) made while editing a render. Each is charged like an
  * image and its fal cost counts toward the global spending cap alongside renders.
@@ -138,10 +148,12 @@ export const creditLedger = pgTable("credit_ledger", {
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-        enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase"],
+        enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry"],
     }).notNull(),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
     segmentationId: uuid("segmentation_id").references(() => segmentations.id, { onDelete: "set null" }),
+    /** Ties purchased credits to a provider payment so refunds can be reversed safely. */
+    paymentId: uuid("payment_id").references(() => billingPayments.id, { onDelete: "set null" }),
     note: text("note"),
     /** Admin who made a manual adjustment. */
     actorId: uuid("actor_id").references(() => users.id),
@@ -151,8 +163,157 @@ export const creditLedger = pgTable("credit_ledger", {
     uniqueIndex("credit_ledger_render_reason_unique").on(table.renderId, table.reason),
     // Same guarantee for automatic selections.
     uniqueIndex("credit_ledger_segmentation_reason_unique").on(table.segmentationId, table.reason),
+    uniqueIndex("credit_ledger_payment_reason_unique").on(table.paymentId, table.reason),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
 ]);
+/**
+ * Commercial plans are data, not an interpretation of a user's remaining credits.
+ * Amounts are stored in the currency's minor unit (for USD, cents).
+ */
+export const billingPlans = pgTable("billing_plans", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    priceCents: integer("price_cents").notNull().default(0),
+    interval: text("interval", { enum: ["none", "month"] }).notNull().default("none"),
+    /** Credits granted on every successful subscription renewal; 0 for the Free plan. */
+    monthlyCredits: integer("monthly_credits").notNull().default(0),
+    /** Included credits permitted to carry into the next cycle. Renvia starts at zero. */
+    rolloverCredits: integer("rollover_credits").notNull().default(0),
+    dailyRenderLimit: integer("daily_render_limit"),
+    monthlyRenderLimit: integer("monthly_render_limit"),
+    maxProjects: integer("max_projects"),
+    concurrentRenderLimit: integer("concurrent_render_limit"),
+    isActive: boolean("is_active").notNull().default(true),
+    /** PayPal subscription plan ID. Null keeps the plan unavailable for recurring checkout. */
+    paypalPlanId: text("paypal_plan_id").unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    check("billing_plans_price_non_negative", sql `${table.priceCents} >= 0`),
+    check("billing_plans_monthly_credits_non_negative", sql `${table.monthlyCredits} >= 0`),
+    check("billing_plans_rollover_non_negative", sql `${table.rolloverCredits} >= 0 AND ${table.rolloverCredits} <= ${table.monthlyCredits}`),
+    check("billing_plans_daily_limit_range", sql `${table.dailyRenderLimit} IS NULL OR ${table.dailyRenderLimit} BETWEEN 1 AND 10000`),
+    check("billing_plans_monthly_limit_range", sql `${table.monthlyRenderLimit} IS NULL OR ${table.monthlyRenderLimit} BETWEEN 1 AND 100000`),
+    check("billing_plans_max_projects_range", sql `${table.maxProjects} IS NULL OR ${table.maxProjects} BETWEEN 1 AND 10000`),
+    check("billing_plans_concurrent_limit_range", sql `${table.concurrentRenderLimit} IS NULL OR ${table.concurrentRenderLimit} BETWEEN 1 AND 100`),
+]);
+/** A user's current commercial access. This remains authoritative even at a zero credit balance. */
+export const userEntitlements = pgTable("user_entitlements", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().unique().references(() => users.id),
+    planId: uuid("plan_id").notNull().references(() => billingPlans.id),
+    status: text("status", { enum: ["active", "past_due", "canceled", "expired"] }).notNull().default("active"),
+    provider: text("provider", { enum: ["manual", "paypal", "stripe", "paystack", "flutterwave", "mpesa"] }),
+    providerCustomerId: text("provider_customer_id"),
+    providerSubscriptionId: text("provider_subscription_id"),
+    currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** Unspent included monthly credits. Purchased and manual credits are not stored here. */
+    monthlyCreditsRemaining: integer("monthly_credits_remaining").notNull().default(0),
+    nextCreditGrantAt: timestamp("next_credit_grant_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    uniqueIndex("user_entitlements_provider_subscription_unique").on(table.provider, table.providerSubscriptionId),
+    index("user_entitlements_grant_due_idx").on(table.status, table.nextCreditGrantAt),
+    check("user_entitlements_monthly_credits_non_negative", sql `${table.monthlyCreditsRemaining} >= 0`),
+]);
+/** One-off purchasable credit packs. Payment-provider product IDs are configured later, not hard-coded in UI. */
+export const creditPacks = pgTable("credit_packs", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sku: text("sku").notNull().unique(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    priceCents: integer("price_cents").notNull(),
+    credits: integer("credits").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    check("credit_packs_price_positive", sql `${table.priceCents} > 0`),
+    check("credit_packs_credits_positive", sql `${table.credits} > 0`),
+]);
+/** A provider-neutral purchase attempt. The chosen provider supplies its opaque checkout ID. */
+export const billingCheckouts = pgTable("billing_checkouts", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    planId: uuid("plan_id").references(() => billingPlans.id),
+    creditPackId: uuid("credit_pack_id").references(() => creditPacks.id),
+    kind: text("kind", { enum: ["subscription", "credit_pack"] }).notNull(),
+    provider: text("provider", { enum: ["paypal", "stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerCheckoutId: text("provider_checkout_id").unique(),
+    /** Client-generated key makes a retried checkout request safe before a provider order exists. */
+    idempotencyKey: text("idempotency_key"),
+    status: text("status", { enum: ["created", "pending", "paid", "expired", "canceled", "failed"] }).notNull().default("created"),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    /** Provider IDs needed to reconcile a signed webhook; never store payment instruments. */
+    providerMetadata: jsonb("provider_metadata").$type(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    index("billing_checkouts_user_created_idx").on(table.userId, table.createdAt),
+    uniqueIndex("billing_checkouts_user_idempotency_unique").on(table.userId, table.idempotencyKey),
+    check("billing_checkouts_amount_non_negative", sql `${table.amountCents} >= 0`),
+    check("billing_checkouts_one_product", sql `(${table.planId} IS NOT NULL) <> (${table.creditPackId} IS NOT NULL)`),
+]);
+export const billingPayments = pgTable("billing_payments", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    checkoutId: uuid("checkout_id").references(() => billingCheckouts.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    provider: text("provider", { enum: ["paypal", "stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerPaymentId: text("provider_payment_id").notNull(),
+    status: text("status", { enum: ["pending", "paid", "refunded", "failed"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    providerMetadata: jsonb("provider_metadata").$type(),
+}, (table) => [
+    uniqueIndex("billing_payments_provider_payment_unique").on(table.provider, table.providerPaymentId),
+    index("billing_payments_user_created_idx").on(table.userId, table.createdAt),
+    check("billing_payments_amount_non_negative", sql `${table.amountCents} >= 0`),
+]);
+export const billingInvoices = pgTable("billing_invoices", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    paymentId: uuid("payment_id").references(() => billingPayments.id),
+    provider: text("provider", { enum: ["paypal", "stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerInvoiceId: text("provider_invoice_id"),
+    number: text("number").notNull().unique(),
+    status: text("status", { enum: ["open", "paid", "void", "uncollectible"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    hostedUrl: text("hosted_url"),
+    pdfUrl: text("pdf_url"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    uniqueIndex("billing_invoices_provider_invoice_unique").on(table.provider, table.providerInvoiceId),
+    index("billing_invoices_user_issued_idx").on(table.userId, table.issuedAt),
+    check("billing_invoices_amount_non_negative", sql `${table.amountCents} >= 0`),
+]);
+/** Raw provider events are retained for idempotency and post-payment auditability. */
+export const billingWebhookEvents = pgTable("billing_webhook_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider", { enum: ["paypal", "stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    failureMessage: text("failure_message"),
+    /** PAYPAL verification outcome; non-PayPal providers may leave this null. */
+    verificationStatus: text("verification_status"),
+    attempts: integer("attempts").notNull().default(0),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("billing_webhook_events_provider_event_unique").on(table.provider, table.providerEventId)]);
 /**
  * Operator settings editable from the admin app without a redeploy. Exactly one row
  * (id = 1). Null engine fields fall back to the FAL_MODE / FAL_BUDGET_USD env vars.
@@ -161,7 +322,7 @@ export const appSettings = pgTable("app_settings", {
     id: integer("id").primaryKey().default(1),
     signupBonusCredits: integer("signup_bonus_credits").notNull().default(25),
     /** Max renders per non-admin user per UTC day; null = unlimited. */
-    dailyRenderLimit: integer("daily_render_limit"),
+    dailyRenderLimit: integer("daily_render_limit").default(5),
     /** Max segmentations per non-admin user per UTC day; null = unlimited. */
     dailySegmentLimit: integer("daily_segment_limit"),
     /** Max renders per non-admin user per UTC calendar month; null = unlimited. */
@@ -171,7 +332,7 @@ export const appSettings = pgTable("app_settings", {
     /** Ceiling on a non-admin's credit balance — grants clamp to it. Null = uncapped. */
     maxCreditBalance: integer("max_credit_balance"),
     /** Max projects a non-admin may own; null = unlimited. */
-    maxProjectsPerUser: integer("max_projects_per_user"),
+    maxProjectsPerUser: integer("max_projects_per_user").default(2),
     /** Largest accepted upload, in megabytes. */
     maxUploadMb: integer("max_upload_mb").notNull().default(10),
     /** Max style/material reference images per render. */

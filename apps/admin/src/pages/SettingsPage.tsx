@@ -42,6 +42,8 @@ const ROUTE_LABEL: Record<RenderRoute, string> = {
   references: "References",
   edit: "Edit",
   "edit-references": "Edit + references",
+  fidelity: "Fidelity",
+  upscale: "Upscale",
 };
 
 /** The five refusal messages, rendered as one block of textareas. */

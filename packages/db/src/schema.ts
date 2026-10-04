@@ -188,10 +188,12 @@ export const creditLedger = pgTable(
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "subscription_grant", "subscription_expiry"],
+      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry"],
     }).notNull(),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
     segmentationId: uuid("segmentation_id").references(() => segmentations.id, { onDelete: "set null" }),
+    /** Ties purchased credits to a provider payment so refunds can be reversed safely. */
+    paymentId: uuid("payment_id").references(() => billingPayments.id, { onDelete: "set null" }),
     note: text("note"),
     /** Admin who made a manual adjustment. */
     actorId: uuid("actor_id").references(() => users.id),
@@ -202,6 +204,7 @@ export const creditLedger = pgTable(
     uniqueIndex("credit_ledger_render_reason_unique").on(table.renderId, table.reason),
     // Same guarantee for automatic selections.
     uniqueIndex("credit_ledger_segmentation_reason_unique").on(table.segmentationId, table.reason),
+    uniqueIndex("credit_ledger_payment_reason_unique").on(table.paymentId, table.reason),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
   ],
 );
@@ -229,6 +232,8 @@ export const billingPlans = pgTable(
     maxProjects: integer("max_projects"),
     concurrentRenderLimit: integer("concurrent_render_limit"),
     isActive: boolean("is_active").notNull().default(true),
+    /** PayPal subscription plan ID. Null keeps the plan unavailable for recurring checkout. */
+    paypalPlanId: text("paypal_plan_id").unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -301,6 +306,8 @@ export const billingCheckouts = pgTable(
     kind: text("kind", { enum: ["subscription", "credit_pack"] }).notNull(),
     provider: text("provider", { enum: ["paypal", "stripe", "paystack", "flutterwave", "mpesa"] }).notNull(),
     providerCheckoutId: text("provider_checkout_id").unique(),
+    /** Client-generated key makes a retried checkout request safe before a provider order exists. */
+    idempotencyKey: text("idempotency_key"),
     status: text("status", { enum: ["created", "pending", "paid", "expired", "canceled", "failed"] }).notNull().default("created"),
     currency: text("currency").notNull(),
     amountCents: integer("amount_cents").notNull(),
@@ -311,6 +318,7 @@ export const billingCheckouts = pgTable(
   },
   (table) => [
     index("billing_checkouts_user_created_idx").on(table.userId, table.createdAt),
+    uniqueIndex("billing_checkouts_user_idempotency_unique").on(table.userId, table.idempotencyKey),
     check("billing_checkouts_amount_non_negative", sql`${table.amountCents} >= 0`),
     check("billing_checkouts_one_product", sql`(${table.planId} IS NOT NULL) <> (${table.creditPackId} IS NOT NULL)`),
   ],

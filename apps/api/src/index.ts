@@ -12,6 +12,7 @@ import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
 import { admin } from "./routes/admin.js";
 import { cron } from "./routes/cron.js";
+import { billing } from "./routes/billing.js";
 import { allowedOrigins } from "./lib/origins.js";
 
 export interface Env {
@@ -84,6 +85,7 @@ app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);
 app.route("/references", references);
+app.route("/billing", billing);
 app.route("/admin", admin);
 app.route("/cron", cron);
 

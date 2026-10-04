@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { Env } from "../../index.js";
+import { reversePaypalPurchaseCredits, settlePaypalCapture } from "../../lib/paypalSettlement.js";
 
 export const paypalWebhook = new Hono<{ Bindings: Env }>();
 
@@ -25,11 +26,17 @@ function resourceString(resource: Record<string, unknown>, key: string): string 
   return typeof resource[key] === "string" && resource[key].trim() ? resource[key] : null;
 }
 
-function linkedOrderId(resource: Record<string, unknown>): string | null {
+function linkedId(resource: Record<string, unknown>, key: string): string | null {
   const related = resource.supplementary_data;
   if (!related || typeof related !== "object") return null;
   const ids = (related as Record<string, unknown>).related_ids;
-  return ids && typeof ids === "object" ? resourceString(ids as Record<string, unknown>, "order_id") : null;
+  return ids && typeof ids === "object" ? resourceString(ids as Record<string, unknown>, key) : null;
+}
+
+function asDate(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
 }
 
 async function accessToken(env: Env): Promise<string> {
@@ -67,57 +74,85 @@ async function verify(env: Env, event: PaypalEvent, request: Request): Promise<b
   return payload.verification_status === "SUCCESS";
 }
 
-async function settleCapture(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
+async function settleCaptureEvent(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
   const resource = event.resource;
   const captureId = resourceString(resource, "id");
-  const orderId = linkedOrderId(resource);
+  const orderId = linkedId(resource, "order_id");
   const amount = resource.amount;
   const amountValue = amount && typeof amount === "object" ? cents((amount as Record<string, unknown>).value) : null;
   const currency = amount && typeof amount === "object" ? resourceString(amount as Record<string, unknown>, "currency_code") : null;
   if (!captureId || !orderId || amountValue === null || !currency) throw new Error("PayPal capture has no usable order, capture, or amount");
 
-  const [checkout] = await db.select().from(schema.billingCheckouts).where(and(eq(schema.billingCheckouts.provider, "paypal"), eq(schema.billingCheckouts.providerCheckoutId, orderId))).limit(1);
-  if (!checkout) throw new Error("No Renvia PayPal checkout matches this order");
-  if (checkout.currency !== currency || checkout.amountCents !== amountValue) throw new Error("PayPal capture amount does not match the Renvia checkout");
+  await settlePaypalCapture(db, { eventId: event.id, captureId, orderId, amountCents: amountValue, currency });
+}
 
-  const [existingPayment] = await db.select({ id: schema.billingPayments.id }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, captureId))).limit(1);
-  if (existingPayment) return; // A duplicate delivery has already settled this capture.
-  const paymentWrite = db.insert(schema.billingPayments).values({ checkoutId: checkout.id, userId: checkout.userId, provider: "paypal", providerPaymentId: captureId, status: "paid", currency, amountCents: amountValue, paidAt: new Date(), providerMetadata: { orderId, eventId: event.id } });
-  const checkoutWrite = db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id));
-  if (checkout.kind === "credit_pack") {
-    const [pack] = await db.select().from(schema.creditPacks).where(eq(schema.creditPacks.id, checkout.creditPackId!)).limit(1);
-    if (!pack) throw new Error("PayPal checkout references a missing credit pack");
-    await db.batch([
-      paymentWrite,
-      checkoutWrite,
-      db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${pack.credits}` }).where(eq(schema.users.id, checkout.userId)),
-      db.insert(schema.creditLedger).values({ userId: checkout.userId, amount: pack.credits, reason: "purchase", note: `PayPal capture ${captureId}` }),
-    ]);
-  } else {
-    const [plan] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, checkout.planId!)).limit(1);
-    if (!plan) throw new Error("PayPal checkout references a missing billing plan");
-    if (plan.monthlyCredits > 0) {
-      await db.batch([
-        paymentWrite, checkoutWrite,
-        db.update(schema.userEntitlements).set({ planId: plan.id, status: "active", provider: "paypal", monthlyCreditsRemaining: plan.monthlyCredits, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, checkout.userId)),
-        db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${plan.monthlyCredits}` }).where(eq(schema.users.id, checkout.userId)),
-        db.insert(schema.creditLedger).values({ userId: checkout.userId, amount: plan.monthlyCredits, reason: "subscription_grant", note: `PayPal capture ${captureId}` }),
-      ]);
-    } else {
-      await db.batch([paymentWrite, checkoutWrite, db.update(schema.userEntitlements).set({ planId: plan.id, status: "active", provider: "paypal", monthlyCreditsRemaining: 0, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, checkout.userId))]);
-    }
-  }
+async function activateSubscription(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
+  const subscriptionId = resourceString(event.resource, "id");
+  if (!subscriptionId) throw new Error("PayPal subscription event has no subscription ID");
+  const checkoutId = resourceString(event.resource, "custom_id");
+  const [checkout] = await db.select().from(schema.billingCheckouts).where(checkoutId
+    ? and(eq(schema.billingCheckouts.id, checkoutId), eq(schema.billingCheckouts.kind, "subscription"))
+    : and(eq(schema.billingCheckouts.provider, "paypal"), eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)),
+  ).limit(1);
+  if (!checkout || !checkout.planId) throw new Error("No Renvia subscription checkout matches this PayPal subscription");
+  const info = event.resource.billing_info;
+  const periodEnd = info && typeof info === "object" ? asDate((info as Record<string, unknown>).next_billing_time) : null;
+  await db.batch([
+    db.update(schema.billingCheckouts).set({ providerCheckoutId: subscriptionId, status: "pending", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id)),
+    db.update(schema.userEntitlements).set({ planId: checkout.planId, status: "active", provider: "paypal", providerSubscriptionId: subscriptionId, currentPeriodStart: asDate(event.create_time) ?? new Date(), currentPeriodEnd: periodEnd, nextCreditGrantAt: periodEnd, cancelAtPeriodEnd: false, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, checkout.userId)),
+  ]);
+}
+
+async function settleSubscriptionPayment(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
+  const paymentId = resourceString(event.resource, "id");
+  const subscriptionId = linkedId(event.resource, "subscription_id") ?? resourceString(event.resource, "billing_agreement_id");
+  const amount = event.resource.amount;
+  const amountCents = amount && typeof amount === "object" ? cents((amount as Record<string, unknown>).value) : null;
+  const currency = amount && typeof amount === "object" ? resourceString(amount as Record<string, unknown>, "currency_code") : null;
+  if (!paymentId || !subscriptionId || amountCents === null || !currency) throw new Error("PayPal subscription payment is incomplete");
+  const [existing] = await db.select({ id: schema.billingPayments.id }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, paymentId))).limit(1);
+  if (existing) return;
+  const [entitlement] = await db.select().from(schema.userEntitlements).where(and(eq(schema.userEntitlements.provider, "paypal"), eq(schema.userEntitlements.providerSubscriptionId, subscriptionId))).limit(1);
+  if (!entitlement) throw new Error("No active Renvia entitlement matches this PayPal subscription");
+  const [plan] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, entitlement.planId)).limit(1);
+  if (!plan || plan.currency !== currency || plan.priceCents !== amountCents) throw new Error("PayPal subscription payment does not match the Renvia plan");
+  const [checkout] = await db.select().from(schema.billingCheckouts).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)).limit(1);
+  const recordId = crypto.randomUUID();
+  await db.batch([
+    db.insert(schema.billingPayments).values({ id: recordId, checkoutId: checkout?.id ?? null, userId: entitlement.userId, provider: "paypal", providerPaymentId: paymentId, status: "paid", currency, amountCents, paidAt: new Date(), providerMetadata: { subscriptionId, eventId: event.id } }),
+    db.insert(schema.billingInvoices).values({ userId: entitlement.userId, paymentId: recordId, provider: "paypal", providerInvoiceId: paymentId, number: `PAYPAL-${paymentId}`, status: "paid", currency, amountCents }),
+    db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)),
+    db.update(schema.userEntitlements).set({ status: "active", monthlyCreditsRemaining: plan.monthlyCredits, updatedAt: new Date() }).where(eq(schema.userEntitlements.id, entitlement.id)),
+    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${plan.monthlyCredits}` }).where(eq(schema.users.id, entitlement.userId)),
+    db.insert(schema.creditLedger).values({ userId: entitlement.userId, paymentId: recordId, amount: plan.monthlyCredits, reason: "subscription_grant", note: `PayPal subscription payment ${paymentId}` }),
+  ]);
+}
+
+async function updateSubscriptionStatus(db: ReturnType<typeof createDb>, event: PaypalEvent, status: "past_due" | "canceled" | "expired"): Promise<void> {
+  const subscriptionId = resourceString(event.resource, "id");
+  if (!subscriptionId) throw new Error("PayPal subscription event has no subscription ID");
+  await db.update(schema.userEntitlements).set({ status, cancelAtPeriodEnd: status === "canceled", updatedAt: new Date() }).where(and(eq(schema.userEntitlements.provider, "paypal"), eq(schema.userEntitlements.providerSubscriptionId, subscriptionId)));
 }
 
 async function processEvent(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
-  if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") return settleCapture(db, event);
-  if (event.event_type === "PAYMENT.CAPTURE.REFUNDED") {
-    const captureId = resourceString(event.resource, "id");
-    if (!captureId) throw new Error("PayPal refund has no capture id");
-    await db.update(schema.billingPayments).set({ status: "refunded", updatedAt: new Date() }).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, captureId)));
+  if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {
+    if (linkedId(event.resource, "subscription_id")) return settleSubscriptionPayment(db, event);
+    return settleCaptureEvent(db, event);
   }
-  // Subscription status is retained as an external event until checkout creation
-  // is enabled; this deliberately avoids granting access from an unmatched ID.
+  if (event.event_type === "PAYMENT.SALE.COMPLETED") return settleSubscriptionPayment(db, event);
+  if (event.event_type === "PAYMENT.CAPTURE.REFUNDED") {
+    const captureId = linkedId(event.resource, "capture_id");
+    const refundId = resourceString(event.resource, "id");
+    if (!captureId || !refundId) throw new Error("PayPal refund has no capture reference");
+    const [payment] = await db.select({ id: schema.billingPayments.id }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, captureId))).limit(1);
+    if (!payment) throw new Error("PayPal refund does not match a Renvia payment");
+    await reversePaypalPurchaseCredits(db, payment.id, refundId);
+    await db.update(schema.billingPayments).set({ status: "refunded", updatedAt: new Date() }).where(eq(schema.billingPayments.id, payment.id));
+  }
+  if (event.event_type === "BILLING.SUBSCRIPTION.ACTIVATED") return activateSubscription(db, event);
+  if (event.event_type === "BILLING.SUBSCRIPTION.SUSPENDED" || event.event_type === "BILLING.SUBSCRIPTION.PAYMENT.FAILED") return updateSubscriptionStatus(db, event, "past_due");
+  if (event.event_type === "BILLING.SUBSCRIPTION.CANCELLED") return updateSubscriptionStatus(db, event, "canceled");
+  if (event.event_type === "BILLING.SUBSCRIPTION.EXPIRED") return updateSubscriptionStatus(db, event, "expired");
 }
 
 paypalWebhook.post("/", async (c) => {

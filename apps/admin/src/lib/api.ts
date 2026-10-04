@@ -151,6 +151,7 @@ export function useAdminApi() {
         offset?: number;
       }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       getBilling: () => request<AdminBillingResponse>(getToken, "/admin/billing"),
+      refundPayment: (id: string) => request<{ id: string; status: "refunded" }>(getToken, `/admin/billing/payments/${id}/refund`, { method: "POST" }),
       listSegmentations: (params: {
         status?: SegmentationStatus;
         mode?: AdminSegmentationMode;

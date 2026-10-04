@@ -248,6 +248,7 @@ export type CreditLedgerReason =
   | "segment"
   | "segment_refund"
   | "purchase"
+  | "purchase_refund"
   | "subscription_grant"
   | "subscription_expiry";
 
@@ -358,7 +359,7 @@ export interface MeResponse {
   updatedAt: string;
 }
 
-export type BillingProvider = "stripe" | "paystack" | "flutterwave" | "mpesa";
+export type BillingProvider = "paypal" | "stripe" | "paystack" | "flutterwave" | "mpesa";
 export type BillingEntitlementStatus = "active" | "past_due" | "canceled" | "expired";
 
 /** Public plan definition. Limits and entitlement—not credit balance—govern account access. */
@@ -386,6 +387,34 @@ export interface BillingEntitlement {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   monthlyCreditsRemaining: number;
+}
+
+/** A server-priced, one-off credit product. The browser never supplies price or credits. */
+export interface CreditPack {
+  sku: string;
+  name: string;
+  currency: string;
+  priceCents: number;
+  credits: number;
+}
+
+export interface BillingCheckout {
+  id: string;
+  kind: "credit_pack" | "subscription";
+  provider: BillingProvider;
+  status: "created" | "pending" | "paid" | "expired" | "canceled" | "failed";
+  currency: string;
+  amountCents: number;
+  creditPackSku: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Customer-facing billing state. `paypalCheckoutAvailable` is false until all server credentials are configured. */
+export interface BillingCatalogResponse {
+  creditPacks: CreditPack[];
+  recentCheckouts: BillingCheckout[];
+  paypalCheckoutAvailable: boolean;
 }
 
 export interface Project {

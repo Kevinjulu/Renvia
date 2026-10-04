@@ -45,6 +45,8 @@ import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsR
 import { getUsage, resolveLimits } from "../lib/limits.js";
 import { presentUploadUrl } from "../lib/storage.js";
 import { cancelRender, refreshRender } from "../lib/engine.js";
+import { paypalReady, paypalRequest } from "../lib/paypal.js";
+import { assertPaypalPurchaseRefundable, reversePaypalPurchaseCredits } from "../lib/paypalSettlement.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type AdminContext = { Bindings: Env; Variables: AuthVariables & { admin: UserRow; db: Database } };
@@ -81,16 +83,17 @@ type AdminPermission =
   | "audit.read"
   | "settings.read"
   | "settings.manage"
-  | "billing.read";
+  | "billing.read"
+  | "billing.manage";
 
 const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
   analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read"],
   support: ["overview.read", "users.read", "renders.read", "renders.recover", "projects.read", "segmentations.read"],
-  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read"],
+  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read",
-    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage",
   ],
 };
 
@@ -621,8 +624,11 @@ admin.post("/users/bulk-credits", async (c) => {
     db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${body.amount}` }).where(eq(schema.users.id, user.id)),
     db.insert(schema.creditLedger).values({ userId: user.id, amount: body.amount, reason: "admin_grant", note: body.note, actorId: adminUser.id }),
   ]);
+  const [firstWrite, ...remainingWrites] = writes;
+  if (!firstWrite) return c.json({ error: "No users selected" }, 400);
   await db.batch([
-    ...writes,
+    firstWrite,
+    ...remainingWrites,
     db.insert(schema.adminEvents).values({
       actorId: adminUser.id,
       action: "credits.adjust",
@@ -1473,6 +1479,9 @@ const CREDIT_REASONS = [
   "segment",
   "segment_refund",
   "purchase",
+  "purchase_refund",
+  "subscription_grant",
+  "subscription_expiry",
 ] as const satisfies readonly CreditLedgerReason[];
 
 function toAdminCreditEntry(
@@ -1611,6 +1620,36 @@ admin.get("/billing", async (c) => {
     webhooks: webhooks.map((event) => ({ id: event.id, provider: event.provider, eventType: event.eventType, status: event.processedAt ? "processed" : event.failedAt ? "failed" : "pending", attempts: event.attempts, failureMessage: event.failureMessage, createdAt: event.createdAt.toISOString() })),
   };
   return c.json(response);
+});
+
+/**
+ * A refund is deliberately blocked once its purchased credits have been spent. This
+ * avoids a money refund while retaining consumed Renvia service; those cases need a
+ * documented manual support decision instead of an unsafe automatic reversal.
+ */
+admin.post("/billing/payments/:id/refund", async (c) => {
+  const denied = denyUnless(c, "billing.manage"); if (denied) return c.json(denied, 403);
+  if (!paypalReady(c.env)) return c.json({ error: "PayPal refunds are not configured" }, 503);
+  const db = c.get("db");
+  const paymentId = z.string().uuid().parse(c.req.param("id"));
+  const [payment] = await db.select().from(schema.billingPayments).where(eq(schema.billingPayments.id, paymentId)).limit(1);
+  if (!payment) return c.json({ error: "Payment not found" }, 404);
+  if (payment.provider !== "paypal" || payment.status !== "paid") return c.json({ error: "Only captured PayPal payments can be refunded" }, 409);
+  try {
+    await assertPaypalPurchaseRefundable(db, payment.id);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Payment is not refundable", code: "refund_manual_review" }, 409);
+  }
+  try {
+    const response = await paypalRequest<{ id?: string }>(c.env, `/v2/payments/captures/${payment.providerPaymentId}/refund`, { method: "POST", headers: { "PayPal-Request-Id": `refund-${payment.id}` }, body: JSON.stringify({}) });
+    if (!response.id) throw new Error("PayPal did not return a refund ID");
+    await reversePaypalPurchaseCredits(db, payment.id, response.id);
+    await db.update(schema.billingPayments).set({ status: "refunded", updatedAt: new Date(), providerMetadata: { ...(payment.providerMetadata ?? {}), refundId: response.id } }).where(eq(schema.billingPayments.id, payment.id));
+    await recordAdminEvent(db, { actorId: c.get("admin").id, action: "billing.payment", targetType: "billing_payment", targetId: payment.id, summary: `Refunded PayPal payment ${payment.providerPaymentId}`, detail: { refundId: response.id, amountCents: payment.amountCents, currency: payment.currency } });
+    return c.json({ id: payment.id, status: "refunded" });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Could not refund payment" }, 502);
+  }
 });
 
 // ── Segmentations ────────────────────────────────────────────────────────────────
