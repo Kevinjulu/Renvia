@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
+import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -20,6 +20,12 @@ export interface AdminNavItem {
 
 /** Single source of truth for sidebar + page heroes across the eight tabs. */
 export const ADMIN_NAV: AdminNavItem[] = [
+  {
+    to: "/operations", label: "My queue", icon: ListTodo, end: false, title: "Operator queue", description: "Your assigned incidents, pending approvals, and recently failed work.", hint: "Assigned work & approvals", banner: "/banners/exterior-3.jpg", roles: ["analyst", "support", "billing", "admin"],
+  },
+  {
+    to: "/financials", label: "Financials", icon: ChartNoAxesCombined, end: false, title: "Financial truth", description: "Confirmed provider revenue alongside estimated FAL cost, margins, burn, and runway.", hint: "Revenue, cost & runway", banner: "/banners/lakeside.jpg", roles: ["billing", "admin"],
+  },
   {
     to: "/",
     label: "Overview",

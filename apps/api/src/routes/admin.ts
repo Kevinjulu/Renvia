@@ -11,6 +11,8 @@ import type {
   AdminAuditRange,
   AdminBulkGrantCreditsResponse,
   AdminBillingResponse,
+  AdminFinancialsResponse,
+  AdminOperationsQueueResponse,
   AdminCreditDirection,
   AdminCreditEntry,
   AdminCreditOrder,
@@ -1797,6 +1799,56 @@ admin.get("/billing", async (c) => {
     payments: payments.map((payment) => ({ ...payment, createdAt: payment.createdAt.toISOString(), paidAt: payment.paidAt?.toISOString() ?? null })),
     webhooks: webhooks.map((event) => ({ id: event.id, provider: event.provider, eventType: event.eventType, status: event.processedAt ? "processed" : event.failedAt ? "failed" : "pending", attempts: event.attempts, failureMessage: event.failureMessage, createdAt: event.createdAt.toISOString() })),
   };
+  return c.json(response);
+});
+
+/** Financial truth: captured provider money is separated from internally tracked FAL estimates. */
+admin.get("/financials", async (c) => {
+  const denied = denyUnless(c, "billing.read"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const settings = await getSettings(db);
+  const [payments, costs, models, customerRevenue, customerCosts, products, entitlements] = await Promise.all([
+    db.select({ userId: schema.billingPayments.userId, amount: schema.billingPayments.amountCents, status: schema.billingPayments.status, createdAt: schema.billingPayments.createdAt, checkoutId: schema.billingPayments.checkoutId }).from(schema.billingPayments).where(gte(schema.billingPayments.createdAt, sql`now() - interval '90 days'`)),
+    db.select({ day: sql<string>`to_char(date_trunc('day', ${schema.renders.createdAt}), 'YYYY-MM-DD')`, cost: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint` }).from(schema.renders).where(gte(schema.renders.createdAt, sql`now() - interval '90 days'`)).groupBy(sql`date_trunc('day', ${schema.renders.createdAt})`).orderBy(asc(sql`date_trunc('day', ${schema.renders.createdAt})`)),
+    db.select({ label: schema.renders.model, cost: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`, renders: sql<number>`count(*)::int` }).from(schema.renders).where(gte(schema.renders.createdAt, sql`now() - interval '90 days'`)).groupBy(schema.renders.model).orderBy(desc(sql`sum(${schema.renders.costMicros})`)),
+    db.select({ userId: schema.users.id, email: schema.users.email, revenue: sql<number>`coalesce(sum(${schema.billingPayments.amountCents}) filter (where ${schema.billingPayments.status} = 'paid'),0)::int` }).from(schema.users).leftJoin(schema.billingPayments, eq(schema.billingPayments.userId, schema.users.id)).groupBy(schema.users.id, schema.users.email),
+    db.select({ userId: schema.projects.ownerId, cost: sql<number>`coalesce(sum(${schema.renders.costMicros}),0)::bigint` }).from(schema.renders).innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id)).groupBy(schema.projects.ownerId),
+    db.select({ amount: schema.billingPayments.amountCents, status: schema.billingPayments.status, plan: schema.billingPlans.name, pack: schema.creditPacks.name }).from(schema.billingPayments).leftJoin(schema.billingCheckouts, eq(schema.billingPayments.checkoutId, schema.billingCheckouts.id)).leftJoin(schema.billingPlans, eq(schema.billingCheckouts.planId, schema.billingPlans.id)).leftJoin(schema.creditPacks, eq(schema.billingCheckouts.creditPackId, schema.creditPacks.id)).where(gte(schema.billingPayments.createdAt, sql`now() - interval '90 days'`)),
+    db.select({ price: schema.billingPlans.priceCents, status: schema.userEntitlements.status }).from(schema.userEntitlements).innerJoin(schema.billingPlans, eq(schema.userEntitlements.planId, schema.billingPlans.id)),
+  ]);
+  const paid = payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + payment.amount, 0) / 100;
+  const refunded = payments.filter((payment) => payment.status === "refunded").reduce((sum, payment) => sum + payment.amount, 0) / 100;
+  const estimatedCost = costs.reduce((sum, row) => sum + row.cost, 0) / MICROS_PER_USD;
+  const dailyBurnUsd = estimatedCost / 90;
+  const budget = effectiveBudgetUsd(c.env, settings);
+  const dailyPayments = new Map<string, { revenueUsd: number; refundsUsd: number; failedPayments: number }>();
+  for (const payment of payments) {
+    const day = payment.createdAt.toISOString().slice(0, 10); const current = dailyPayments.get(day) ?? { revenueUsd: 0, refundsUsd: 0, failedPayments: 0 };
+    if (payment.status === "paid") current.revenueUsd += payment.amount / 100;
+    if (payment.status === "refunded") current.refundsUsd += payment.amount / 100;
+    if (payment.status === "failed") current.failedPayments += 1;
+    dailyPayments.set(day, current);
+  }
+  const byProduct = (key: "plan" | "pack") => Object.entries(products.reduce<Record<string, number>>((all, item) => { const label = item[key] ?? "Unattributed"; if (item.status === "paid") all[label] = (all[label] ?? 0) + item.amount / 100; return all; }, {})).map(([label, revenueUsd]) => ({ label, revenueUsd, estimatedCostUsd: 0, marginUsd: revenueUsd }));
+  const costByCustomer = new Map(customerCosts.map((row) => [row.userId, row.cost / MICROS_PER_USD]));
+  const response: AdminFinancialsResponse = {
+    revenue: { capturedUsd: paid, refundedUsd: refunded, netUsd: paid - refunded, mrrUsd: entitlements.filter((item) => item.status === "active").reduce((sum, item) => sum + item.price / 100, 0), failedPayments: payments.filter((payment) => payment.status === "failed").length, conversionRate: payments.length ? payments.filter((payment) => payment.status === "paid").length / payments.length : 0, churnedSubscribers: entitlements.filter((item) => item.status === "canceled" || item.status === "expired").length },
+    estimatedCost: { falUsd: estimatedCost, dailyBurnUsd, trackedBudgetUsd: budget, projectedBudgetExhaustion: budget !== null && dailyBurnUsd > 0 ? new Date(Date.now() + Math.max(0, budget - estimatedCost) / dailyBurnUsd * 86_400_000).toISOString() : null, reconciliationStatus: "not_connected" },
+    margins: { byPlan: byProduct("plan"), byPack: byProduct("pack"), byModel: models.map((row) => ({ label: row.label ?? "Unknown model", estimatedCostUsd: row.cost / MICROS_PER_USD, renders: row.renders })), byCustomer: customerRevenue.map((row) => ({ userId: row.userId, email: row.email, revenueUsd: row.revenue / 100, estimatedCostUsd: costByCustomer.get(row.userId) ?? 0, marginUsd: row.revenue / 100 - (costByCustomer.get(row.userId) ?? 0) })).sort((a, b) => b.revenueUsd - a.revenueUsd).slice(0, 50) },
+    daily: [...new Set([...costs.map((row) => row.day), ...dailyPayments.keys()])].sort().map((day) => { const cost = costs.find((row) => row.day === day)?.cost ?? 0; const money = dailyPayments.get(day) ?? { revenueUsd: 0, refundsUsd: 0, failedPayments: 0 }; return { day, estimatedCostUsd: cost / MICROS_PER_USD, ...money }; }),
+  };
+  return c.json(response);
+});
+
+/** Compact, role-filtered queue for the operator currently signed in. */
+admin.get("/operations/queue", async (c) => {
+  const db = c.get("db"); const actor = c.get("admin");
+  const [incidents, approvals, renders, segmentations] = await Promise.all([
+    hasPermission(actor.role as UserRole, "incidents.read") ? db.select({ id: schema.incidents.id, title: schema.incidents.title, severity: schema.incidents.severity, status: schema.incidents.status, updatedAt: schema.incidents.updatedAt }).from(schema.incidents).where(and(eq(schema.incidents.ownerId, actor.id), ne(schema.incidents.status, "resolved"))).orderBy(desc(schema.incidents.updatedAt)).limit(20) : Promise.resolve([]),
+    hasPermission(actor.role as UserRole, "settings.read") ? db.select({ id: schema.approvalRequests.id, action: schema.approvalRequests.action, reason: schema.approvalRequests.reason, requestedBy: schema.users.email, createdAt: schema.approvalRequests.createdAt }).from(schema.approvalRequests).innerJoin(schema.users, eq(schema.approvalRequests.requestedBy, schema.users.id)).where(eq(schema.approvalRequests.status, "pending")).orderBy(desc(schema.approvalRequests.createdAt)).limit(20) : Promise.resolve([]),
+    hasPermission(actor.role as UserRole, "renders.read") ? db.select({ id: schema.renders.id, label: schema.projects.name, userId: schema.projects.ownerId, createdAt: schema.renders.updatedAt }).from(schema.renders).innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id)).where(eq(schema.renders.status, "failed")).orderBy(desc(schema.renders.updatedAt)).limit(20) : Promise.resolve([]),
+    hasPermission(actor.role as UserRole, "segmentations.read") ? db.select({ id: schema.segmentations.id, userId: schema.segmentations.userId, createdAt: schema.segmentations.createdAt }).from(schema.segmentations).where(eq(schema.segmentations.status, "failed")).orderBy(desc(schema.segmentations.createdAt)).limit(20) : Promise.resolve([]),
+  ]);
+  const response: AdminOperationsQueueResponse = { assignedIncidents: incidents.map((row) => ({ ...row, severity: row.severity as AdminOperationsQueueResponse["assignedIncidents"][number]["severity"], status: row.status as AdminOperationsQueueResponse["assignedIncidents"][number]["status"], updatedAt: row.updatedAt.toISOString() })), pendingApprovals: approvals.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })), failedJobs: [...renders.map((row) => ({ ...row, type: "render" as const, createdAt: row.createdAt.toISOString() })), ...segmentations.map((row) => ({ ...row, label: "Selection", type: "segmentation" as const, createdAt: row.createdAt.toISOString() }))].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20) };
   return c.json(response);
 });
 

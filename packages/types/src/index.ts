@@ -939,6 +939,20 @@ export interface AdminBillingResponse {
   webhooks: { id: string; provider: string; eventType: string; status: "processed" | "failed" | "pending"; attempts: number; failureMessage: string | null; createdAt: string }[];
 }
 
+/** Revenue is confirmed provider capture data; FAL cost is an internal estimate, never a wallet balance. */
+export interface AdminFinancialsResponse {
+  revenue: { capturedUsd: number; refundedUsd: number; netUsd: number; mrrUsd: number; failedPayments: number; conversionRate: number; churnedSubscribers: number };
+  estimatedCost: { falUsd: number; dailyBurnUsd: number; projectedBudgetExhaustion: string | null; trackedBudgetUsd: number | null; reconciliationStatus: "not_connected" };
+  margins: { byPlan: { label: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[]; byPack: { label: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[]; byModel: { label: string; estimatedCostUsd: number; renders: number }[]; byCustomer: { userId: string; email: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[] };
+  daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
+}
+
+export interface AdminOperationsQueueResponse {
+  assignedIncidents: { id: string; title: string; severity: IncidentSeverity; status: IncidentStatus; updatedAt: string }[];
+  pendingApprovals: { id: string; action: string; reason: string; requestedBy: string; createdAt: string }[];
+  failedJobs: { id: string; type: "render" | "segmentation"; label: string; userId: string; createdAt: string }[];
+}
+
 export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 export type IncidentStatus = "open" | "acknowledged" | "resolved";
 export type IncidentSourceType = "render" | "segmentation" | "webhook" | "system";

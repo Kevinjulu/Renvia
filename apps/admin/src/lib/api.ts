@@ -7,6 +7,8 @@ import type {
   AdminBulkGrantCreditsRequest,
   AdminBulkGrantCreditsResponse,
   AdminBillingResponse,
+  AdminFinancialsResponse,
+  AdminOperationsQueueResponse,
   AdminCreditDirection,
   AdminCreditOrder,
   AdminCreditSort,
@@ -155,6 +157,8 @@ export function useAdminApi() {
         offset?: number;
       }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       getBilling: () => request<AdminBillingResponse>(getToken, "/admin/billing"),
+      getFinancials: () => request<AdminFinancialsResponse>(getToken, "/admin/financials"),
+      getOperationsQueue: () => request<AdminOperationsQueueResponse>(getToken, "/admin/operations/queue"),
       getIncidents: (status?: "open" | "acknowledged" | "resolved") => request<AdminIncidentsResponse>(getToken, `/admin/incidents${status ? `?status=${status}` : ""}`),
       syncIncidents: () => request<{ opened: number }>(getToken, "/admin/incidents/sync", { method: "POST" }),
       assignIncident: (id: string, ownerId: string | null) => request<{ id: string; ownerId: string | null }>(getToken, `/admin/incidents/${id}/assign`, { method: "POST", body: JSON.stringify({ ownerId }) }),

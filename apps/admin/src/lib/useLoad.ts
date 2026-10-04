@@ -5,6 +5,8 @@ interface LoadState<T> {
   error: string | null;
   loading: boolean;
   reload: () => void;
+  /** Time the last successful response arrived; null until the first success. */
+  lastUpdated: Date | null;
 }
 
 /**
@@ -16,6 +18,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const loadRef = useRef(load);
   loadRef.current = load;
 
@@ -28,6 +31,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
         if (cancelled) return;
         setData(result);
         setError(null);
+        setLastUpdated(new Date());
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "Something went wrong");
@@ -44,8 +48,12 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
   const reload = useCallback(() => setVersion((value) => value + 1), []);
   useEffect(() => {
     if (!pollMs) return;
-    const timer = window.setInterval(() => setVersion((value) => value + 1), pollMs);
-    return () => window.clearInterval(timer);
+    // Background tabs do not need live operational traffic. A visibility change
+    // refreshes once immediately when the operator returns.
+    const tick = () => { if (document.visibilityState === "visible") setVersion((value) => value + 1); };
+    const timer = window.setInterval(tick, pollMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };
   }, [pollMs]);
-  return { data, error, loading, reload };
+  return { data, error, loading, reload, lastUpdated };
 }
