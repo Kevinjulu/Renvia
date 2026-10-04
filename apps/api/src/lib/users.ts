@@ -1,5 +1,5 @@
 import { createClerkClient } from "@clerk/backend";
-import { eq, getTableColumns, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
 import { getSettings } from "./settings.js";
@@ -44,8 +44,14 @@ export async function syncUser(env: Env, db: Database, clerkId: string): Promise
 export async function getOrCreateUser(env: Env, db: Database, clerkId: string): Promise<UserRow> {
   const existing = await db.query.users.findFirst({ where: eq(schema.users.clerkId, clerkId) });
   if (!existing) return syncUser(env, db, clerkId);
+  // Every authenticated Studio/API visit counts as activity, but no more than one
+  // database write per five minutes per user (admin polling remains cheap).
+  await db
+    .update(schema.users)
+    .set({ lastActiveAt: sql`now()` })
+    .where(and(eq(schema.users.id, existing.id), sql`(${schema.users.lastActiveAt} is null or ${schema.users.lastActiveAt} < now() - interval '5 minutes')`));
   await ensureEntitlement(db, existing.id);
-  return existing;
+  return { ...existing, lastActiveAt: new Date() };
 }
 
 export async function getOrCreateUserId(env: Env, db: Database, clerkId: string): Promise<string> {

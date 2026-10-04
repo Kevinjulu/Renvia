@@ -31,11 +31,11 @@ type StatusFilter = "" | "active" | "disabled";
 type BalanceFilter = "" | "low" | "zero";
 
 const SORTABLE: { key: AdminUserSort; label: string }[] = [
+  { key: "lastActiveAt", label: "Last active" },
   { key: "createdAt", label: "Joined" },
   { key: "creditBalance", label: "Credits" },
   { key: "renderCount", label: "Renders" },
   { key: "spentUsd", label: "Spend" },
-  { key: "lastRenderAt", label: "Last render" },
 ];
 
 export function UsersPage() {
@@ -47,7 +47,7 @@ export function UsersPage() {
   const role = (params.get("role") ?? "") as RoleFilter;
   const status = (params.get("status") ?? "") as StatusFilter;
   const balance = (params.get("balance") ?? "") as BalanceFilter;
-  const sort = (params.get("sort") ?? "createdAt") as AdminUserSort;
+  const sort = (params.get("sort") ?? "lastActiveAt") as AdminUserSort;
   const order = (params.get("order") ?? "desc") as AdminUserOrder;
   const offset = Number(params.get("offset") ?? 0);
 
@@ -297,7 +297,7 @@ export function UsersPage() {
                         </td>
                         <td className="px-5 py-3 tabular-nums">{formatNumber(user.renderCount)}</td>
                         <td className="px-5 py-3 tabular-nums">{formatUsd(user.spentUsd)}</td>
-                        <td className="px-5 py-3 text-muted">{formatRelative(user.lastRenderAt)}</td>
+                        <td className="px-5 py-3 text-muted">{formatRelative(user.lastActiveAt)}</td>
                         <td className="px-5 py-3">
                           <div className="flex flex-wrap gap-1.5">
                             {user.role !== "user" && <Pill tone="blue">{user.role}</Pill>}

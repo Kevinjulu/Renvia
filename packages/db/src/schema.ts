@@ -22,11 +22,14 @@ export const users = pgTable(
   monthlySegmentLimitOverride: integer("monthly_segment_limit_override"),
   /** Skips daily/monthly caps and maintenance pauses. Still charged credits, still capped by the fal budget. */
   limitsExempt: boolean("limits_exempt").notNull().default(false),
+  /** Last authenticated Studio, website, or API activity; throttled server-side. */
+  lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check("users_credit_balance_non_negative", sql`${table.creditBalance} >= 0`),
+    index("users_last_active_idx").on(table.lastActiveAt),
     check(
       "users_daily_render_limit_override_range",
       sql`${table.dailyRenderLimitOverride} IS NULL OR ${table.dailyRenderLimitOverride} BETWEEN 0 AND 10000`,

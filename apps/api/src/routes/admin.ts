@@ -163,6 +163,7 @@ function selectAdminUsers(db: Database) {
       monthlyRenderLimitOverride: schema.users.monthlyRenderLimitOverride,
       monthlySegmentLimitOverride: schema.users.monthlySegmentLimitOverride,
       limitsExempt: schema.users.limitsExempt,
+      lastActiveAt: schema.users.lastActiveAt,
       createdAt: schema.users.createdAt,
       renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
       spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,
@@ -174,11 +175,12 @@ function selectAdminUsers(db: Database) {
 
 type AdminUserRow = Awaited<ReturnType<ReturnType<typeof selectAdminUsers>["execute"]>>[number];
 
-function toAdminUser({ spentMicros, lastRenderAt, createdAt, ...row }: AdminUserRow): AdminUser {
+function toAdminUser({ spentMicros, lastRenderAt, lastActiveAt, createdAt, ...row }: AdminUserRow): AdminUser {
   return {
     ...row,
     spentUsd: Number(spentMicros) / MICROS_PER_USD,
     createdAt: createdAt.toISOString(),
+    lastActiveAt: lastActiveAt ? new Date(lastActiveAt).toISOString() : null,
     lastRenderAt: lastRenderAt ? new Date(lastRenderAt).toISOString() : null,
   };
 }
@@ -526,9 +528,9 @@ admin.get("/users", async (c) => {
   const status = z.enum(["active", "disabled"]).optional().parse(c.req.query("status") || undefined);
   const balance = z.enum(["low", "zero"]).optional().parse(c.req.query("balance") || undefined);
   const sort = z
-    .enum(["createdAt", "lastRenderAt", "creditBalance", "renderCount", "spentUsd"])
-    .default("createdAt")
-    .parse(c.req.query("sort") || "createdAt") as AdminUserSort;
+    .enum(["createdAt", "lastActiveAt", "lastRenderAt", "creditBalance", "renderCount", "spentUsd"])
+    .default("lastActiveAt")
+    .parse(c.req.query("sort") || "lastActiveAt") as AdminUserSort;
   const order = z.enum(["asc", "desc"]).default("desc").parse(c.req.query("order") || "desc") as AdminUserOrder;
 
   const filters: SQL[] = [];
@@ -555,7 +557,9 @@ admin.get("/users", async (c) => {
           ? direction(sql`coalesce(${stats.spentMicros}, 0)`)
           : sort === "lastRenderAt"
             ? direction(stats.lastRenderAt)
-            : direction(schema.users.createdAt);
+            : sort === "lastActiveAt"
+              ? direction(schema.users.lastActiveAt)
+              : direction(schema.users.createdAt);
 
   const [rows, [count], [summary]] = await Promise.all([
     db
@@ -571,6 +575,7 @@ admin.get("/users", async (c) => {
         monthlyRenderLimitOverride: schema.users.monthlyRenderLimitOverride,
         monthlySegmentLimitOverride: schema.users.monthlySegmentLimitOverride,
         limitsExempt: schema.users.limitsExempt,
+        lastActiveAt: schema.users.lastActiveAt,
         createdAt: schema.users.createdAt,
         renderCount: sql<number>`coalesce(${stats.renderCount}, 0)::int`,
         spentMicros: sql<number>`coalesce(${stats.spentMicros}, 0)::bigint`,

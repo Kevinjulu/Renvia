@@ -483,6 +483,8 @@ export interface AdminUser {
   /** Skips daily/monthly caps and maintenance pauses; still charged and still budget-capped. */
   limitsExempt: boolean;
   createdAt: string;
+  /** Last authenticated Studio, website, or API activity. */
+  lastActiveAt: string | null;
   /** Renders and edits that didn't fail. */
   renderCount: number;
   /** Estimated fal spend for this user's non-failed renders. */
@@ -502,7 +504,7 @@ export interface AdminUsersResponse {
   };
 }
 
-export type AdminUserSort = "createdAt" | "lastRenderAt" | "creditBalance" | "renderCount" | "spentUsd";
+export type AdminUserSort = "createdAt" | "lastActiveAt" | "lastRenderAt" | "creditBalance" | "renderCount" | "spentUsd";
 export type AdminUserOrder = "asc" | "desc";
 
 export interface AdminBulkGrantCreditsRequest {
