@@ -155,6 +155,13 @@ async function processEvent(db: ReturnType<typeof createDb>, event: PaypalEvent)
   if (event.event_type === "BILLING.SUBSCRIPTION.EXPIRED") return updateSubscriptionStatus(db, event, "expired");
 }
 
+/** Reprocesses an already signature-verified, persisted event during operator recovery. */
+export async function replayVerifiedPaypalEvent(db: ReturnType<typeof createDb>, payload: unknown): Promise<void> {
+  const parsed = eventSchema.safeParse(payload);
+  if (!parsed.success) throw new Error("Stored PayPal event payload is invalid");
+  await processEvent(db, parsed.data);
+}
+
 paypalWebhook.post("/", async (c) => {
   const parsed = eventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "Invalid PayPal webhook payload" }, 400);

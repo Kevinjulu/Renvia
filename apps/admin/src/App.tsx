@@ -19,6 +19,7 @@ import { SegmentationsPage } from "./pages/SegmentationsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BillingPage } from "./pages/BillingPage";
+import { IncidentsPage } from "./pages/IncidentsPage";
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -88,6 +89,7 @@ function AdminGate() {
           <Route path="/segmentations" element={<SegmentationsPage />} />
           <Route path="/credits" element={<CreditsPage />} />
           <Route path="/billing" element={<BillingPage />} />
+          <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

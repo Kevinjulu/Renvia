@@ -32,6 +32,8 @@ const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "settings.update", label: "Settings" },
   { value: "render.refresh", label: "Render recovery" },
   { value: "render.cancel", label: "Render cancellation" },
+  { value: "segmentation.recover", label: "Segmentation recovery" },
+  { value: "incident.update", label: "Incident update" },
   { value: "billing.payment", label: "Payments" },
 ];
 
@@ -66,6 +68,8 @@ const ACTION_META: Record<
   },
   "render.refresh": { label: "Render refresh", tone: "blue", icon: Settings, chip: "bg-blueprint-soft text-blueprint" },
   "render.cancel": { label: "Render cancel", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "segmentation.recover": { label: "Selection recovery", tone: "blue", icon: Settings, chip: "bg-blueprint-soft text-blueprint" },
+  "incident.update": { label: "Incident", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "billing.webhook": { label: "Billing webhook", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
   "billing.payment": { label: "Billing payment", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "billing.entitlement": { label: "Entitlement", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },

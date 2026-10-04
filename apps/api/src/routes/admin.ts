@@ -14,6 +14,7 @@ import type {
   AdminCreditEntry,
   AdminCreditOrder,
   AdminCreditSort,
+  AdminIncidentsResponse,
   AdminLedgerEntry,
   AdminOverviewResponse,
   AdminProject,
@@ -47,6 +48,9 @@ import { presentUploadUrl } from "../lib/storage.js";
 import { cancelRender, refreshRender } from "../lib/engine.js";
 import { paypalReady, paypalRequest } from "../lib/paypal.js";
 import { assertPaypalPurchaseRefundable, reversePaypalPurchaseCredits } from "../lib/paypalSettlement.js";
+import { runSegmentation } from "../lib/segment.js";
+import { deliverIncidentNotification, openOperationalIncident, recordIncidentEvent, resolveIncidentsForSource } from "../lib/incidents.js";
+import { replayVerifiedPaypalEvent } from "./webhooks/paypal.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type AdminContext = { Bindings: Env; Variables: AuthVariables & { admin: UserRow; db: Database } };
@@ -78,22 +82,25 @@ type AdminPermission =
   | "renders.recover"
   | "projects.read"
   | "segmentations.read"
+  | "segmentations.recover"
   | "credits.read"
   | "credits.manage"
   | "audit.read"
   | "settings.read"
   | "settings.manage"
   | "billing.read"
-  | "billing.manage";
+  | "billing.manage"
+  | "incidents.read"
+  | "incidents.manage";
 
 const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
-  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read"],
-  support: ["overview.read", "users.read", "renders.read", "renders.recover", "projects.read", "segmentations.read"],
-  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage"],
+  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read"],
+  support: ["overview.read", "users.read", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage"],
+  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
   admin: [
-    "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read",
-    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage",
+    "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage",
   ],
 };
 
@@ -1053,6 +1060,9 @@ admin.post("/renders/:id/refresh", async (c) => {
     summary: `Refreshed render ${id}`,
     detail: { statusBefore: render.status, statusAfter: refreshed.status },
   });
+  if (refreshed.status === "succeeded") {
+    await resolveIncidentsForSource(db, "render", id, c.get("admin").id, "Render refresh completed successfully");
+  }
   const settings = await getSettings(db);
   const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
   return c.json({ render: row ? await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) : refreshed });
@@ -1076,6 +1086,7 @@ admin.post("/renders/:id/cancel", async (c) => {
     summary: `Cancelled render ${id}`,
     detail: { statusBefore: render.status, statusAfter: cancelled.status, creditsCharged: render.creditsCharged },
   });
+  await resolveIncidentsForSource(db, "render", id, c.get("admin").id, "Render was intentionally cancelled by an operator");
   const settings = await getSettings(db);
   const [row] = await selectAdminRenders(db).where(eq(schema.renders.id, id));
   return c.json({ render: row ? await toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes) : cancelled });
@@ -1652,6 +1663,27 @@ admin.post("/billing/payments/:id/refund", async (c) => {
   }
 });
 
+/** Replays only a previously signature-verified stored PayPal event. */
+admin.post("/billing/webhooks/:id/replay", async (c) => {
+  const denied = denyUnless(c, "billing.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [event] = await db.select().from(schema.billingWebhookEvents).where(eq(schema.billingWebhookEvents.id, id)).limit(1);
+  if (!event) return c.json({ error: "Webhook event not found" }, 404);
+  if (event.provider !== "paypal" || event.verificationStatus !== "verified") return c.json({ error: "Only previously verified PayPal events can be replayed" }, 409);
+  try {
+    await replayVerifiedPaypalEvent(db, event.payload);
+    await db.update(schema.billingWebhookEvents).set({ processedAt: new Date(), failedAt: null, failureMessage: null, attempts: sql`${schema.billingWebhookEvents.attempts} + 1`, lastAttemptAt: new Date() }).where(eq(schema.billingWebhookEvents.id, event.id));
+    await resolveIncidentsForSource(db, "webhook", event.id, c.get("admin").id, "Verified webhook replay completed successfully");
+    await recordAdminEvent(db, { actorId: c.get("admin").id, action: "billing.webhook", targetType: "billing_webhook", targetId: event.id, summary: `Replayed PayPal event ${event.eventType}`, detail: { providerEventId: event.providerEventId } });
+    return c.json({ id: event.id, status: "processed" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Webhook replay failed";
+    await db.update(schema.billingWebhookEvents).set({ failedAt: new Date(), failureMessage: message, attempts: sql`${schema.billingWebhookEvents.attempts} + 1`, lastAttemptAt: new Date() }).where(eq(schema.billingWebhookEvents.id, event.id));
+    return c.json({ error: message }, 502);
+  }
+});
+
 // ── Segmentations ────────────────────────────────────────────────────────────────
 
 function toAdminSegmentation(
@@ -1805,6 +1837,214 @@ admin.get("/segmentations/:id", async (c) => {
   });
 });
 
+/** Retries a failed or stuck automatic selection without silently charging the customer again. */
+admin.post("/segmentations/:id/recover", async (c) => {
+  const denied = denyUnless(c, "segmentations.recover"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [segmentation] = await db.select().from(schema.segmentations).where(eq(schema.segmentations.id, id)).limit(1);
+  if (!segmentation) return c.json({ error: "Segmentation not found" }, 404);
+  const settings = await getSettings(db);
+  const stuck = isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt, settings.stuckTimeoutMinutes);
+  if (segmentation.status !== "failed" && !stuck) return c.json({ error: "Only failed or stuck segmentations can be recovered" }, 409);
+  const [pending] = await db.update(schema.segmentations).set({ status: "pending", errorMessage: null }).where(eq(schema.segmentations.id, id)).returning();
+  const result = await runSegmentation(c.env, db, pending!, new URL(c.req.url).origin, effectiveEngineMode(c.env, settings));
+  await recordAdminEvent(db, {
+    actorId: c.get("admin").id,
+    action: "segmentation.recover",
+    targetType: "segmentation",
+    targetId: id,
+    summary: `Recovered segmentation ${id}`,
+    detail: { statusBefore: segmentation.status, statusAfter: result.segmentation.status },
+  });
+  if (result.segmentation.status === "succeeded") {
+    await resolveIncidentsForSource(db, "segmentation", id, c.get("admin").id, "Segmentation recovery completed successfully");
+  }
+  const [owner] = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, result.segmentation.userId)).limit(1);
+  return c.json({ segmentation: toAdminSegmentation(result.segmentation, owner?.email ?? "Unknown", settings.stuckTimeoutMinutes) });
+});
+
+// ── Incident center ──────────────────────────────────────────────────────────────
+
+async function syncOperationalIncidents(c: { env: Env; get: (key: "db") => Database }) {
+  const db = c.get("db");
+  const settings = await getSettings(db);
+  const [webhooks, segmentations, renders] = await Promise.all([
+    db.select().from(schema.billingWebhookEvents).where(sql`${schema.billingWebhookEvents.failedAt} is not null`).limit(100),
+    db.select().from(schema.segmentations).where(or(
+      eq(schema.segmentations.status, "failed"),
+      and(eq(schema.segmentations.status, "pending"), sql`${schema.segmentations.createdAt} < ${stuckBeforeSql(settings.stuckTimeoutMinutes)}`),
+    )).limit(100),
+    db.select().from(schema.renders).where(or(
+      eq(schema.renders.status, "failed"),
+      and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${stuckBeforeSql(settings.stuckTimeoutMinutes)}`),
+    )).limit(100),
+  ]);
+  let opened = 0;
+  const record = async (input: Parameters<typeof openOperationalIncident>[1]) => {
+    const result = await openOperationalIncident(db, input);
+    if (result.created) {
+      opened += 1;
+      await deliverIncidentNotification(c.env, db, result.incident, "New operational incident");
+    }
+  };
+  for (const event of webhooks) await record({
+    fingerprint: `webhook:${event.id}`,
+    sourceType: "webhook",
+    sourceId: event.id,
+    severity: "high",
+    title: `Failed ${event.provider} webhook`,
+    summary: event.failureMessage ?? `${event.eventType} has not been processed`,
+    context: { provider: event.provider, eventType: event.eventType, attempts: event.attempts },
+  });
+  for (const segmentation of segmentations) {
+    const stuck = isSegStuck(segmentation.status as SegmentationStatus, segmentation.createdAt, settings.stuckTimeoutMinutes);
+    await record({
+      fingerprint: `segmentation:${segmentation.id}`,
+      sourceType: "segmentation",
+      sourceId: segmentation.id,
+      severity: stuck ? "high" : "medium",
+      title: stuck ? "Stuck automatic selection" : "Failed automatic selection",
+      summary: segmentation.errorMessage ?? `Segmentation ${segmentation.id} needs recovery`,
+      context: { status: segmentation.status, model: segmentation.model, creditsCharged: segmentation.creditsCharged },
+    });
+  }
+  for (const render of renders) {
+    const stuck = isRenderStuck(render.status as RenderStatus, render.updatedAt, settings.stuckTimeoutMinutes);
+    await record({
+      fingerprint: `render:${render.id}`,
+      sourceType: "render",
+      sourceId: render.id,
+      severity: stuck ? "high" : "medium",
+      title: stuck ? "Stuck render" : "Failed render",
+      summary: render.errorMessage ?? `Render ${render.id} needs recovery`,
+      context: { status: render.status, model: render.model, falRequestId: render.falRequestId },
+    });
+  }
+  return { opened, scanned: { webhooks: webhooks.length, segmentations: segmentations.length, renders: renders.length } };
+}
+
+async function incidentResponse(db: Database, status?: "open" | "acknowledged" | "resolved"): Promise<AdminIncidentsResponse> {
+  const incidents = await db.select().from(schema.incidents).where(status ? eq(schema.incidents.status, status) : undefined).orderBy(desc(schema.incidents.lastSeenAt)).limit(100);
+  const ids = incidents.map((incident) => incident.id);
+  const [events, notifications, staff, allIncidents] = await Promise.all([
+    ids.length ? db.select().from(schema.incidentEvents).where(inArray(schema.incidentEvents.incidentId, ids)).orderBy(desc(schema.incidentEvents.createdAt)) : Promise.resolve([]),
+    ids.length ? db.select().from(schema.incidentNotifications).where(inArray(schema.incidentNotifications.incidentId, ids)).orderBy(desc(schema.incidentNotifications.attemptedAt)) : Promise.resolve([]),
+    db.select({ id: schema.users.id, email: schema.users.email, role: schema.users.role }).from(schema.users).where(and(inArray(schema.users.role, ["support", "billing", "admin"]), eq(schema.users.disabled, false))).orderBy(asc(schema.users.email)),
+    db.select({ status: schema.incidents.status, severity: schema.incidents.severity, count: sql<number>`count(*)::int` }).from(schema.incidents).groupBy(schema.incidents.status, schema.incidents.severity),
+  ]);
+  const peopleIds = new Set<string>();
+  for (const incident of incidents) [incident.ownerId, incident.acknowledgedBy, incident.resolvedBy].forEach((id) => { if (id) peopleIds.add(id); });
+  for (const event of events) if (event.actorId) peopleIds.add(event.actorId);
+  const people = peopleIds.size ? await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, [...peopleIds])) : [];
+  const emailById = new Map(people.map((person) => [person.id, person.email]));
+  const eventsByIncident = new Map<string, typeof events>();
+  for (const event of events) eventsByIncident.set(event.incidentId, [...(eventsByIncident.get(event.incidentId) ?? []), event]);
+  const notificationsByIncident = new Map<string, typeof notifications>();
+  for (const notification of notifications) notificationsByIncident.set(notification.incidentId, [...(notificationsByIncident.get(notification.incidentId) ?? []), notification]);
+  const summary = { open: 0, acknowledged: 0, resolved: 0, criticalOpen: 0, failedNotifications: 0 };
+  for (const row of allIncidents) {
+    summary[row.status as "open" | "acknowledged" | "resolved"] += row.count;
+    if ((row.status === "open" || row.status === "acknowledged") && row.severity === "critical") summary.criticalOpen += row.count;
+  }
+  summary.failedNotifications = notifications.filter((notification) => notification.status === "failed").length;
+  return {
+    incidents: incidents.map((incident) => ({
+      id: incident.id,
+      sourceType: incident.sourceType as AdminIncidentsResponse["incidents"][number]["sourceType"],
+      sourceId: incident.sourceId,
+      severity: incident.severity as AdminIncidentsResponse["incidents"][number]["severity"],
+      status: incident.status as AdminIncidentsResponse["incidents"][number]["status"],
+      title: incident.title,
+      summary: incident.summary,
+      context: incident.context ?? null,
+      ownerId: incident.ownerId,
+      ownerEmail: incident.ownerId ? emailById.get(incident.ownerId) ?? null : null,
+      acknowledgement: incident.acknowledgedAt ? { at: incident.acknowledgedAt.toISOString(), byEmail: incident.acknowledgedBy ? emailById.get(incident.acknowledgedBy) ?? null : null } : null,
+      resolution: incident.resolvedAt ? { at: incident.resolvedAt.toISOString(), byEmail: incident.resolvedBy ? emailById.get(incident.resolvedBy) ?? null : null, note: incident.resolutionNote } : null,
+      occurrenceCount: incident.occurrenceCount,
+      firstSeenAt: incident.firstSeenAt.toISOString(),
+      lastSeenAt: incident.lastSeenAt.toISOString(),
+      events: (eventsByIncident.get(incident.id) ?? []).slice(0, 8).map((event) => ({ id: event.id, action: event.action as AdminIncidentsResponse["incidents"][number]["events"][number]["action"], note: event.note, actorEmail: event.actorId ? emailById.get(event.actorId) ?? null : null, createdAt: event.createdAt.toISOString() })),
+      notifications: (notificationsByIncident.get(incident.id) ?? []).slice(0, 5).map((notification) => ({ id: notification.id, status: notification.status as "delivered" | "failed" | "skipped", destination: notification.destination, failureMessage: notification.failureMessage, attemptedAt: notification.attemptedAt.toISOString(), deliveredAt: notification.deliveredAt?.toISOString() ?? null })),
+    })),
+    staff,
+    summary,
+  };
+}
+
+admin.get("/incidents", async (c) => {
+  const denied = denyUnless(c, "incidents.read"); if (denied) return c.json(denied, 403);
+  const status = z.enum(["open", "acknowledged", "resolved"]).optional().parse(c.req.query("status") || undefined);
+  return c.json(await incidentResponse(c.get("db"), status));
+});
+
+admin.post("/incidents/sync", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  return c.json(await syncOperationalIncidents(c));
+});
+
+async function managedIncident(c: { get: (key: "db") => Database }, id: string) {
+  const [incident] = await c.get("db").select().from(schema.incidents).where(eq(schema.incidents.id, id)).limit(1);
+  return incident;
+}
+
+admin.post("/incidents/:id/assign", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const { ownerId } = z.object({ ownerId: z.string().uuid().nullable() }).parse(await c.req.json());
+  const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
+  if (ownerId) {
+    const [owner] = await c.get("db").select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.id, ownerId), eq(schema.users.disabled, false), inArray(schema.users.role, ["support", "billing", "admin"]))).limit(1);
+    if (!owner) return c.json({ error: "Owner must be active operations staff" }, 409);
+  }
+  await c.get("db").update(schema.incidents).set({ ownerId, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
+  await recordIncidentEvent(c.get("db"), id, "assigned", c.get("admin").id, ownerId ? "Incident owner changed" : "Incident unassigned", { ownerId });
+  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: ownerId ? "Assigned incident" : "Unassigned incident", detail: { ownerId } });
+  return c.json({ id, ownerId });
+});
+
+admin.post("/incidents/:id/acknowledge", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const { note } = z.object({ note: z.string().trim().max(500).optional() }).parse(await c.req.json());
+  const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
+  if (incident.status === "resolved") return c.json({ error: "Resolved incidents cannot be acknowledged" }, 409);
+  await c.get("db").update(schema.incidents).set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: c.get("admin").id, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
+  await recordIncidentEvent(c.get("db"), id, "acknowledged", c.get("admin").id, note ?? "Incident acknowledged");
+  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: "Acknowledged incident" });
+  return c.json({ id, status: "acknowledged" });
+});
+
+admin.post("/incidents/:id/severity", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const { severity } = z.object({ severity: z.enum(["low", "medium", "high", "critical"]) }).parse(await c.req.json());
+  const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
+  await c.get("db").update(schema.incidents).set({ severity, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
+  await recordIncidentEvent(c.get("db"), id, "reopened", c.get("admin").id, `Severity set to ${severity}`, { severity });
+  return c.json({ id, severity });
+});
+
+admin.post("/incidents/:id/resolve", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const { note } = z.object({ note: z.string().trim().min(3).max(1000) }).parse(await c.req.json());
+  const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
+  await c.get("db").update(schema.incidents).set({ status: "resolved", resolvedAt: new Date(), resolvedBy: c.get("admin").id, resolutionNote: note, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
+  await recordIncidentEvent(c.get("db"), id, "resolved", c.get("admin").id, note);
+  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: "Resolved incident", detail: { note } });
+  return c.json({ id, status: "resolved" });
+});
+
+admin.post("/incidents/:id/notify", async (c) => {
+  const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
+  const status = await deliverIncidentNotification(c.env, c.get("db"), incident, "Operator requested notification retry");
+  return c.json({ id, notification: status });
+});
+
 // ── Audit ────────────────────────────────────────────────────────────────────────
 
 function toAdminAuditEvent(event: typeof schema.adminEvents.$inferSelect, actorEmail: string): AdminAuditEvent {
@@ -1826,7 +2066,7 @@ admin.get("/audit", async (c) => {
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const action = z
-    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "billing.webhook", "billing.payment", "billing.entitlement"])
+    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "segmentation.recover", "incident.update", "billing.webhook", "billing.payment", "billing.entitlement"])
     .optional()
     .parse(c.req.query("action") || undefined) as AdminAuditAction | undefined;
   const actorId = z.string().uuid().optional().parse(c.req.query("actorId") || undefined);
@@ -1915,6 +2155,8 @@ admin.get("/audit", async (c) => {
     "settings.update": 0,
     "render.refresh": 0,
     "render.cancel": 0,
+    "segmentation.recover": 0,
+    "incident.update": 0,
     "billing.webhook": 0,
     "billing.payment": 0,
     "billing.entitlement": 0,

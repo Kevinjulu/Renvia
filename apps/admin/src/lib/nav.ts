@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, Users, Wallet } from "lucide-react";
+import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -96,6 +96,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Revenue & PayPal events",
     banner: "/banners/lakeside.jpg",
     roles: ["billing", "admin"],
+  },
+  {
+    to: "/incidents",
+    label: "Incidents",
+    icon: ShieldAlert,
+    end: false,
+    title: "Incident center",
+    description: "Assign, acknowledge, recover, and resolve failed operational work with a durable response trail.",
+    hint: "Failures and recovery",
+    banner: "/banners/exterior-3.jpg",
+    roles: ["support", "billing", "admin"],
   },
   {
     to: "/audit",

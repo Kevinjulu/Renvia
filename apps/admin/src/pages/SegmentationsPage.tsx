@@ -73,6 +73,7 @@ export function SegmentationsPage() {
 
   const [draft, setDraft] = useState(search);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [recoveringId, setRecoveringId] = useState<string | null>(null);
 
   useEffect(() => {
     if (draft === search) return;
@@ -129,6 +130,11 @@ export function SegmentationsPage() {
     } catch {
       /* ignore */
     }
+  };
+  const recover = async (id: string) => {
+    setRecoveringId(id);
+    try { await api.recoverSegmentation(id); await reload(); }
+    finally { setRecoveringId(null); }
   };
 
   return (
@@ -334,6 +340,8 @@ export function SegmentationsPage() {
                               onOpen={() => openDetail(item.id)}
                               onCopyId={() => void copyText(item.id, item.id)}
                               onCopyError={item.errorMessage ? () => void copyText(item.id, item.errorMessage!) : undefined}
+                              onRecover={(item.status === "failed" || item.stuck) ? () => void recover(item.id) : undefined}
+                              recovering={recoveringId === item.id}
                             />
                           </td>
                         </tr>
@@ -402,12 +410,16 @@ function RowActions({
   onOpen,
   onCopyId,
   onCopyError,
+  onRecover,
+  recovering,
 }: {
   item: AdminSegmentation;
   copied: boolean;
   onOpen: () => void;
   onCopyId: () => void;
   onCopyError?: () => void;
+  onRecover?: () => void;
+  recovering: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -473,6 +485,16 @@ function RowActions({
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface"
               >
                 <Copy size={14} /> Copy error
+              </button>
+            )}
+            {onRecover && (
+              <button
+                type="button"
+                onClick={() => { setOpen(false); onRecover(); }}
+                disabled={recovering}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-blueprint hover:bg-surface disabled:opacity-50"
+              >
+                <Scan size={14} /> {recovering ? "Recovering…" : "Recover selection"}
               </button>
             )}
           </div>

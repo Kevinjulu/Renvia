@@ -883,6 +883,8 @@ export type AdminAuditAction =
   | "settings.update"
   | "render.refresh"
   | "render.cancel"
+  | "segmentation.recover"
+  | "incident.update"
   | "billing.webhook"
   | "billing.payment"
   | "billing.entitlement";
@@ -919,4 +921,35 @@ export interface AdminBillingResponse {
   plans: { id: string; name: string; slug: string; priceCents: number; currency: string; active: boolean; subscribers: number }[];
   payments: { id: string; userEmail: string; provider: string; providerPaymentId: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
   webhooks: { id: string; provider: string; eventType: string; status: "processed" | "failed" | "pending"; attempts: number; failureMessage: string | null; createdAt: string }[];
+}
+
+export type IncidentSeverity = "low" | "medium" | "high" | "critical";
+export type IncidentStatus = "open" | "acknowledged" | "resolved";
+export type IncidentSourceType = "render" | "segmentation" | "webhook" | "system";
+export type IncidentEventAction = "opened" | "assigned" | "acknowledged" | "recovered" | "resolved" | "reopened" | "notification";
+
+export interface AdminIncident {
+  id: string;
+  sourceType: IncidentSourceType;
+  sourceId: string;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  title: string;
+  summary: string;
+  context: Record<string, unknown> | null;
+  ownerId: string | null;
+  ownerEmail: string | null;
+  acknowledgement: { at: string; byEmail: string | null } | null;
+  resolution: { at: string; byEmail: string | null; note: string | null } | null;
+  occurrenceCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  events: { id: string; action: IncidentEventAction; note: string | null; actorEmail: string | null; createdAt: string }[];
+  notifications: { id: string; status: "delivered" | "failed" | "skipped"; destination: string | null; failureMessage: string | null; attemptedAt: string; deliveredAt: string | null }[];
+}
+
+export interface AdminIncidentsResponse {
+  incidents: AdminIncident[];
+  staff: { id: string; email: string; role: UserRole }[];
+  summary: Record<IncidentStatus, number> & { criticalOpen: number; failedNotifications: number };
 }

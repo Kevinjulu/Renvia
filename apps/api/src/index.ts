@@ -40,6 +40,8 @@ export interface Env {
   PAYPAL_WEBHOOK_ID?: string;
   /** Defaults to live. Set `sandbox` only for the PayPal sandbox application. */
   PAYPAL_ENV?: "sandbox" | "live";
+  /** Optional server-only HTTPS endpoint for operational incident notifications. */
+  OPS_NOTIFICATION_WEBHOOK_URL?: string;
 }
 
 export interface AuthVariables {

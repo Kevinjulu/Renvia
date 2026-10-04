@@ -10,6 +10,7 @@ import type {
   AdminCreditDirection,
   AdminCreditOrder,
   AdminCreditSort,
+  AdminIncidentsResponse,
   AdminCreditsResponse,
   AdminGrantCreditsRequest,
   AdminOverviewResponse,
@@ -151,7 +152,15 @@ export function useAdminApi() {
         offset?: number;
       }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       getBilling: () => request<AdminBillingResponse>(getToken, "/admin/billing"),
+      getIncidents: (status?: "open" | "acknowledged" | "resolved") => request<AdminIncidentsResponse>(getToken, `/admin/incidents${status ? `?status=${status}` : ""}`),
+      syncIncidents: () => request<{ opened: number }>(getToken, "/admin/incidents/sync", { method: "POST" }),
+      assignIncident: (id: string, ownerId: string | null) => request<{ id: string; ownerId: string | null }>(getToken, `/admin/incidents/${id}/assign`, { method: "POST", body: JSON.stringify({ ownerId }) }),
+      acknowledgeIncident: (id: string, note?: string) => request<{ id: string; status: "acknowledged" }>(getToken, `/admin/incidents/${id}/acknowledge`, { method: "POST", body: JSON.stringify({ note }) }),
+      updateIncidentSeverity: (id: string, severity: "low" | "medium" | "high" | "critical") => request<{ id: string; severity: string }>(getToken, `/admin/incidents/${id}/severity`, { method: "POST", body: JSON.stringify({ severity }) }),
+      resolveIncident: (id: string, note: string) => request<{ id: string; status: "resolved" }>(getToken, `/admin/incidents/${id}/resolve`, { method: "POST", body: JSON.stringify({ note }) }),
+      notifyIncident: (id: string) => request<{ id: string; notification: string }>(getToken, `/admin/incidents/${id}/notify`, { method: "POST" }),
       refundPayment: (id: string) => request<{ id: string; status: "refunded" }>(getToken, `/admin/billing/payments/${id}/refund`, { method: "POST" }),
+      replayBillingWebhook: (id: string) => request<{ id: string; status: "processed" }>(getToken, `/admin/billing/webhooks/${id}/replay`, { method: "POST" }),
       listSegmentations: (params: {
         status?: SegmentationStatus;
         mode?: AdminSegmentationMode;
@@ -172,6 +181,7 @@ export function useAdminApi() {
           })}`,
         ),
       getSegmentation: (id: string) => request<AdminSegmentationDetailResponse>(getToken, `/admin/segmentations/${id}`),
+      recoverSegmentation: (id: string) => request<AdminSegmentationDetailResponse>(getToken, `/admin/segmentations/${id}/recover`, { method: "POST" }),
       listAudit: (params: {
         action?: AdminAuditAction;
         actorId?: string;

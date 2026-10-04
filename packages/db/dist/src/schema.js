@@ -409,4 +409,52 @@ export const adminEvents = pgTable("admin_events", {
     detail: jsonb("detail").$type(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("admin_events_created_idx").on(table.createdAt)]);
+/** A durable operational case, opened from a failed/stuck production condition. */
+export const incidents = pgTable("incidents", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Stable key for one open incident per detected condition. */
+    fingerprint: text("fingerprint").notNull(),
+    sourceType: text("source_type", { enum: ["render", "segmentation", "webhook", "system"] }).notNull(),
+    sourceId: text("source_id").notNull(),
+    severity: text("severity", { enum: ["low", "medium", "high", "critical"] }).notNull().default("medium"),
+    status: text("status", { enum: ["open", "acknowledged", "resolved"] }).notNull().default("open"),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    context: jsonb("context").$type(),
+    ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedBy: uuid("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    resolutionNote: text("resolution_note"),
+    occurrenceCount: integer("occurrence_count").notNull().default(1),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+    index("incidents_status_severity_seen_idx").on(table.status, table.severity, table.lastSeenAt),
+    index("incidents_source_idx").on(table.sourceType, table.sourceId),
+]);
+/** Immutable account of assignments, acknowledgements, recovery and resolution decisions. */
+export const incidentEvents = pgTable("incident_events", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    incidentId: uuid("incident_id").notNull().references(() => incidents.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action", { enum: ["opened", "assigned", "acknowledged", "recovered", "resolved", "reopened", "notification"] }).notNull(),
+    note: text("note"),
+    detail: jsonb("detail").$type(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("incident_events_incident_created_idx").on(table.incidentId, table.createdAt)]);
+/** Each notification attempt is retained even when an optional ops webhook is unavailable. */
+export const incidentNotifications = pgTable("incident_notifications", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    incidentId: uuid("incident_id").notNull().references(() => incidents.id, { onDelete: "cascade" }),
+    channel: text("channel", { enum: ["ops_webhook"] }).notNull().default("ops_webhook"),
+    status: text("status", { enum: ["delivered", "failed", "skipped"] }).notNull(),
+    destination: text("destination"),
+    failureMessage: text("failure_message"),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull().defaultNow(),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+}, (table) => [index("incident_notifications_incident_idx").on(table.incidentId, table.attemptedAt)]);
 //# sourceMappingURL=schema.js.map
