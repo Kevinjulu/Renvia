@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import { and, asc, desc, eq, gte, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { createClerkClient } from "@clerk/backend";
 import { createDb, schema, type Database } from "@renvia/db";
 import type {
   AdminAuditAction,
@@ -78,6 +79,7 @@ type AdminPermission =
   | "overview.read"
   | "users.read"
   | "users.manage"
+  | "customers.manage"
   | "renders.read"
   | "renders.recover"
   | "projects.read"
@@ -96,11 +98,11 @@ type AdminPermission =
 const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
   analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read"],
-  support: ["overview.read", "users.read", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage"],
-  billing: ["overview.read", "users.read", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
+  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage"],
+  billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
-    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage",
   ],
 };
 
@@ -601,6 +603,36 @@ admin.get("/users", async (c) => {
   });
 });
 
+async function governance(db: Database) {
+  const [row] = await db.select().from(schema.governanceSettings).where(eq(schema.governanceSettings.id, 1));
+  if (row) return row;
+  const [created] = await db.insert(schema.governanceSettings).values({ id: 1 }).onConflictDoNothing().returning();
+  return created ?? (await db.select().from(schema.governanceSettings).where(eq(schema.governanceSettings.id, 1)))[0]!;
+}
+
+async function requestApproval(db: Database, input: { action: "bulk_credits" | "refund" | "role_change" | "maintenance"; actorId: string; targetType: string; targetId?: string; riskValue: number; threshold: number; reason: string; payload: Record<string, unknown> }) {
+  const [request] = await db.insert(schema.approvalRequests).values({ action: input.action, requestedBy: input.actorId, targetType: input.targetType, targetId: input.targetId ?? null, riskValue: input.riskValue, threshold: input.threshold, reason: input.reason, payload: input.payload }).returning();
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request!.id, actorId: input.actorId, action: "requested", note: input.reason }),
+    db.insert(schema.adminEvents).values({ actorId: input.actorId, action: "approval.request", targetType: input.targetType, targetId: input.targetId ?? null, summary: `Approval requested for ${input.action}`, detail: { approvalId: request!.id, riskValue: input.riskValue, threshold: input.threshold, reason: input.reason } }),
+  ]);
+  return request!;
+}
+
+admin.get("/governance", async (c) => {
+  const denied = denyUnless(c, "settings.read"); if (denied) return c.json(denied, 403);
+  const [settings, pending] = await Promise.all([governance(c.get("db")), c.get("db").select({ id: schema.approvalRequests.id, action: schema.approvalRequests.action, reason: schema.approvalRequests.reason, riskValue: schema.approvalRequests.riskValue, threshold: schema.approvalRequests.threshold, createdAt: schema.approvalRequests.createdAt, requestedBy: schema.users.email }).from(schema.approvalRequests).innerJoin(schema.users, eq(schema.approvalRequests.requestedBy, schema.users.id)).where(eq(schema.approvalRequests.status, "pending")).orderBy(desc(schema.approvalRequests.createdAt)).limit(100)]);
+  return c.json({ settings, pending: pending.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })) });
+});
+
+admin.put("/governance", async (c) => {
+  const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
+  const body = z.object({ bulkCreditApprovalThreshold: z.number().int().min(0).max(1_000_000), refundApprovalThresholdCents: z.number().int().min(0).max(10_000_000), roleChangeApprovalThreshold: z.number().int().min(0).max(100), maintenanceApprovalThreshold: z.number().int().min(0).max(100), reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
+  const [updated] = await c.get("db").insert(schema.governanceSettings).values({ id: 1, ...body, updatedBy: c.get("admin").id, updatedAt: new Date() }).onConflictDoUpdate({ target: schema.governanceSettings.id, set: { ...body, updatedBy: c.get("admin").id, updatedAt: new Date() } }).returning();
+  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "settings.update", targetType: "governance_settings", targetId: "1", summary: "Updated high-risk action thresholds", detail: { ...body } });
+  return c.json(updated);
+});
+
 admin.post("/users/bulk-credits", async (c) => {
   const denied = denyUnless(c, "credits.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
@@ -616,6 +648,12 @@ admin.post("/users/bulk-credits", async (c) => {
   const uniqueIds = [...new Set(body.userIds)];
   const existing = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, uniqueIds));
   if (existing.length !== uniqueIds.length) return c.json({ error: "One or more selected users no longer exist" }, 404);
+  const rules = await governance(db);
+  const riskValue = body.amount * existing.length;
+  if (rules.bulkCreditApprovalThreshold > 0 && riskValue >= rules.bulkCreditApprovalThreshold) {
+    const approval = await requestApproval(db, { action: "bulk_credits", actorId: adminUser.id, targetType: "users", riskValue, threshold: rules.bulkCreditApprovalThreshold, reason: body.note, payload: { userIds: uniqueIds, amount: body.amount, note: body.note } });
+    return c.json({ pendingApproval: true, approvalId: approval.id, updated: 0 }, 202);
+  }
   const settings = await getSettings(db);
   if (settings.maxCreditBalance !== null) {
     const balances = await db.select({ id: schema.users.id, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, uniqueIds));
@@ -650,6 +688,69 @@ admin.post("/users/bulk-credits", async (c) => {
   return c.json(response);
 });
 
+admin.post("/approvals/:id/approve", async (c) => {
+  const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const approver = c.get("admin"); const id = z.string().uuid().parse(c.req.param("id"));
+  const [request] = await db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.id, id));
+  if (!request) return c.json({ error: "Approval request not found" }, 404);
+  if (request.status !== "pending") return c.json({ error: "Approval request is no longer pending" }, 409);
+  if (request.requestedBy === approver.id) return c.json({ error: "A requester cannot approve their own action", code: "self_approval" }, 403);
+  if (approver.role !== "admin") return c.json({ error: "A second administrator must approve this action" }, 403);
+  const note = z.object({ note: z.string().trim().max(300).optional() }).parse(await c.req.json()).note ?? null;
+  await db.batch([
+    db.update(schema.approvalRequests).set({ status: "approved", approvedBy: approver.id, approvedAt: new Date(), decisionNote: note }).where(eq(schema.approvalRequests.id, id)),
+    db.insert(schema.approvalEvents).values({ approvalId: id, actorId: approver.id, action: "approved", note }),
+    db.insert(schema.adminEvents).values({ actorId: approver.id, action: "approval.approve", targetType: request.targetType, targetId: request.targetId, summary: `Approved ${request.action}`, detail: { approvalId: id } }),
+  ]);
+  // Approval is intentionally separate from execution. This prevents a review click from triggering a provider refund or a bulk mutation.
+  return c.json({ id, status: "approved" });
+});
+
+admin.post("/approvals/:id/reject", async (c) => {
+  const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const actor = c.get("admin"); const id = z.string().uuid().parse(c.req.param("id"));
+  const { note } = z.object({ note: z.string().trim().min(1).max(300) }).parse(await c.req.json());
+  const [request] = await db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.id, id));
+  if (!request) return c.json({ error: "Approval request not found" }, 404);
+  if (request.status !== "pending") return c.json({ error: "Approval request is no longer pending" }, 409);
+  if (request.requestedBy === actor.id) return c.json({ error: "A requester cannot reject their own action", code: "self_approval" }, 403);
+  await db.batch([
+    db.update(schema.approvalRequests).set({ status: "rejected", approvedBy: actor.id, approvedAt: new Date(), decisionNote: note }).where(eq(schema.approvalRequests.id, id)),
+    db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "rejected", note }),
+    db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.reject", targetType: request.targetType, targetId: request.targetId, summary: `Rejected ${request.action}`, detail: { approvalId: id, note } }),
+  ]);
+  return c.json({ id, status: "rejected" });
+});
+
+admin.post("/approvals/:id/execute", async (c) => {
+  const denied = denyUnless(c, "credits.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const actor = c.get("admin"); const id = z.string().uuid().parse(c.req.param("id"));
+  const [request] = await db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.id, id));
+  if (!request) return c.json({ error: "Approval request not found" }, 404);
+  if (request.status !== "approved") return c.json({ error: "Approval request must be approved before execution" }, 409);
+  if (request.action === "role_change") {
+    const payload = z.object({ id: z.string().uuid(), role: z.enum(["user", "analyst", "support", "billing", "admin"]), confirmEmail: z.string().email() }).parse(request.payload);
+    const target = await findAdminUser(db, payload.id);
+    if (!target) return c.json({ error: "Target user no longer exists" }, 409);
+    if (target.id === actor.id || payload.confirmEmail.toLowerCase() !== target.email.toLowerCase()) return c.json({ error: "Role change confirmation is no longer valid" }, 409);
+    if (payload.role === "admin" && target.disabled) return c.json({ error: "Enable the account before promoting them to admin" }, 409);
+    if (payload.role === "user" && target.role === "admin") {
+      const [count] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.users).where(and(eq(schema.users.role, "admin"), eq(schema.users.disabled, false)));
+      if ((count?.count ?? 0) <= 1) return c.json({ error: "Can't demote the last active admin" }, 409);
+    }
+    await db.batch([db.update(schema.users).set({ role: payload.role, updatedAt: new Date() }).where(eq(schema.users.id, target.id)), db.update(schema.approvalRequests).set({ status: "executed", executedAt: new Date() }).where(eq(schema.approvalRequests.id, id)), db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "user", targetId: target.id, summary: `Executed approved role change for ${target.email}`, detail: { approvalId: id, role: payload.role } })]);
+    return c.json({ id, status: "executed" });
+  }
+  if (request.action !== "bulk_credits") return c.json({ error: "This approved action is executed from its protected operation" }, 409);
+  const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
+  const users = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
+  if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);
+  const writes = users.flatMap((user) => [db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${payload.amount}` }).where(eq(schema.users.id, user.id)), db.insert(schema.creditLedger).values({ userId: user.id, amount: payload.amount, reason: "admin_grant", note: payload.note, actorId: actor.id })]);
+  const [firstWrite, ...remainingWrites] = writes;
+  await db.batch([firstWrite!, ...remainingWrites, db.update(schema.approvalRequests).set({ status: "executed", executedAt: new Date() }).where(eq(schema.approvalRequests.id, id)), db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "users", summary: `Executed approved bulk credit grant to ${users.length} users`, detail: { approvalId: id, amount: payload.amount } })]);
+  return c.json({ id, status: "executed", updated: users.length });
+});
+
 admin.get("/users/:id", async (c) => {
   const denied = denyUnless(c, "users.read"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
@@ -658,7 +759,7 @@ admin.get("/users/:id", async (c) => {
   if (!user) return c.json({ error: "Not found" }, 404);
 
   const actor = alias(schema.users, "actor");
-  const [ledgerRows, renderRows] = await Promise.all([
+  const [ledgerRows, renderRows, notes, tags, projects, payments, entitlement, failures] = await Promise.all([
     db
       .select({ entry: schema.creditLedger, actorEmail: actor.email })
       .from(schema.creditLedger)
@@ -667,6 +768,18 @@ admin.get("/users/:id", async (c) => {
       .orderBy(desc(schema.creditLedger.createdAt))
       .limit(50),
     selectAdminRenders(db).where(eq(schema.users.id, id)).orderBy(desc(schema.renders.createdAt)).limit(20),
+    db.select({ id: schema.customerNotes.id, body: schema.customerNotes.body, createdAt: schema.customerNotes.createdAt, authorEmail: actor.email })
+      .from(schema.customerNotes).innerJoin(actor, eq(schema.customerNotes.authorId, actor.id)).where(eq(schema.customerNotes.userId, id)).orderBy(desc(schema.customerNotes.createdAt)).limit(50),
+    db.select({ id: schema.customerTags.id, label: schema.customerTags.label, createdAt: schema.customerTags.createdAt })
+      .from(schema.customerTags).where(eq(schema.customerTags.userId, id)).orderBy(asc(schema.customerTags.label)),
+    db.select({ id: schema.projects.id, name: schema.projects.name, createdAt: schema.projects.createdAt, updatedAt: schema.projects.updatedAt })
+      .from(schema.projects).where(eq(schema.projects.ownerId, id)).orderBy(desc(schema.projects.updatedAt)).limit(20),
+    db.select({ id: schema.billingPayments.id, provider: schema.billingPayments.provider, status: schema.billingPayments.status, amountCents: schema.billingPayments.amountCents, currency: schema.billingPayments.currency, createdAt: schema.billingPayments.createdAt, paidAt: schema.billingPayments.paidAt })
+      .from(schema.billingPayments).where(eq(schema.billingPayments.userId, id)).orderBy(desc(schema.billingPayments.createdAt)).limit(50),
+    db.select({ status: schema.userEntitlements.status, currentPeriodEnd: schema.userEntitlements.currentPeriodEnd, planName: schema.billingPlans.name, planSlug: schema.billingPlans.slug })
+      .from(schema.userEntitlements).leftJoin(schema.billingPlans, eq(schema.userEntitlements.planId, schema.billingPlans.id)).where(eq(schema.userEntitlements.userId, id)).limit(1),
+    db.select({ id: schema.renders.id, errorMessage: schema.renders.errorMessage, createdAt: schema.renders.updatedAt, projectName: schema.projects.name })
+      .from(schema.renders).innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id)).where(and(eq(schema.projects.ownerId, id), eq(schema.renders.status, "failed"))).orderBy(desc(schema.renders.updatedAt)).limit(20),
   ]);
 
   const ledger: AdminLedgerEntry[] = ledgerRows.map(({ entry, actorEmail }) => ({
@@ -686,7 +799,51 @@ admin.get("/users/:id", async (c) => {
     renders: await Promise.all(renderRows.map((row) => toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes))),
     limits: resolveLimits(userRow!, settings),
     usage: await getUsage(db, user.id),
+    notes: notes.map((note) => ({ ...note, createdAt: note.createdAt.toISOString() })),
+    tags: tags.map((tag) => ({ ...tag, createdAt: tag.createdAt.toISOString() })),
+    projects: projects.map((project) => ({ ...project, createdAt: project.createdAt.toISOString(), updatedAt: project.updatedAt.toISOString() })),
+    payments: payments.map((payment) => ({ ...payment, createdAt: payment.createdAt.toISOString(), paidAt: payment.paidAt?.toISOString() ?? null })),
+    entitlement: entitlement[0] ? { ...entitlement[0], currentPeriodEnd: entitlement[0].currentPeriodEnd?.toISOString() ?? null } : null,
+    recentErrors: failures.map((failure) => ({ ...failure, createdAt: failure.createdAt.toISOString() })),
   });
+});
+
+const customerNoteSchema = z.object({ body: z.string().trim().min(1).max(2000) });
+admin.post("/users/:id/notes", async (c) => {
+  const denied = denyUnless(c, "customers.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const userId = z.string().uuid().parse(c.req.param("id"));
+  const { body } = customerNoteSchema.parse(await c.req.json());
+  if (!(await findAdminUser(db, userId))) return c.json({ error: "Not found" }, 404);
+  const [note] = await db.insert(schema.customerNotes).values({ userId, authorId: c.get("admin").id, body }).returning();
+  await recordAdminEvent(db, { actorId: c.get("admin").id, action: "customer.note", targetType: "user", targetId: userId, summary: "Added internal customer note", detail: { noteId: note!.id } });
+  return c.json({ id: note!.id });
+});
+
+const customerTagSchema = z.object({ label: z.string().trim().min(1).max(50) });
+admin.post("/users/:id/tags", async (c) => {
+  const denied = denyUnless(c, "customers.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const userId = z.string().uuid().parse(c.req.param("id"));
+  const { label } = customerTagSchema.parse(await c.req.json());
+  if (!(await findAdminUser(db, userId))) return c.json({ error: "Not found" }, 404);
+  const normalizedLabel = label.toLocaleLowerCase();
+  await db.insert(schema.customerTags).values({ userId, label, normalizedLabel, createdBy: c.get("admin").id }).onConflictDoNothing();
+  await recordAdminEvent(db, { actorId: c.get("admin").id, action: "customer.tag", targetType: "user", targetId: userId, summary: `Tagged customer: ${label}`, detail: { label } });
+  return c.json({ ok: true });
+});
+
+admin.post("/users/:id/revoke-sessions", async (c) => {
+  const denied = denyUnless(c, "users.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const userId = z.string().uuid().parse(c.req.param("id"));
+  const body = z.object({ reason: z.string().trim().min(1).max(300), confirmEmail: z.string().trim().email() }).parse(await c.req.json());
+  const target = await findAdminUser(db, userId); const actor = c.get("admin");
+  if (!target) return c.json({ error: "Not found" }, 404);
+  if (target.id === actor.id) return c.json({ error: "You cannot revoke your own sessions here", code: "self_revoke" }, 400);
+  if (body.confirmEmail.toLowerCase() !== target.email.toLowerCase()) return c.json({ error: "Type the user's email exactly to confirm", code: "confirm_email_mismatch" }, 400);
+  const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
+  const sessions = await clerk.sessions.getSessionList({ userId: target.clerkId, status: "active", limit: 100 });
+  await Promise.all(sessions.data.map((session) => clerk.sessions.revokeSession(session.id)));
+  await recordAdminEvent(db, { actorId: actor.id, action: "user.session_revoke", targetType: "user", targetId: target.id, summary: `Revoked ${sessions.data.length} session(s) for ${target.email}`, detail: { reason: body.reason, sessionCount: sessions.data.length } });
+  return c.json({ revoked: sessions.data.length });
 });
 
 const grantSchema = z.object({
@@ -788,6 +945,7 @@ const updateUserSchema = z
     disabled: z.boolean().optional(),
     role: z.enum(["user", "analyst", "support", "billing", "admin"]).optional(),
     confirmEmail: z.string().trim().email().optional(),
+    reason: z.string().trim().min(1).max(300).optional(),
     // 0 blocks the user outright; null clears the override so the global setting applies.
     dailyRenderLimitOverride: z.number().int().min(0).max(10_000).nullable().optional(),
     dailySegmentLimitOverride: z.number().int().min(0).max(10_000).nullable().optional(),
@@ -806,6 +964,9 @@ const updateUserSchema = z
         message: "confirmEmail is required when changing role",
         path: ["confirmEmail"],
       });
+    }
+    if ((body.role !== undefined || body.disabled !== undefined) && !body.reason) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A reason is required for account or role changes", path: ["reason"] });
     }
   });
 
@@ -833,6 +994,11 @@ admin.patch("/users/:id", async (c) => {
   if (!before) return c.json({ error: "Not found" }, 404);
 
   if (body.role !== undefined && body.role !== before.role) {
+    const rules = await governance(db);
+    if (rules.roleChangeApprovalThreshold > 0 && 1 >= rules.roleChangeApprovalThreshold) {
+      const approval = await requestApproval(db, { action: "role_change", actorId: adminUser.id, targetType: "user", targetId: id, riskValue: 1, threshold: rules.roleChangeApprovalThreshold, reason: body.reason!, payload: { id, role: body.role, confirmEmail: body.confirmEmail } });
+      return c.json({ pendingApproval: true, approvalId: approval.id }, 202);
+    }
     const typed = body.confirmEmail?.trim().toLowerCase() ?? "";
     if (typed !== before.email.trim().toLowerCase()) {
       return c.json(
@@ -916,6 +1082,7 @@ admin.patch("/users/:id", async (c) => {
         monthlySegmentLimitOverride: body.monthlySegmentLimitOverride,
       },
       confirmEmail: body.confirmEmail ?? null,
+      reason: body.reason ?? null,
     },
   });
 
@@ -1612,7 +1779,7 @@ admin.get("/billing", async (c) => {
       .groupBy(schema.billingPlans.id)
       .orderBy(asc(schema.billingPlans.priceCents)),
     db
-      .select({ id: schema.billingPayments.id, userEmail: schema.users.email, provider: schema.billingPayments.provider, providerPaymentId: schema.billingPayments.providerPaymentId, status: schema.billingPayments.status, amountCents: schema.billingPayments.amountCents, currency: schema.billingPayments.currency, createdAt: schema.billingPayments.createdAt, paidAt: schema.billingPayments.paidAt })
+      .select({ id: schema.billingPayments.id, userId: schema.billingPayments.userId, userEmail: schema.users.email, provider: schema.billingPayments.provider, providerPaymentId: schema.billingPayments.providerPaymentId, status: schema.billingPayments.status, amountCents: schema.billingPayments.amountCents, currency: schema.billingPayments.currency, createdAt: schema.billingPayments.createdAt, paidAt: schema.billingPayments.paidAt })
       .from(schema.billingPayments).innerJoin(schema.users, eq(schema.billingPayments.userId, schema.users.id)).orderBy(desc(schema.billingPayments.createdAt)).limit(30),
     db
       .select({ id: schema.billingWebhookEvents.id, provider: schema.billingWebhookEvents.provider, eventType: schema.billingWebhookEvents.eventType, processedAt: schema.billingWebhookEvents.processedAt, failedAt: schema.billingWebhookEvents.failedAt, attempts: schema.billingWebhookEvents.attempts, failureMessage: schema.billingWebhookEvents.failureMessage, createdAt: schema.billingWebhookEvents.createdAt })
@@ -2008,7 +2175,7 @@ admin.get("/audit", async (c) => {
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const action = z
-    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "segmentation.recover", "incident.update", "billing.webhook", "billing.payment", "billing.entitlement"])
+    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "segmentation.recover", "incident.update", "billing.webhook", "billing.payment", "billing.entitlement", "customer.note", "customer.tag", "user.session_revoke", "approval.request", "approval.approve", "approval.reject", "approval.execute", "audit.export"])
     .optional()
     .parse(c.req.query("action") || undefined) as AdminAuditAction | undefined;
   const actorId = z.string().uuid().optional().parse(c.req.query("actorId") || undefined);
@@ -2102,6 +2269,14 @@ admin.get("/audit", async (c) => {
     "billing.webhook": 0,
     "billing.payment": 0,
     "billing.entitlement": 0,
+    "customer.note": 0,
+    "customer.tag": 0,
+    "user.session_revoke": 0,
+    "approval.request": 0,
+    "approval.approve": 0,
+    "approval.reject": 0,
+    "approval.execute": 0,
+    "audit.export": 0,
   };
   for (const row of actionRows) {
     if (row.action in byAction) byAction[row.action as AdminAuditAction] = row.count;
@@ -2119,4 +2294,29 @@ admin.get("/audit", async (c) => {
       actors: actorRows.map((row) => ({ id: row.id, email: row.email, count: row.count })),
     },
   });
+});
+
+/** Creates a retained CSV snapshot; later reads return the exact stored bytes, not a regenerated report. */
+admin.post("/audit/exports", async (c) => {
+  const denied = denyUnless(c, "audit.read"); if (denied) return c.json(denied, 403);
+  const db = c.get("db"); const { reason } = z.object({ reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
+  const actor = alias(schema.users, "audit_export_actor");
+  const rows = await db.select({ id: schema.adminEvents.id, createdAt: schema.adminEvents.createdAt, action: schema.adminEvents.action, actorEmail: actor.email, targetType: schema.adminEvents.targetType, targetId: schema.adminEvents.targetId, summary: schema.adminEvents.summary }).from(schema.adminEvents).innerJoin(actor, eq(schema.adminEvents.actorId, actor.id)).orderBy(asc(schema.adminEvents.createdAt));
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const content = ["id,created_at,action,actor_email,target_type,target_id,summary", ...rows.map((row) => [row.id, row.createdAt.toISOString(), row.action, row.actorEmail, row.targetType, row.targetId, row.summary].map(escape).join(","))].join("\n");
+  const bytes = new TextEncoder().encode(content);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const [exported] = await db.insert(schema.auditExports).values({ requestedBy: c.get("admin").id, reason, sha256, content }).returning();
+  await recordAdminEvent(db, { actorId: c.get("admin").id, action: "audit.export", targetType: "audit_export", targetId: exported!.id, summary: `Created immutable audit export (${rows.length} rows)`, detail: { sha256, reason } });
+  return c.json({ id: exported!.id, sha256, rows: rows.length });
+});
+
+admin.get("/audit/exports/:id", async (c) => {
+  const denied = denyUnless(c, "audit.read"); if (denied) return c.json(denied, 403);
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [exported] = await c.get("db").select().from(schema.auditExports).where(eq(schema.auditExports.id, id));
+  if (!exported) return c.json({ error: "Audit export not found" }, 404);
+  c.header("Content-Type", "text/csv; charset=utf-8"); c.header("Content-Disposition", `attachment; filename=renvia-audit-${id}.csv`); c.header("X-Content-SHA256", exported.sha256);
+  return c.body(exported.content);
 });

@@ -579,6 +579,12 @@ export interface AdminUserDetailResponse {
   limits: UserLimits;
   /** This user's consumption against those limits. */
   usage: UserUsage;
+  notes: { id: string; body: string; authorEmail: string; createdAt: string }[];
+  tags: { id: string; label: string; createdAt: string }[];
+  projects: { id: string; name: string; createdAt: string; updatedAt: string }[];
+  payments: { id: string; provider: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
+  entitlement: { status: string; currentPeriodEnd: string | null; planName: string | null; planSlug: string | null } | null;
+  recentErrors: { id: string; errorMessage: string | null; createdAt: string; projectName: string }[];
 }
 
 export interface AdminGrantCreditsRequest {
@@ -601,6 +607,8 @@ export interface AdminUpdateUserRequest {
    * (case-insensitive) so promotions can't happen from a mis-click alone.
    */
   confirmEmail?: string;
+  /** Required for security-sensitive role and account-state changes. */
+  reason?: string;
 }
 
 export interface AdminOverviewResponse {
@@ -887,7 +895,15 @@ export type AdminAuditAction =
   | "incident.update"
   | "billing.webhook"
   | "billing.payment"
-  | "billing.entitlement";
+  | "billing.entitlement"
+  | "customer.note"
+  | "customer.tag"
+  | "user.session_revoke"
+  | "approval.request"
+  | "approval.approve"
+  | "approval.reject"
+  | "approval.execute"
+  | "audit.export";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -919,7 +935,7 @@ export interface AdminAuditResponse {
 export interface AdminBillingResponse {
   summary: { paidUsd: number; refundedUsd: number; pendingWebhooks: number; failedWebhooks: number };
   plans: { id: string; name: string; slug: string; priceCents: number; currency: string; active: boolean; subscribers: number }[];
-  payments: { id: string; userEmail: string; provider: string; providerPaymentId: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
+  payments: { id: string; userId: string; userEmail: string; provider: string; providerPaymentId: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
   webhooks: { id: string; provider: string; eventType: string; status: "processed" | "failed" | "pending"; attempts: number; failureMessage: string | null; createdAt: string }[];
 }
 

@@ -73,6 +73,14 @@ const ACTION_META: Record<
   "billing.webhook": { label: "Billing webhook", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
   "billing.payment": { label: "Billing payment", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "billing.entitlement": { label: "Entitlement", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },
+  "customer.note": { label: "Customer note", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
+  "customer.tag": { label: "Customer tag", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
+  "user.session_revoke": { label: "Session revoke", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "approval.request": { label: "Approval requested", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "approval.approve": { label: "Approval granted", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },
+  "approval.reject": { label: "Approval rejected", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "approval.execute": { label: "Approval executed", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },
+  "audit.export": { label: "Audit export", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
 };
 
 export function AuditPage() {

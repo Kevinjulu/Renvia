@@ -43,6 +43,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
   const [typed, setTyped] = useState("");
   const [role, setRole] = useState<UserRole>(action === "promote" ? "admin" : "user");
   const [ack, setAck] = useState(false);
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +55,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
       : OPERATOR_CONSEQUENCES
     : DEMOTE_CONSEQUENCES;
   const emailMatch = typed.trim().toLowerCase() === user.email.trim().toLowerCase();
-  const canSubmit = emailMatch && ack && !saving && !(promoting && user.disabled);
+  const canSubmit = emailMatch && ack && reason.trim().length > 0 && !saving && !(promoting && user.disabled);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -73,6 +74,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
       await api.updateUser(user.id, {
         role,
         confirmEmail: typed.trim(),
+        reason: reason.trim(),
       });
       onDone();
     } catch (reason) {
@@ -156,6 +158,11 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
             I understand these privileges and am deliberately{" "}
             {promoting ? `assigning the ${role} role` : "removing their operator access"}.
           </span>
+        </label>
+
+        <label className="mt-4 block text-sm">
+          <span className="font-medium text-primary">Reason</span>
+          <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} placeholder="Why is this role change required?" className="mt-1.5 w-full rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm outline-none focus:border-blueprint focus:bg-canvas" />
         </label>
 
         <label className="mt-4 block text-sm" htmlFor={confirmId}>

@@ -521,6 +521,99 @@ export const adminEvents = pgTable(
   (table) => [index("admin_events_created_idx").on(table.createdAt)],
 );
 
+/** Immutable support notes. Notes are deliberately append-only: corrections are new notes. */
+export const customerNotes = pgTable(
+  "customer_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").notNull().references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("customer_notes_user_created_idx").on(table.userId, table.createdAt)],
+);
+
+/** Small, operator-owned labels for support triage. */
+export const customerTags = pgTable(
+  "customer_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    normalizedLabel: text("normalized_label").notNull(),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("customer_tags_user_label_unique").on(table.userId, table.normalizedLabel)],
+);
+
+/** One configuration row; zero disables the corresponding approval gate. */
+export const governanceSettings = pgTable(
+  "governance_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    bulkCreditApprovalThreshold: integer("bulk_credit_approval_threshold").notNull().default(500),
+    refundApprovalThresholdCents: integer("refund_approval_threshold_cents").notNull().default(5000),
+    roleChangeApprovalThreshold: integer("role_change_approval_threshold").notNull().default(1),
+    maintenanceApprovalThreshold: integer("maintenance_approval_threshold").notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+  },
+  (table) => [check("governance_settings_single_row", sql`${table.id} = 1`)],
+);
+
+/** Pending requests hold a server-validated action payload until a different admin approves it. */
+export const approvalRequests = pgTable(
+  "approval_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance"] }).notNull(),
+    status: text("status", { enum: ["pending", "approved", "rejected", "executed", "cancelled"] }).notNull().default("pending"),
+    requestedBy: uuid("requested_by").notNull().references(() => users.id),
+    approvedBy: uuid("approved_by").references(() => users.id),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    riskValue: integer("risk_value").notNull(),
+    threshold: integer("threshold").notNull(),
+    reason: text("reason").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    decisionNote: text("decision_note"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("approval_requests_status_created_idx").on(table.status, table.createdAt)],
+);
+
+/** Append-only state transitions for approval requests. */
+export const approvalEvents = pgTable(
+  "approval_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    approvalId: uuid("approval_id").notNull().references(() => approvalRequests.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action", { enum: ["requested", "approved", "rejected", "executed", "cancelled"] }).notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("approval_events_approval_created_idx").on(table.approvalId, table.createdAt)],
+);
+
+/** An exported audit snapshot is retained with its digest so it cannot silently change. */
+export const auditExports = pgTable(
+  "audit_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestedBy: uuid("requested_by").notNull().references(() => users.id),
+    reason: text("reason").notNull(),
+    sha256: text("sha256").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("audit_exports_created_idx").on(table.createdAt)],
+);
+
 /** A durable operational case, opened from a failed/stuck production condition. */
 export const incidents = pgTable(
   "incidents",

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { AdminUpdateUserRequest, AdminUser, UserLimits, UserUsage } from "@renvia/types";
 import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, Clock, Coins, DollarSign, Gauge, History, ImageIcon, Shield, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, Clock, Coins, DollarSign, Gauge, History, ImageIcon, Shield, SlidersHorizontal, StickyNote, LogOut, Tags } from "lucide-react";
 import { RenderTable } from "../components/RenderTable";
 import { RoleChangeModal } from "../components/RoleChangeModal";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
@@ -23,7 +23,7 @@ export function UserDetailPage() {
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
   if (!data) return <Skeleton className="h-64" />;
 
-  const { user, ledger, renders, limits, usage } = data;
+  const { user, ledger, renders, limits, usage, notes, tags, projects, payments, entitlement, recentErrors } = data;
   const isSelf = user.id === me.id;
 
   const runAction = async (action: () => Promise<unknown>) => {
@@ -42,7 +42,17 @@ export function UserDetailPage() {
   const toggleDisabled = () => {
     const verb = user.disabled ? "Enable" : "Disable";
     if (!window.confirm(`${verb} ${user.email}?${user.disabled ? "" : " They won't be able to render until re-enabled."}`)) return;
-    void runAction(() => api.updateUser(user.id, { disabled: !user.disabled }));
+    const reason = window.prompt(`Reason for ${verb.toLowerCase()}ing this account:`);
+    if (!reason?.trim()) return;
+    void runAction(() => api.updateUser(user.id, { disabled: !user.disabled, reason: reason.trim() }));
+  };
+
+  const revokeSessions = () => {
+    const reason = window.prompt("Reason for revoking all active sessions:");
+    if (!reason?.trim()) return;
+    const confirmEmail = window.prompt(`Type ${user.email} to confirm:`);
+    if (!confirmEmail) return;
+    void runAction(() => api.revokeUserSessions(user.id, { reason: reason.trim(), confirmEmail }));
   };
 
   return (
@@ -79,6 +89,9 @@ export function UserDetailPage() {
               title={isSelf ? "You can't disable your own account" : undefined}
             >
               {user.disabled ? "Enable account" : "Disable account"}
+            </Button>
+            <Button variant="secondary" icon={LogOut} onClick={revokeSessions} disabled={busy || isSelf} title={isSelf ? "You can't revoke your own sessions here" : "Revokes active Clerk sessions; does not impersonate the user"}>
+              Revoke sessions…
             </Button>
           </div>
         }
@@ -135,6 +148,24 @@ export function UserDetailPage() {
         <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />
       </Card>
 
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card title="Customer context" icon={Tags}>
+          <div className="space-y-3 text-sm">
+            <p><span className="text-muted">Plan:</span> {entitlement?.planName ?? "No entitlement"} {entitlement ? <span className="text-muted">· {entitlement.status}{entitlement.currentPeriodEnd ? ` until ${formatDateTime(entitlement.currentPeriodEnd)}` : ""}</span> : null}</p>
+            <p><span className="text-muted">Tags:</span> {tags.length ? tags.map((tag) => <span key={tag.id} className="mr-1 inline-flex rounded-full bg-blueprint-soft px-2 py-0.5 text-xs text-blueprint">{tag.label}</span>) : " None"}</p>
+            <p><span className="text-muted">Projects:</span> {projects.length ? projects.map((project) => <Link key={project.id} to={`/projects/${project.id}`} className="mr-2 text-blueprint hover:underline">{project.name}</Link>) : " None"}</p>
+            <p><span className="text-muted">Payments:</span> {payments.length ? payments.slice(0, 3).map((payment) => <span key={payment.id} className="mr-2">{formatUsd(payment.amountCents / 100)} {payment.status}</span>) : " None"}</p>
+          </div>
+        </Card>
+        <Card title="Recent errors" icon={Shield}>
+          {recentErrors.length ? <ul className="space-y-2 text-sm">{recentErrors.slice(0, 5).map((error) => <li key={error.id}><Link to={`/renders/${error.id}`} className="font-medium text-blueprint hover:underline">{error.projectName}</Link><span className="ml-2 text-muted">{error.errorMessage ?? "Render failed"}</span></li>)}</ul> : <EmptyState>No recent render failures.</EmptyState>}
+        </Card>
+      </div>
+
+      <Card title="Internal support notes" icon={StickyNote} className="mt-6">
+        <CustomerNotes userId={user.id} notes={notes} onDone={reload} />
+      </Card>
+
       <Card title="Recent renders" icon={ImageIcon} className="mt-6">
         {renders.length === 0 ? <EmptyState icon={ImageIcon}>No renders yet.</EmptyState> : <RenderTable renders={renders} showUser={false} />}
       </Card>
@@ -152,6 +183,12 @@ export function UserDetailPage() {
       )}
     </>
   );
+}
+
+function CustomerNotes({ userId, notes, onDone }: { userId: string; notes: { id: string; body: string; authorEmail: string; createdAt: string }[]; onDone: () => void }) {
+  const api = useAdminApi(); const [body, setBody] = useState(""); const [saving, setSaving] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); if (!body.trim()) return; setSaving(true); try { await api.addCustomerNote(userId, body.trim()); setBody(""); onDone(); } finally { setSaving(false); } };
+  return <div className="space-y-4"><form onSubmit={(event) => void submit(event)} className="flex gap-2"><input value={body} onChange={(event) => setBody(event.target.value)} maxLength={2000} placeholder="Add private support context…" className="min-w-0 flex-1 rounded-xl border border-hairline bg-surface px-3 py-2 text-sm" /><Button type="submit" variant="primary" disabled={!body.trim() || saving}>{saving ? "Saving…" : "Add note"}</Button></form>{notes.length ? <ul className="space-y-3">{notes.map((note) => <li key={note.id} className="rounded-xl border border-hairline bg-surface p-3 text-sm"><p>{note.body}</p><p className="mt-1 text-xs text-muted">{note.authorEmail} · {formatDateTime(note.createdAt)}</p></li>)}</ul> : <EmptyState>No internal notes yet.</EmptyState>}</div>;
 }
 
 /** The four caps an admin can override per user, paired with the usage they're measured against. */

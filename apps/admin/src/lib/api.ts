@@ -103,6 +103,9 @@ export function useAdminApi() {
         offset?: number;
       }) => request<AdminUsersResponse>(getToken, `/admin/users${query(params)}`),
       getUser: (id: string) => request<AdminUserDetailResponse>(getToken, `/admin/users/${id}`),
+      addCustomerNote: (id: string, body: string) => request<{ id: string }>(getToken, `/admin/users/${id}/notes`, { method: "POST", body: JSON.stringify({ body }) }),
+      addCustomerTag: (id: string, label: string) => request<{ ok: true }>(getToken, `/admin/users/${id}/tags`, { method: "POST", body: JSON.stringify({ label }) }),
+      revokeUserSessions: (id: string, body: { reason: string; confirmEmail: string }) => request<{ revoked: number }>(getToken, `/admin/users/${id}/revoke-sessions`, { method: "POST", body: JSON.stringify(body) }),
       adjustCredits: (id: string, body: AdminGrantCreditsRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify(body) }),
       bulkGrantCredits: (body: AdminBulkGrantCreditsRequest) =>
