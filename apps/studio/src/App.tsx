@@ -8,10 +8,12 @@ import { CanvasRoute } from "./routes/CanvasRoute";
 import { HelpArticleRoute } from "./routes/HelpArticleRoute";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { DashboardSectionRoute } from "./routes/DashboardSectionRoute";
+import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <AppErrorHandling app="studio">
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginRoute />} />
@@ -32,6 +34,7 @@ export default function App() {
           <Route path="/activity" element={<DashboardSectionRoute section="activity" />} />
         </Route>
       </Routes>
+      </AppErrorHandling>
     </BrowserRouter>
   );
 }

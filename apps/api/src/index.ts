@@ -14,6 +14,7 @@ import { admin } from "./routes/admin.js";
 import { cron } from "./routes/cron.js";
 import { billing } from "./routes/billing.js";
 import { allowedOrigins } from "./lib/origins.js";
+import { clientErrors } from "./routes/clientErrors.js";
 
 export interface Env {
   DATABASE_URL: string;
@@ -48,6 +49,8 @@ export interface AuthVariables {
   auth: {
     clerkId: string;
   };
+  /** Correlates a browser-visible response with the structured server log. */
+  requestId: string;
 }
 
 export type AppContext = {
@@ -57,24 +60,42 @@ export type AppContext = {
 
 const app = new Hono<AppContext>();
 
+const REQUEST_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{7,127}$/;
+
+function requestId(c: { req: { header: (name: string) => string | undefined } }) {
+  const supplied = c.req.header("X-Request-Id");
+  return supplied && REQUEST_ID.test(supplied) ? supplied : crypto.randomUUID();
+}
+
 app.use("*", async (c, next) => {
+  const id = requestId(c);
+  c.set("requestId", id);
+  c.header("X-Request-Id", id);
   return cors({
     origin: allowedOrigins(c.env),
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    exposeHeaders: ["X-Request-Id"],
     credentials: true,
   })(c, next);
 });
 
 app.onError((err, c) => {
   if (err instanceof ZodError) {
-    return c.json({ error: "Invalid request", issues: err.issues }, 400);
+    return c.json({ error: "Invalid request", code: "invalid_request", requestId: c.get("requestId"), issues: err.issues }, 400);
   }
-  console.error(err);
-  return c.json({ error: "Internal error" }, 500);
+  console.error(JSON.stringify({
+    level: "error",
+    event: "api.unhandled_error",
+    requestId: c.get("requestId"),
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+    error: { name: err instanceof Error ? err.name : "UnknownError", message: err instanceof Error ? err.message : String(err) },
+  }));
+  return c.json({ error: "Something went wrong. Please try again.", code: "internal_error", requestId: c.get("requestId") }, 500);
 });
 
-app.notFound((c) => c.json({ error: "Not found" }, 404));
+app.notFound((c) => c.json({ error: "Not found", code: "not_found", requestId: c.get("requestId") }, 404));
 
 app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -90,6 +111,7 @@ app.route("/references", references);
 app.route("/billing", billing);
 app.route("/admin", admin);
 app.route("/cron", cron);
+app.route("/errors", clientErrors);
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

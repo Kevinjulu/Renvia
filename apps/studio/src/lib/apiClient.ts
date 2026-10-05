@@ -32,6 +32,7 @@ import type {
   UpdateRenderResponse,
   UploadImageResponse,
 } from "@renvia/types";
+import { reportClientError } from "../components/AppErrorHandling";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -47,6 +48,7 @@ export class ApiError extends Error {
     /** The cap that was hit and how much of it was used, for refusals that report them. */
     readonly limit: number | null = null,
     readonly used: number | null = null,
+    readonly requestId: string | null = null,
   ) {
     super(`API request failed: ${status}${code ? ` (${code})` : ""}`);
   }
@@ -55,29 +57,35 @@ export class ApiError extends Error {
 const numberOrNull = (value: unknown) => (typeof value === "number" ? value : null);
 
 async function request<T>(getToken: GetToken, path: string, init?: RequestInit): Promise<T> {
-  const token = await getToken();
-  const headers = new Headers(init?.headers);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  try {
+    const token = await getToken();
+    const headers = new Headers(init?.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    headers.set("X-Request-Id", crypto.randomUUID());
+    const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as
+        | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown }
+        | null;
+      throw new ApiError(
+        response.status,
+        typeof body?.code === "string" ? body.code : null,
+        typeof body?.error === "string" ? body.error : null,
+        numberOrNull(body?.limit),
+        numberOrNull(body?.used),
+        response.headers.get("X-Request-Id"),
+      );
+    }
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status >= 500) {
+      reportClientError(error, { requestId: error instanceof ApiError ? error.requestId : null });
+    }
+    throw error;
   }
-
-  const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as
-      | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown }
-      | null;
-    throw new ApiError(
-      response.status,
-      typeof body?.code === "string" ? body.code : null,
-      typeof body?.error === "string" ? body.error : null,
-      numberOrNull(body?.limit),
-      numberOrNull(body?.used),
-    );
-  }
-  return response.json() as Promise<T>;
 }
 
-function apiErrorFromBody(status: number, text: string) {
+function apiErrorFromBody(status: number, text: string, requestId: string | null = null) {
   let body: { code?: unknown; error?: unknown; limit?: unknown; used?: unknown } | null = null;
   try {
     body = JSON.parse(text);
@@ -90,6 +98,7 @@ function apiErrorFromBody(status: number, text: string) {
     typeof body?.error === "string" ? body.error : null,
     numberOrNull(body?.limit),
     numberOrNull(body?.used),
+    requestId,
   );
 }
 
@@ -104,13 +113,16 @@ async function uploadWithProgress(
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE_URL}/api/uploads`);
     xhr.setRequestHeader("Content-Type", file.type);
+    xhr.setRequestHeader("X-Request-Id", crypto.randomUUID());
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded / event.total);
     };
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(apiErrorFromBody(xhr.status, xhr.responseText));
+        const error = apiErrorFromBody(xhr.status, xhr.responseText, xhr.getResponseHeader("X-Request-Id"));
+        if (error.status >= 500) reportClientError(error, { requestId: error.requestId });
+        reject(error);
         return;
       }
       try {
@@ -119,7 +131,11 @@ async function uploadWithProgress(
         reject(error);
       }
     };
-    xhr.onerror = () => reject(new TypeError("Upload failed: network error"));
+    xhr.onerror = () => {
+      const error = new TypeError("Upload failed: network error");
+      reportClientError(error);
+      reject(error);
+    };
     xhr.send(file);
   });
 }

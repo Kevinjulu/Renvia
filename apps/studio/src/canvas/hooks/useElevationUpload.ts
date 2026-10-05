@@ -5,6 +5,7 @@ import { nodeToPersistedData, placeImageInView } from "../utils/placeImageNode";
 import { useCanvasStore } from "./useCanvasStore";
 import { nodeForView, type BuildingView } from "../buildingViews";
 import { useUploadProgressStore } from "./useUploadProgressStore";
+import { reportClientError } from "../../components/AppErrorHandling";
 
 export function useElevationUpload() {
   const apiClient = useApiClient();
@@ -25,11 +26,11 @@ export function useElevationUpload() {
           kind === "created"
             ? apiClient.createCanvasNode({ id: node.id, projectId, type: node.type, data: nodeToPersistedData(node) })
             : apiClient.updateCanvasNode(node.id, { data: nodeToPersistedData(node) });
-        persist.catch((error) => console.error("Failed to save canvas node", error));
+        persist.catch((error) => reportClientError(error));
 
         apiClient
           .updateProject(projectId, { thumbnailUrl: publicUrl })
-          .catch((error) => console.error("Failed to update project thumbnail", error));
+          .catch((error) => reportClientError(error));
       }
     },
     [apiClient],
@@ -102,7 +103,7 @@ export function useElevationUpload() {
       try {
         await apiClient.deleteCanvasNode(node.id);
       } catch (error) {
-        console.error("Failed to delete canvas node", error);
+        reportClientError(error);
       }
     },
     [apiClient],
@@ -112,7 +113,7 @@ export function useElevationUpload() {
     async (viewId: string) => {
       const nodeIds = useCanvasStore.getState().removeBuildingView(viewId);
       await Promise.all(
-        nodeIds.map((id) => apiClient.deleteCanvasNode(id).catch((error) => console.error("Failed to delete canvas node", error))),
+        nodeIds.map((id) => apiClient.deleteCanvasNode(id).catch((error) => reportClientError(error))),
       );
     },
     [apiClient],

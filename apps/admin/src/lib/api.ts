@@ -44,6 +44,7 @@ import type {
   RenderStatus,
   SegmentationStatus,
 } from "@renvia/types";
+import { reportClientError } from "../components/AppErrorHandling";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -53,6 +54,7 @@ export class ApiError extends Error {
     /** Machine-readable reason from the response body, e.g. "balance_negative". */
     readonly code: string | null,
     message: string,
+    readonly requestId: string | null = null,
   ) {
     super(message);
   }
@@ -61,21 +63,27 @@ export class ApiError extends Error {
 type GetToken = () => Promise<string | null>;
 
 async function request<T>(getToken: GetToken, path: string, init?: RequestInit): Promise<T> {
-  const token = await getToken();
-  const headers = new Headers(init?.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init?.body) headers.set("Content-Type", "application/json");
-
-  const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: unknown; code?: unknown } | null;
-    throw new ApiError(
-      response.status,
-      typeof body?.code === "string" ? body.code : null,
-      typeof body?.error === "string" ? body.error : `Request failed (${response.status})`,
-    );
+  try {
+    const token = await getToken();
+    const headers = new Headers(init?.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (init?.body) headers.set("Content-Type", "application/json");
+    headers.set("X-Request-Id", crypto.randomUUID());
+    const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: unknown; code?: unknown } | null;
+      throw new ApiError(
+        response.status,
+        typeof body?.code === "string" ? body.code : null,
+        typeof body?.error === "string" ? body.error : `Request failed (${response.status})`,
+        response.headers.get("X-Request-Id"),
+      );
+    }
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status >= 500) reportClientError(error, { requestId: error instanceof ApiError ? error.requestId : null });
+    throw error;
   }
-  return response.json() as Promise<T>;
 }
 
 function query(params: Record<string, string | number | undefined>): string {

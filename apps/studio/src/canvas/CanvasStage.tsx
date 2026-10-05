@@ -11,6 +11,7 @@ import { CanvasEmptyState } from "./CanvasEmptyState";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { EditToolbar } from "./EditToolbar";
 import { useApiClient } from "../lib/apiClient";
+import { reportClientError } from "../components/AppErrorHandling";
 
 const CLOSE_POLYGON_THRESHOLD = 10;
 
@@ -61,7 +62,7 @@ export function CanvasStage() {
   const handleNodeDragEnd = (id: string, x: number, y: number) => {
     updateNode(id, { x, y });
     apiClient.updateCanvasNode(id, { data: { x, y } }).catch((error) => {
-      console.error("Failed to save node position", error);
+      reportClientError(error);
     });
   };
 

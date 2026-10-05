@@ -17,6 +17,7 @@ import { AddViewMenu } from "./panel/AddViewMenu";
 import { GuideProvider } from "../guide/GuideProvider";
 import { useElevationUpload } from "../canvas/hooks/useElevationUpload";
 import { nodeForView, tabLabel, type BuildingView } from "../canvas/buildingViews";
+import { reportClientError } from "../components/AppErrorHandling";
 
 export function StudioShell({ projectId }: { projectId: string }) {
   const apiClient = useApiClient();
@@ -53,7 +54,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         if (!before) return;
         if (before.elevationId !== node.elevationId || before.viewKey !== node.viewKey) {
           apiClient.updateCanvasNode(node.id, { data: nodeToPersistedData(node) }).catch((error) => {
-            console.error("Failed to persist view assignment", error);
+            reportClientError(error);
           });
         }
       });

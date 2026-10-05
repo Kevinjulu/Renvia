@@ -22,6 +22,7 @@ import { BillingPage } from "./pages/BillingPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { FinancialsPage } from "./pages/FinancialsPage";
 import { OperationsPage } from "./pages/OperationsPage";
+import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -37,7 +38,7 @@ export default function App() {
       </div>
     );
   }
-  return <AdminGate />;
+  return <AppErrorHandling><AdminGate /></AppErrorHandling>;
 }
 
 /**

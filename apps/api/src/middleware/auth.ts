@@ -13,7 +13,7 @@ export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
 
   if (!token) {
-    return c.json({ error: "Unauthorized" }, 401);
+    return c.json({ error: "Unauthorized", code: "unauthorized", requestId: c.get("requestId") }, 401);
   }
 
   try {
@@ -24,7 +24,7 @@ export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
     });
     c.set("auth", { clerkId: payload.sub });
   } catch {
-    return c.json({ error: "Unauthorized" }, 401);
+    return c.json({ error: "Unauthorized", code: "unauthorized", requestId: c.get("requestId") }, 401);
   }
 
   await next();

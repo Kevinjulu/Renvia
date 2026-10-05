@@ -15,6 +15,7 @@ import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
 import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
+import { reportClientError } from "../../components/AppErrorHandling";
 
 function timeAgo(iso: string, now: number) {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
@@ -181,7 +182,7 @@ export function RenderResultsPanel() {
         await apiClient.updateCanvasNode(node.id, { data: nodeToPersistedData(node) });
       }
     } catch (error) {
-      console.error("Failed to save canvas node", error);
+      reportClientError(error);
     } finally {
       setIsPromoting(false);
     }
