@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { BillingCatalogResponse, CreditPack, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
+import { packOutcome } from "./billingPresentation";
 
 type StudioApi = {
   getMe: () => Promise<MeResponse>;
@@ -70,6 +71,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
   const standardCost = me?.creditsPerImage ?? 1;
   const planName = me?.entitlement.plan.name ?? "Your plan";
   const planStatus = me?.entitlement.status ?? "active";
+  const balanceOutcome = packOutcome(me?.creditBalance ?? 0, standardCost);
   if (!catalog && error) return <div className="feature-notice" role="alert">{error}</div>;
   if (!catalog) return <div className="feature-notice" role="status">Loading your billing workspace…</div>;
 
@@ -77,7 +79,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
     {notice && <div className="billing-notice is-success" role="status">{notice}</div>}
     {error && <div className="billing-notice is-error" role="alert">{error}</div>}
     <section className="billing-hero" aria-label="Billing summary">
-      <div className="billing-hero-copy"><span className="billing-kicker">RENVIA CREDITS</span><h2>Keep your next idea moving.</h2><p>Credits are ready when you are. Choose a pack below, then pay securely through PayPal when checkout is available.</p></div>
+      <div className="billing-hero-copy"><span className="billing-kicker">RENVIA CREDITS</span><h2>Keep your next idea moving.</h2><p>Choose the credit capacity that suits this project, then continue securely with PayPal when checkout is available.</p><div className="billing-hero-actions"><a href="#credit-packs">Choose your credits <span aria-hidden="true">↓</span></a><p>{balanceOutcome.renders === null ? <b>Standard renders currently require no credits.</b> : <><b>{balanceOutcome.renderLabel}</b> available at your current rate</>}</p></div></div>
       <div className="billing-balance-card"><span>Available now</span><strong>{me?.creditBalance ?? "—"}</strong><small>render credits</small><div className="billing-balance-rule" /><b>{planName} <em className={`billing-status is-${planStatus}`}>{planStatus.replace("_", " ")}</em></b></div>
     </section>
     <section className="billing-cost-guide" aria-label="How credits work">
@@ -85,16 +87,16 @@ export function BillingSection({ api }: { api: StudioApi }) {
       <article><span className="billing-guide-icon">✦</span><div><b>Strict source fidelity</b><p>{standardCost * 2} credits per image when source accuracy matters most.</p></div></article>
       <article><span className="billing-guide-icon">↺</span><div><b>Failed work is protected</b><p>Credits are returned when a render fails before delivery.</p></div></article>
     </section>
-    <section className="billing-packs-section" aria-labelledby="credit-packs-title">
+    <section id="credit-packs" className="billing-packs-section" aria-labelledby="credit-packs-title">
       <div className="billing-section-heading"><div><span>FLEXIBLE CAPACITY</span><h2 id="credit-packs-title">Choose credits that fit your workflow</h2></div><p>Prices and credit amounts are confirmed on the secure checkout.</p></div>
       {!catalog.paypalCheckoutAvailable && <div className="billing-notice is-neutral" role="status"><b>Checkout is being prepared.</b> You can review available packs now; purchasing will unlock once PayPal is connected.</div>}
       {catalog.creditPacks.length === 0 ? <div className="feature-notice">No credit packs are available yet.</div> : <div className="billing-pack-grid">{catalog.creditPacks.map((pack) => {
         const isBestValue = pack.sku === bestValueSku;
-        const standardRenders = Math.floor(pack.credits / standardCost);
+        const outcome = packOutcome(pack.credits, standardCost);
         return <article key={pack.sku} className={`billing-pack ${isBestValue ? "is-best-value" : ""}`}>
           {isBestValue && <span className="billing-pack-badge">Best value</span>}<span className="billing-pack-label">CREDIT PACK</span><h3>{pack.name}</h3>
-          <div className="billing-pack-price"><strong>{price(pack.priceCents, pack.currency)}</strong><span>{pack.credits} credits</span></div><p className="billing-pack-detail">Up to {standardRenders} standard {standardRenders === 1 ? "render" : "renders"} at your current rate.</p><p className="billing-pack-unit">{price(Math.round(pack.priceCents / pack.credits), pack.currency)} per credit</p>
-          <button type="button" disabled={!catalog.paypalCheckoutAvailable || starting !== null} onClick={() => void buy(pack)}>{starting === pack.sku ? "Opening PayPal…" : catalog.paypalCheckoutAvailable ? `Get ${pack.credits} credits` : "Checkout coming soon"}</button>
+          <div className="billing-pack-price"><strong>{price(pack.priceCents, pack.currency)}</strong><span>{pack.credits} credits</span></div><p className="billing-pack-detail">{outcome.renders === null ? "Standard renders currently require no credits at your current rate." : `Includes up to ${outcome.renderLabel} at your current rate.`}</p><p className="billing-pack-fit"><span>BEST FOR</span>{outcome.guidance}</p><p className="billing-pack-unit">{price(Math.round(pack.priceCents / pack.credits), pack.currency)} per credit</p>
+          <button type="button" disabled={!catalog.paypalCheckoutAvailable || starting !== null} onClick={() => void buy(pack)}>{starting === pack.sku ? "Opening PayPal…" : catalog.paypalCheckoutAvailable ? `Continue with PayPal · ${pack.credits} credits` : "Checkout coming soon"}</button>
         </article>;
       })}</div>}
     </section>
