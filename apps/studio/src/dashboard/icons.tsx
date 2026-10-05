@@ -162,6 +162,15 @@ export function ClockIcon() {
   );
 }
 
+export function RefundIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M3.2 6.2A5 5 0 1 1 3 9.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M2.8 3.4v2.9h2.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function StarIcon({ filled }: { filled?: boolean }) {
   return (
     <svg {...ICON_PROPS} fill={filled ? "currentColor" : "none"}>
