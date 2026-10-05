@@ -92,41 +92,6 @@ const FLUX_3_EDIT: ModelSpec = {
   }),
 };
 
-/**
- * Dedicated strict-fidelity route.
- *
- * FAL rejects a request that combines EasyControl with its `reference_image_url` (its
- * "reference-only" mode). A source-only strict render can therefore use Canny spatial
- * control, but a strict render with a material reference must use the source image-to-image
- * path plus reference-only guidance instead. In that compatible branch the low denoise value
- * and the server-composed source-design contract retain the source building; the reference is
- * limited to its visual treatment by the prompt.
- */
-const FLUX_GENERAL_FIDELITY: ModelSpec = {
-  id: "fal-ai/flux-general/image-to-image",
-  // fal bills this endpoint at $0.075 per rounded-up megapixel; Studio requests one 1K image.
-  costMicros: 75_000,
-  buildInput: ({ imageUrl, referenceUrls, prompt, aspectRatio, seed }) => {
-    const materialReference = referenceUrls[0];
-    return {
-      image_url: imageUrl,
-      prompt,
-      // Reference-only guidance and EasyControl are mutually exclusive in FAL. With a
-      // reference, lower denoise makes the source image the structural anchor; without one,
-      // Canny gives the strongest available spatial lock.
-      strength: materialReference ? 0.16 : 0.25,
-      num_inference_steps: 28,
-      guidance_scale: 3.5,
-      ...(materialReference
-        ? { reference_image_url: materialReference, reference_strength: 0.65 }
-        : { easycontrols: [{ control_method_url: "canny", image_url: imageUrl, image_control_type: "spatial", scale: 1 }] }),
-      ...(SDXL_IMAGE_SIZE[aspectRatio] ? { image_size: SDXL_IMAGE_SIZE[aspectRatio] } : {}),
-      output_format: "jpeg",
-      ...(seed !== undefined ? { seed } : {}),
-    };
-  },
-};
-
 // Bria preserves the existing architecture instead of generating a new design. The caller
 // caps the result at a 4K or 8K long edge and supplies a factor no larger than 4x.
 const BRIA_UPSCALE: ModelSpec = {
@@ -156,7 +121,10 @@ const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
     photo: KONTEXT_PRO,
     drawing: KONTEXT_PRO,
     references: FLUX_3_EDIT,
-    fidelity: FLUX_GENERAL_FIDELITY,
+    // FLUX 3 Edit natively accepts the building as image 1 and material/style references
+    // as images 2–10. Unlike the reference-only + EasyControl combination, it gives the
+    // supplied reference visible authority while the prompt keeps image 1's geometry fixed.
+    fidelity: FLUX_3_EDIT,
     edit: KONTEXT_PRO,
     "edit-references": FLUX_3_EDIT,
     upscale: BRIA_UPSCALE,

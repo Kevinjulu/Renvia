@@ -94,7 +94,9 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   editPrompt: "",
   aspectRatio: preferences.defaultAspectRatio,
   style: preferences.defaultStyle,
-  sourceType: "photo",
+  // Renvia starts in its primary elevation workflow. Photo / 3D remains an explicit option
+  // for massing images, but a line elevation should not accidentally receive photo framing.
+  sourceType: "drawing",
   styleInfluence: preferences.defaultStyleInfluence,
   editInfluence: preferences.defaultEditInfluence,
   preserveStructure: preferences.defaultPreserveStructure,
