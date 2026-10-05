@@ -21,6 +21,8 @@ const FAL_TIMEOUT_MS = 10 * 60_000;
 
 const MICROS_PER_USD = 1_000_000;
 const UPSCALE_TARGET_EDGE = { "4k": 3_840, "8k": 7_680 } as const;
+/** FAL accepts (and Renvia lets customers enter) unsigned 32-bit seeds. */
+const MAX_RENDER_SEED = 4_294_967_295;
 
 /** Current render mode: the admin setting, else FAL_MODE, else mock (never spends by accident). */
 export async function engineMode(env: Env, db: Database): Promise<RenderEngineMode> {
@@ -402,9 +404,13 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatch("Render returned no image")));
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
-    // Kontext and lightning-sdxl echo back the seed they actually used (including a random
-    // one we didn't set); reference-edit models may not, so it falls back to what we asked for.
-    const seed = typeof result.seed === "number" ? result.seed : (render.settings?.seed ?? null);
+    // Some provider responses expose an internal, wider seed that does not fit our declared
+    // unsigned-32-bit seed contract (or Postgres bigint). Never let provider metadata prevent
+    // an otherwise completed image from being persisted; retain a valid echoed/user seed only.
+    const echoedSeed = result.seed;
+    const seed = typeof echoedSeed === "number" && Number.isSafeInteger(echoedSeed) && echoedSeed >= 0 && echoedSeed <= MAX_RENDER_SEED
+      ? echoedSeed
+      : (render.settings?.seed ?? null);
     return finishRender(db, render, { status: "succeeded", resultImageUrl, seed });
   } catch (error) {
     // A completed request whose result call errors is a model-side failure (bad input,
