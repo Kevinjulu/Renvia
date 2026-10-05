@@ -12,6 +12,7 @@ import { nodeForView } from "../canvas/buildingViews";
 import { useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
 import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 import { useSelectionToolStore } from "../canvas/hooks/useSelectionToolStore";
+import { suggestedEditPartForPrompt } from "@renvia/types";
 
 interface ControlPanelProps {
   projectId: string;
@@ -40,6 +41,14 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
   const canvasSelectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const clearCanvasSelection = useSelectionToolStore((state) => state.clearSelection);
   const hasCanvasSelection = Boolean(canvasSelection && editNode && canvasSelectionNodeId === editNode.id);
+  const movePromptToEdit = () => {
+    const suggestedPart = suggestedEditPartForPrompt(prompt);
+    if (!suggestedPart) return;
+    useGenerationSettingsStore.getState().setEditPrompt(prompt);
+    useGenerationSettingsStore.getState().setEditAction("change");
+    useGenerationSettingsStore.getState().setSelectedPart(suggestedPart);
+    setActiveTab("edit");
+  };
 
   return (
     <div className="cp-panel">
@@ -53,7 +62,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
               <StylePicker value={style} onChange={setStyle} />
               <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
             </div>
-            <RenderTabBody prompt={prompt} onPromptChange={setPrompt} />
+            <RenderTabBody prompt={prompt} onPromptChange={setPrompt} onMoveToEdit={movePromptToEdit} />
           </>
         ) : (
           <>

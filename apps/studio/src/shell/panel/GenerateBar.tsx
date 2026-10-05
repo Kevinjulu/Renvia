@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   baseCreditCostForRender,
   renderRouteFor,
+  suggestedEditPartForPrompt,
   type CreateRenderResponse,
   type RenderBudgetResponse,
   type RenderEditSettings,
@@ -69,6 +70,7 @@ interface GenerateBarProps {
 export function GenerateBar({ projectId }: GenerateBarProps) {
   const apiClient = useApiClient();
   const activeTab = useCanvasStore((state) => state.activeTab);
+  const setActiveTab = useCanvasStore((state) => state.setActiveTab);
   const views = useCanvasStore((state) => state.views);
   const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
   const nodes = useCanvasStore((state) => state.nodes);
@@ -192,6 +194,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   const handleGenerate = async () => {
     if (filled.length === 0) return;
+    const suggestedEditPart = suggestedEditPartForPrompt(prompt);
+    if (suggestedEditPart) {
+      const settings = useGenerationSettingsStore.getState();
+      settings.setEditPrompt(prompt);
+      settings.setEditAction("change");
+      settings.setSelectedPart(suggestedEditPart);
+      setActiveTab("edit");
+      return;
+    }
     setIsSubmitting(true);
     setStatus(null);
     const generationSettings = {

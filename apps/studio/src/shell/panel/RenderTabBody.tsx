@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ProtectedGeometryFeature, PromptRepairResponse, RenderSourceType } from "@renvia/types";
+import { suggestedEditPartForPrompt, type ProtectedGeometryFeature, type PromptRepairResponse, type RenderSourceType } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
@@ -15,6 +15,7 @@ const FIDELITY_TOAST_STORAGE_KEY = "renvia:fidelity-feature-toast:v1";
 interface RenderTabBodyProps {
   prompt: string;
   onPromptChange: (value: string) => void;
+  onMoveToEdit: () => void;
 }
 
 const SOURCE_TYPES: { id: RenderSourceType; label: string; hint: string }[] = [
@@ -36,7 +37,7 @@ const PROTECTED_FEATURES: { id: ProtectedGeometryFeature; label: string }[] = [
   { id: "camera", label: "Camera" },
 ];
 
-export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
+export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTabBodyProps) {
   const apiClient = useApiClient();
   const [repair, setRepair] = useState<PromptRepairResponse | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
@@ -59,6 +60,7 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
   const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const suggestedEditPart = suggestedEditPartForPrompt(prompt);
 
   // Announce the new source-fidelity tools at the moment they matter, once per browser.
   // Storage failures (private mode, quota) should never prevent someone from rendering.
@@ -137,6 +139,12 @@ export function RenderTabBody({ prompt, onPromptChange }: RenderTabBodyProps) {
             maxLength={maxPromptChars}
             placeholder="A modern house with wood cladding by the Swedish coast, surrounded by pine trees"
           />
+          {suggestedEditPart && (
+            <div className="cp-notice cp-hint-action">
+              <p>This is a change to {suggestedEditPart}, not a full render brief. Edit only that area and keep the house intact.</p>
+              <button type="button" className="cp-hint-button" onClick={onMoveToEdit}>Edit {suggestedEditPart}</button>
+            </div>
+          )}
           <div className="cp-chips" role="group" aria-label="Quick atmosphere">
             {PRESETS.map((preset) => (
               <button

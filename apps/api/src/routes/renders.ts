@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { baseCreditCostForRender, renderRouteFor } from "@renvia/types";
+import { baseCreditCostForRender, renderRouteFor, suggestedEditPartForPrompt } from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
@@ -116,6 +116,16 @@ renders.post("/", async (c) => {
   }
 
   const settings = body.generationSettings ?? {};
+  const suggestedEditPart = !settings.edit ? suggestedEditPartForPrompt(body.prompt) : null;
+  if (suggestedEditPart) {
+    return c.json(
+      {
+        code: "targeted_edit_requires_selection",
+        error: `This is a ${suggestedEditPart} edit. Use Edit so only that area changes.`,
+      },
+      422,
+    );
+  }
   const origin = new URL(c.req.url).origin;
   const maskImageUrl = settings.edit?.maskImageUrl;
   // The masked area is composited back from our own copies of the source and mask.
