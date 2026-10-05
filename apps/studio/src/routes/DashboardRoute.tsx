@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useUser } from "@clerk/react";
 import type { Project } from "@renvia/types";
@@ -28,6 +28,10 @@ const VIEW_TITLE: Record<DashboardView, string> = {
 
 const RECENT_LIMIT = 7;
 
+function viewFromParam(value: string | null): DashboardView {
+  return value === "all" || value === "favorites" ? value : "home";
+}
+
 function greetingFor(date: Date): string {
   const hour = date.getHours();
   if (hour < 12) return "Good morning";
@@ -42,23 +46,35 @@ export function DashboardRoute() {
   const { user } = useUser();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [view, setView] = useState<DashboardView>(searchParams.get("view") === "all" ? "all" : "home");
-  const [search, setSearch] = useState("");
+  const [view, setView] = useState<DashboardView>(() => viewFromParam(searchParams.get("view")));
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [, setRecentlyViewed] = useState<RecentlyViewedEntry[]>([]);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadProjects = useCallback(() => {
+    setIsLoading(true);
+    setLoadFailed(false);
     apiClient
       .listProjects()
       .then((result) => setProjects(result.projects))
+      .catch(() => setLoadFailed(true))
       .finally(() => setIsLoading(false));
+  }, [apiClient]);
+
+  useEffect(() => {
+    loadProjects();
     setFavoriteIds(getFavoriteIds());
     setRecentlyViewed(getRecentlyViewed());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadProjects]);
+
+  useEffect(() => {
+    setView(viewFromParam(searchParams.get("view")));
+  }, [searchParams]);
 
   const sortedProjects = useMemo(
     () => [...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
@@ -83,16 +99,24 @@ export function DashboardRoute() {
     setFavoriteIds(toggleFavorite(projectId));
   };
 
+  /** Throws on failure so the card can keep the rename field open. */
   const handleRename = async (projectId: string, name: string) => {
-    const updated = await apiClient.updateProject(projectId, { name });
-    setProjects((current) => current.map((project) => (project.id === projectId ? updated : project)));
-    renameInRecentlyViewed(projectId, name);
-    setRecentlyViewed(getRecentlyViewed());
+    setActionError(null);
+    try {
+      const updated = await apiClient.updateProject(projectId, { name });
+      setProjects((current) => current.map((project) => (project.id === projectId ? updated : project)));
+      renameInRecentlyViewed(projectId, name);
+      setRecentlyViewed(getRecentlyViewed());
+    } catch (error) {
+      setActionError("Couldn't rename the project. Try again.");
+      throw error;
+    }
   };
 
   const handleConfirmDelete = async () => {
     if (!deletingProject) return;
     setIsDeleting(true);
+    setActionError(null);
     try {
       await apiClient.deleteProject(deletingProject.id);
       setProjects((current) => current.filter((project) => project.id !== deletingProject.id));
@@ -100,16 +124,22 @@ export function DashboardRoute() {
       setFavoriteIds((ids) => ids.filter((id) => id !== deletingProject.id));
       setRecentlyViewed((entries) => entries.filter((entry) => entry.id !== deletingProject.id));
       setDeletingProject(null);
+    } catch {
+      setActionError(`Couldn't delete "${deletingProject.name}". Try again.`);
     } finally {
       setIsDeleting(false);
     }
   };
 
   const handleCreate = async () => {
+    if (isCreating) return;
     setIsCreating(true);
+    setActionError(null);
     try {
       const project = await apiClient.createProject({ name: `Project (${projects.length + 1})` });
       navigate(`/project/${project.id}`);
+    } catch {
+      setActionError("Couldn't create a new project. Check your connection and try again.");
     } finally {
       setIsCreating(false);
     }
@@ -125,7 +155,7 @@ export function DashboardRoute() {
 
   return (
     <div className="dashboard-shell">
-      <DashboardSidebar view={view} onChangeView={setView} onCreate={() => void handleCreate()} />
+      <DashboardSidebar view={view} onChangeView={setView} />
       <div className="dashboard-workspace">
         <DashboardTopBar value={search} onChange={setSearch} onNotifications={() => navigate("/activity")} />
         <div className="dashboard-layout">
@@ -147,8 +177,22 @@ export function DashboardRoute() {
             )}
           </div>
 
+          {actionError && (
+            <div className="feature-notice is-error dashboard-notice" role="alert">
+              <span>{actionError}</span>
+              <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+
           {isLoading ? (
             <ProjectGridSkeleton />
+          ) : loadFailed ? (
+            <div className="feature-state is-error" role="alert">
+              <p>Couldn't load your projects.</p>
+              <button type="button" onClick={loadProjects}>Try again</button>
+            </div>
+          ) : isSearching && visibleProjects.length === 0 ? (
+            <p className="dashboard-empty">No projects match “{search.trim()}”. Try a different name.</p>
           ) : view === "favorites" && visibleProjects.length === 0 ? (
             <p className="dashboard-empty">No favorites yet — star a project to pin it here.</p>
           ) : (
@@ -170,7 +214,7 @@ export function DashboardRoute() {
 
             {isHome && <HelpArticles />}
           </main>
-          {isHome && <DashboardPanels onCreate={() => void handleCreate()} />}
+          {isHome && <DashboardPanels projects={projects} onCreate={() => void handleCreate()} isCreating={isCreating} />}
         </div>
       </div>
 

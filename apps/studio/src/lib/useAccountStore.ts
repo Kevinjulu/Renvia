@@ -54,5 +54,7 @@ export function creditsLeftPercent(balance: number, granted: number | null): num
 }
 
 export function planLabel(me: MeResponse | null): string {
-  return me?.role === "admin" ? "Admin" : "Free plan";
+  if (me?.role === "admin") return "Admin";
+  const name = me?.entitlement?.plan.name;
+  return name ? `${name} plan` : "Free plan";
 }

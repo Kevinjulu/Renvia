@@ -7,11 +7,12 @@ import { PROJECT_TEMPLATES, TEMPLATE_CATEGORIES, type TemplateCategory } from ".
 type Filter = "all" | TemplateCategory;
 
 interface TemplatesSectionProps {
+  query?: string;
   onNotice: (message: string) => void;
 }
 
 /** Each template seeds a real style, aspect ratio, influence, and starter prompt — not just a project name. */
-export function TemplatesSection({ onNotice }: TemplatesSectionProps) {
+export function TemplatesSection({ query = "", onNotice }: TemplatesSectionProps) {
   const api = useApiClient();
   const navigate = useNavigate();
   const setPrompt = useGenerationSettingsStore((state) => state.setPrompt);
@@ -22,7 +23,12 @@ export function TemplatesSection({ onNotice }: TemplatesSectionProps) {
   const [filter, setFilter] = useState<Filter>("all");
   const [creatingId, setCreatingId] = useState<string | null>(null);
 
-  const visible = filter === "all" ? PROJECT_TEMPLATES : PROJECT_TEMPLATES.filter((template) => template.category === filter);
+  const needle = query.trim().toLowerCase();
+  const visible = PROJECT_TEMPLATES.filter(
+    (template) =>
+      (filter === "all" || template.category === filter) &&
+      (!needle || `${template.label} ${template.description} ${template.category}`.toLowerCase().includes(needle)),
+  );
 
   const startFromTemplate = async (id: string) => {
     const template = PROJECT_TEMPLATES.find((item) => item.id === id);
@@ -60,11 +66,17 @@ export function TemplatesSection({ onNotice }: TemplatesSectionProps) {
         })}
       </div>
 
+      {visible.length === 0 && (
+        <div className="assets-empty">
+          <p className="assets-empty-title">No templates match “{query.trim()}”</p>
+          <p>Try a style, mood, or setting — like “dusk” or “watercolor”.</p>
+        </div>
+      )}
       <div className="template-grid">
         {visible.map((template) => (
           <article key={template.id} className="template-card">
             <div className="template-card-image">
-              <img src={template.thumb} alt="" />
+              <img src={template.thumb} alt={`Example render in the ${template.label} template`} loading="lazy" />
               <span className="template-card-category">{template.category}</span>
             </div>
             <div>

@@ -1,3 +1,4 @@
+import { useMemo, useRef } from "react";
 import { useAuth } from "@clerk/react";
 import type {
   CreateCanvasNodeRequest,
@@ -140,9 +141,17 @@ async function uploadWithProgress(
   });
 }
 
-export function useApiClient() {
-  const { getToken } = useAuth();
+export type ApiClient = ReturnType<typeof createApiClient>;
 
+/** One stable client per component: the token getter is read through a ref, so effects can depend on the client safely. */
+export function useApiClient(): ApiClient {
+  const { getToken } = useAuth();
+  const getTokenRef = useRef<GetToken>(getToken);
+  getTokenRef.current = getToken;
+  return useMemo(() => createApiClient(() => getTokenRef.current()), []);
+}
+
+function createApiClient(getToken: GetToken) {
   return {
     getMe: () => request<MeResponse>(getToken, "/me"),
     getMyCredits: () => request<MeCreditsResponse>(getToken, "/me/credits"),

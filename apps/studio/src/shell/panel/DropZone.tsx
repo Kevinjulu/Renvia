@@ -32,7 +32,10 @@ export function DropZone({
       aria-disabled={disabled}
       onClick={() => !disabled && inputRef.current?.click()}
       onKeyDown={(event) => {
-        if (!disabled && (event.key === "Enter" || event.key === " ")) inputRef.current?.click();
+        if (!disabled && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          inputRef.current?.click();
+        }
       }}
       onDragOver={(event: DragEvent) => {
         event.preventDefault();
@@ -45,8 +48,8 @@ export function DropZone({
         if (!disabled) handleFiles(event.dataTransfer.files);
       }}
       className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-center transition-colors ${
-        isDragging ? "border-blueprint bg-blueprint-soft" : "border-hairline-strong bg-white"
-      } ${size === "large" ? "gap-3 p-16" : "p-6"} ${disabled ? "cursor-not-allowed opacity-50" : "hover:border-primary/30"}`}
+        isDragging ? "border-primary bg-surface-2" : "border-hairline-strong bg-white"
+      } ${size === "large" ? "gap-3 p-16" : "p-6"} ${disabled ? "cursor-not-allowed opacity-50" : "hover:border-primary/30"} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`}
     >
       <svg
         width={size === "large" ? 28 : 20}

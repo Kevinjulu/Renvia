@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "@renvia/types";
-import { useApiClient } from "../lib/apiClient";
+import { Link } from "react-router-dom";
+import { ApiError, useApiClient } from "../lib/apiClient";
 import { recordRecentlyViewed } from "../lib/localCollections";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { canvasNodeFromRecord, focusViewNode, nodeToPersistedData } from "../canvas/utils/placeImageNode";
@@ -12,6 +13,7 @@ import { DownloadDialog } from "../canvas/DownloadDialog";
 import { IconRail } from "./IconRail";
 import { ControlPanel } from "./ControlPanel";
 import { CanvasTopBar } from "./CanvasTopBar";
+import { StudioNotice } from "./StudioNotice";
 import { RenderResultsPanel } from "./panel/RenderResultsPanel";
 import { AddViewMenu } from "./panel/AddViewMenu";
 import { GuideProvider } from "../guide/GuideProvider";
@@ -34,15 +36,26 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const filmstripInputRef = useRef<HTMLInputElement>(null);
   const pendingViewRef = useRef<BuildingView | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
+    const fail = (message: string) => () => {
+      if (!cancelled) setLoadError((current) => current ?? message);
+    };
 
     setProjectId(projectId);
+    useRenderJobsStore.setState({ jobs: [], activeJobId: null, previewJobId: null, previewImage: null });
+    setProject(null);
+    setLoadError(null);
     apiClient.getProject(projectId).then((result) => {
       if (!cancelled) {
         setProject(result);
         recordRecentlyViewed(result.id, result.name);
       }
+    }).catch((error: unknown) => {
+      fail(error instanceof ApiError && error.status === 404 ? "This project doesn't exist, or it was deleted." : "Couldn't load this project.")();
     });
     apiClient.listCanvasNodes(projectId).then(({ nodes: records }) => {
       if (cancelled) return;
@@ -58,18 +71,17 @@ export function StudioShell({ projectId }: { projectId: string }) {
           });
         }
       });
-    });
+    }).catch(fail("Couldn't load this project's elevations."));
     apiClient.listRenders(projectId).then(({ jobs }) => {
       if (!cancelled) setJobs(jobs);
-    });
+    }).catch(fail("Couldn't load this project's renders."));
 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [apiClient, projectId, reloadKey, setJobs, setNodes, setProjectId]);
 
-  const projectName = project ? project.name : "Loading…";
+  const projectName = project ? project.name : loadError ? "Project unavailable" : "Loading…";
   const activeView = views.find((view) => view.id === activeViewId) ?? views[0];
   const activeIndex = Math.max(0, views.findIndex((view) => view.id === activeViewId));
   const pickFile = (view: BuildingView) => {
@@ -83,6 +95,16 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <IconRail />
       <main className="studio-main">
         <CanvasTopBar projectName={projectName} />
+        {loadError ? (
+          <div className="studio-load-error" role="alert">
+            <h2>{loadError}</h2>
+            <p>Check your connection and try again, or go back to your projects.</p>
+            <div>
+              <button type="button" onClick={() => setReloadKey((key) => key + 1)}>Try again</button>
+              <Link to="/dashboard">Back to projects</Link>
+            </div>
+          </div>
+        ) : (
         <div className="studio-workbench">
           <ControlPanel projectId={projectId} />
           <section className="studio-canvas-column">
@@ -106,6 +128,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               <CanvasStage />
               <RenderPreview />
               <ImagePreview />
+              <StudioNotice />
             </div>
             <div className="elevation-filmstrip" data-guide="canvas.filmstrip">
               {views.map((view, index) => {
@@ -159,6 +182,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </section>
           <RenderResultsPanel />
         </div>
+        )}
       </main>
       <DownloadDialog />
       </div>

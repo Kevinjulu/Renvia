@@ -53,6 +53,7 @@ export function SeedControl() {
               max={MAX_SEED}
               value={draft}
               placeholder="Random"
+              aria-label="Variation seed"
               onChange={(event) => setDraft(event.target.value)}
               onBlur={() => {
                 const parsed = Number(draft);
@@ -62,7 +63,7 @@ export function SeedControl() {
               onKeyDown={(event) => {
                 if (event.key === "Enter") (event.target as HTMLInputElement).blur();
               }}
-              className="w-24 rounded-md border border-hairline px-2 py-1 text-xs tabular-nums text-primary placeholder:text-faint focus:border-blueprint focus:outline-none"
+              className="w-24 rounded-md border border-hairline px-2 py-1 text-xs tabular-nums text-primary placeholder:text-faint focus:border-primary focus:outline-none"
             />
             <button
               type="button"

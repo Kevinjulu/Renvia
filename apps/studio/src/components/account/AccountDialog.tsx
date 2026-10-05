@@ -6,6 +6,7 @@ import { useApiClient } from "../../lib/apiClient";
 import { formatRelativeTime } from "../../lib/relativeTime";
 import { MIN_PASSWORD_LENGTH } from "../../lib/finishAuth";
 import { creditsLeftPercent, loadCreditHistory, planLabel, useAccountStore } from "../../lib/useAccountStore";
+import { useFocusTrap } from "../../lib/useFocusTrap";
 import { PasswordStrength } from "../auth/PasswordStrength";
 import { Avatar } from "./Avatar";
 
@@ -341,9 +342,7 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
         setHistoryFailed(true);
         setEntries([]);
       });
-    // Load once per open; apiClient is a new object each render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [apiClient]);
 
   const memberSince = me ? new Date(me.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : null;
 
@@ -430,13 +429,13 @@ interface AccountDialogProps {
 export function AccountDialog({ initialTab = "profile", onClose }: AccountDialogProps) {
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const navigate = useNavigate();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useFocusTrap<HTMLDivElement>(true, ".account-dialog-nav .is-active");
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", handleKeyDown);
     const { overflow } = document.body.style;
@@ -444,9 +443,8 @@ export function AccountDialog({ initialTab = "profile", onClose }: AccountDialog
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = overflow;
-      previouslyFocused?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   const goTo = (path: string) => {
     onClose();

@@ -10,4 +10,15 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/[\\/]node_modules[\\/].*[\\/](konva|react-konva|react-reconciler|its-fine)[\\/]/.test(id)) return "konva";
+          if (/[\\/]node_modules[\\/].*[\\/]@clerk[\\/]/.test(id)) return "clerk";
+          return undefined;
+        },
+      },
+    },
+  },
 });

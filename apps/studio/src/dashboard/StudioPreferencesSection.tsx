@@ -101,6 +101,8 @@ export function StudioPreferencesSection({ onSaved }: StudioPreferencesSectionPr
               min={1}
               max={4}
               value={prefs.defaultStyleInfluence}
+              aria-label="Default style influence"
+              aria-valuetext={STYLE_INFLUENCE_LABELS[prefs.defaultStyleInfluence - 1]}
               onChange={(event) => update({ defaultStyleInfluence: Number(event.target.value) })}
             />
             <b>{STYLE_INFLUENCE_LABELS[prefs.defaultStyleInfluence - 1]}</b>
@@ -108,13 +110,15 @@ export function StudioPreferencesSection({ onSaved }: StudioPreferencesSectionPr
         </div>
 
         <div className="studio-prefs-row">
-          <span className="studio-prefs-label">
+          <span className="studio-prefs-label" id="prefs-preserve-label">
             <strong>Preserve source geometry</strong>
             <small>Keep openings and structural lines fixed by default</small>
           </span>
           <label className="studio-prefs-switch">
             <input
               type="checkbox"
+              role="switch"
+              aria-labelledby="prefs-preserve-label"
               checked={prefs.defaultPreserveStructure}
               onChange={(event) => update({ defaultPreserveStructure: event.target.checked })}
             />
@@ -139,6 +143,8 @@ export function StudioPreferencesSection({ onSaved }: StudioPreferencesSectionPr
               min={1}
               max={4}
               value={prefs.defaultEditInfluence}
+              aria-label="Default edit strength"
+              aria-valuetext={STYLE_INFLUENCE_LABELS[prefs.defaultEditInfluence - 1]}
               onChange={(event) => update({ defaultEditInfluence: Number(event.target.value) })}
             />
             <b>{STYLE_INFLUENCE_LABELS[prefs.defaultEditInfluence - 1]}</b>

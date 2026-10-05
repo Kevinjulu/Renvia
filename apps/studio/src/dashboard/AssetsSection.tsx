@@ -24,11 +24,12 @@ function SourceBadge({ source }: { source: ReferenceImageSource }) {
 
 interface AssetsSectionProps {
   autoOpenUpload?: boolean;
+  query?: string;
   onNotice: (message: string) => void;
 }
 
 /** The dashboard's browsable, manageable view of the same reference-image library the Studio's ReferenceBar attaches from. */
-export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) {
+export function AssetsSection({ autoOpenUpload, query = "", onNotice }: AssetsSectionProps) {
   const api = useApiClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,6 +44,9 @@ export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) 
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [isPasting, setIsPasting] = useState(false);
 
+  const onNoticeRef = useRef(onNotice);
+  onNoticeRef.current = onNotice;
+
   useEffect(() => {
     let cancelled = false;
     api
@@ -51,7 +55,7 @@ export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) 
         if (!cancelled) setAssets(references);
       })
       .catch(() => {
-        if (!cancelled) onNotice("Couldn't load your assets. Try reloading the page.");
+        if (!cancelled) onNoticeRef.current("Couldn't load your assets. Try reloading the page.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -59,8 +63,7 @@ export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     if (autoOpenUpload) fileInputRef.current?.click();
@@ -72,7 +75,12 @@ export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) 
     unsplash: assets.filter((asset) => asset.source === "unsplash").length,
     url: assets.filter((asset) => asset.source === "url").length,
   };
-  const visible = filter === "all" ? assets : assets.filter((asset) => asset.source === filter);
+  const needle = query.trim().toLowerCase();
+  const visible = assets.filter(
+    (asset) =>
+      (filter === "all" || asset.source === filter) &&
+      (!needle || `${asset.url} ${SOURCE_LABEL[asset.source]}`.toLowerCase().includes(needle)),
+  );
 
   const uploadFiles = async (files: File[]) => {
     if (!files.length) return;
@@ -208,14 +216,29 @@ export function AssetsSection({ autoOpenUpload, onNotice }: AssetsSectionProps) 
         </div>
       ) : visible.length === 0 ? (
         <div className="assets-empty">
-          <p className="assets-empty-title">{filter === "all" ? "No assets yet" : `No ${FILTERS.find((item) => item.id === filter)!.label.toLowerCase()} yet`}</p>
-          <p>Upload a file above, or paste a link, and it'll show up here — ready to attach as a reference in any project.</p>
+          {needle ? (
+            <>
+              <p className="assets-empty-title">No assets match “{query.trim()}”</p>
+              <p>Assets are matched by their source and link.</p>
+            </>
+          ) : (
+            <>
+              <p className="assets-empty-title">{filter === "all" ? "No assets yet" : `No ${FILTERS.find((item) => item.id === filter)!.label.toLowerCase()} yet`}</p>
+              <p>Upload a file above, or paste a link, and it'll show up here — ready to attach as a reference in any project.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="assets-grid">
           {visible.map((asset) => (
             <figure key={asset.id} className="asset-tile">
-              <a href={asset.url} target="_blank" rel="noreferrer" className="asset-tile-image">
+              <a
+                href={asset.url}
+                target="_blank"
+                rel="noreferrer"
+                className="asset-tile-image"
+                aria-label={`Open ${SOURCE_LABEL[asset.source]} asset, added ${formatRelativeTime(asset.createdAt)}, in a new tab`}
+              >
                 <img src={asset.url} alt="" loading="lazy" />
               </a>
               <figcaption>

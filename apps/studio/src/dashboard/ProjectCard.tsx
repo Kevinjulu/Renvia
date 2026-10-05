@@ -58,9 +58,11 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
     setSaving(true);
     try {
       await onRename(trimmed);
+      setRenaming(false);
+    } catch {
+      // The dashboard shows the error; the field stays open so the name isn't lost.
     } finally {
       setSaving(false);
-      setRenaming(false);
     }
   };
 
@@ -72,7 +74,7 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
         disabled={renaming}
         className="dashboard-project-image"
       >
-        <img src={project.thumbnailUrl || fallbackImages[fallbackIndex]} alt="" />
+        <img src={project.thumbnailUrl || fallbackImages[fallbackIndex]} alt={`Open ${project.name}`} />
       </button>
 
       <div className="dashboard-project-actions">
@@ -84,8 +86,8 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
           }}
           aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
           aria-pressed={favorite}
-          className={`flex h-7 w-7 items-center justify-center rounded-full bg-white/90 backdrop-blur transition-opacity ${
-            favorite ? "text-glow opacity-100" : "text-faint opacity-0 group-hover:opacity-100"
+          className={`project-card-reveal flex h-7 w-7 items-center justify-center rounded-full bg-white/90 backdrop-blur transition-opacity ${
+            favorite ? "text-glow opacity-100" : "text-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
           }`}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill={favorite ? "currentColor" : "none"} aria-hidden="true">
@@ -127,9 +129,7 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
             {project.name}
           </button>
         )}
-        <span>Edited {formatRelativeTime(project.updatedAt)}</span>
-        <div className="dashboard-project-tags"><i>Render</i><i>Exterior</i></div>
-      </div>
+        <span>Edited {formatRelativeTime(project.updatedAt)}</span>      </div>
     </div>
   );
 }

@@ -3,13 +3,15 @@ import { useUser } from "@clerk/react";
 import { Logo } from "../components/brand/Logo";
 import { Avatar } from "../components/account/Avatar";
 import { planLabel, useAccountStore } from "../lib/useAccountStore";
+import { CreditIcon, SettingsIcon } from "./icons";
 
 export type DashboardView = "home" | "all" | "favorites";
-interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; onCreate: () => void; activeSection?: string; }
+interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; activeSection?: string; }
 
 const icons: Record<string, JSX.Element> = {
   home: <><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
   projects: <><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></>,
+  favorites: <path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/>,
   explore: <><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5Z"/></>,
   templates: <><rect x="4" y="3" width="7" height="8" rx="1"/><rect x="13" y="3" width="7" height="4" rx="1"/><rect x="4" y="13" width="7" height="8" rx="1"/><rect x="13" y="9" width="7" height="12" rx="1"/></>,
   assets: <><path d="M4 9 12 4l8 5v10H4Z"/><circle cx="12" cy="12" r="2"/></>,
@@ -18,7 +20,7 @@ const icons: Record<string, JSX.Element> = {
   settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
 };
 function NavIcon({ name }: { name: string }) { return <svg viewBox="0 0 24 24" aria-hidden="true">{icons[name]}</svg>; }
-function NavItem({ name, label, active, onClick }: { name: string; label: string; active?: boolean; onClick?: () => void }) { return <button type="button" onClick={onClick} className={`dashboard-nav-item ${active ? "is-active" : ""}`}><NavIcon name={name}/><span>{label}</span></button>; }
+function NavItem({ name, label, active, onClick }: { name: string; label: string; active?: boolean; onClick?: () => void }) { return <button type="button" onClick={onClick} aria-label={label} title={label} aria-current={active ? "page" : undefined} className={`dashboard-nav-item ${active ? "is-active" : ""}`}><NavIcon name={name}/><span>{label}</span></button>; }
 
 export function DashboardSidebar({ view, onChangeView, activeSection }: DashboardSidebarProps) {
   const navigate = useNavigate();
@@ -29,12 +31,12 @@ export function DashboardSidebar({ view, onChangeView, activeSection }: Dashboar
     <aside className="dashboard-sidebar">
       <Logo className="dashboard-logo" wordmarkClassName="text-[20px] text-white" />
       <nav className="dashboard-nav">
-        <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>
+        <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="favorites" label="Favorites" active={!activeSection && view === "favorites"} onClick={() => { onChangeView("favorites"); navigate("/dashboard?view=favorites"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>
       </nav>
       <div className="dashboard-nav-divider" />
       <nav className="dashboard-nav dashboard-nav-secondary"><NavItem name="team" label="Team" active={activeSection === "team"} onClick={() => navigate("/team")}/><NavItem name="settings" label="Settings" active={activeSection === "settings"} onClick={() => navigate("/settings")}/></nav>
-      <div className="dashboard-upgrade-card"><p className="dashboard-upgrade-title"><span>♛</span> Upgrade to Pro</p><p>Unlock more renders,<br/>higher resolution and<br/>team features.</p><button type="button" onClick={() => navigate("/billing")}>Upgrade <span>→</span></button></div>
-      <div className="dashboard-user"><Avatar name={name} imageUrl={user?.hasImage ? user.imageUrl : null} size={34} className="dashboard-user-avatar" /><span><strong>{name}</strong><small>{planLabel(me)}</small></span><button type="button" aria-label="Open account settings" onClick={() => navigate("/settings")}>⌃</button></div>
+      <div className="dashboard-upgrade-card"><p className="dashboard-upgrade-title"><CreditIcon size={14} /> Top up credits</p><p>Buy a credit pack to keep<br/>rendering when your<br/>balance runs low.</p><button type="button" onClick={() => navigate("/billing")}>View billing <span aria-hidden="true">→</span></button></div>
+      <div className="dashboard-user"><Avatar name={name} imageUrl={user?.hasImage ? user.imageUrl : null} size={34} className="dashboard-user-avatar" /><span><strong>{name}</strong><small>{planLabel(me)}</small></span><button type="button" aria-label="Open studio settings" title="Studio settings" onClick={() => navigate("/settings")}><SettingsIcon /></button></div>
     </aside>
   );
 }

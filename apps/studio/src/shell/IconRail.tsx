@@ -40,7 +40,10 @@ function UploadButton() {
           : "Start here — upload elevation";
 
   const face =
-    status === "uploading" ? `${percent}%` : status === "done" ? "✓" : status === "error" ? "!" : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>;
+    status === "uploading" ? `${percent}%`
+      : status === "done" ? <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+      : status === "error" ? <svg viewBox="0 0 24 24"><path d="M12 6v8M12 18v.01" /></svg>
+      : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>;
 
   return <>
     <div className={`rail-upload-entry is-${status}`}>

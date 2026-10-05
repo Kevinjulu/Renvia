@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { EXTRA_VIEW_PRESETS } from "../../canvas/buildingViews";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
+import { useMenu } from "../../lib/useMenu";
 
 interface AddViewMenuProps {
   className?: string;
   compact?: boolean;
+}
+
+function PlusGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export function AddViewMenu({ className, compact = false }: AddViewMenuProps) {
@@ -15,18 +24,12 @@ export function AddViewMenu({ className, compact = false }: AddViewMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-        setCustomOpen(false);
-        setCustomName("");
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
+  const close = () => {
+    setOpen(false);
+    setCustomOpen(false);
+    setCustomName("");
+  };
+  const { menuRef, triggerRef, onMenuKeyDown } = useMenu<HTMLDivElement>({ open, onClose: close, rootRef });
 
   useEffect(() => {
     if (customOpen) inputRef.current?.focus();
@@ -34,30 +37,39 @@ export function AddViewMenu({ className, compact = false }: AddViewMenuProps) {
 
   const add = (label: string) => {
     addBuildingView(label);
-    setOpen(false);
-    setCustomOpen(false);
-    setCustomName("");
+    close();
+    triggerRef.current?.focus();
   };
 
   return (
     <div ref={rootRef} className={`add-view-menu ${className ?? ""}`}>
       <button
+        ref={triggerRef}
         type="button"
         className={compact ? "add-view" : "add-view-trigger"}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
+        aria-haspopup="menu"
       >
         {compact ? (
           <>
-            <span>＋</span>
+            <span><PlusGlyph /></span>
             <small>Add elevation</small>
           </>
         ) : (
-          "＋ Add elevation"
+          <>
+            <PlusGlyph /> Add elevation
+          </>
         )}
       </button>
       {open && (
-        <div className={`add-view-popover ${compact ? "is-up" : ""}`} role="menu">
+        <div
+          ref={menuRef}
+          className={`add-view-popover ${compact ? "is-up" : ""}`}
+          role="menu"
+          aria-label="Add elevation"
+          onKeyDown={onMenuKeyDown}
+        >
           {EXTRA_VIEW_PRESETS.map((label) => (
             <button key={label} type="button" role="menuitem" onClick={() => add(label)}>
               {label}

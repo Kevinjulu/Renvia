@@ -138,7 +138,7 @@
   border: 0;
   background: none;
   padding: 0;
-  color: #254ee8;
+  color: #171717;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -160,7 +160,7 @@
   border-radius: 999px;
   padding: 0 5px;
   background: #fff;
-  color: #254ee8;
+  color: #171717;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 9px;
   font-weight: 600;
@@ -171,8 +171,8 @@
 
 .guide-pin.is-active,
 .guide-pin:hover {
-  background: #254ee8;
-  border-color: #254ee8;
+  background: #171717;
+  border-color: #171717;
   color: #fff;
 }
 
@@ -270,8 +270,8 @@
   flex: none;
   place-items: center;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #254ee8;
+  background: #f4f2ee;
+  color: #171717;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 9px;
   font-style: normal;
@@ -340,8 +340,8 @@
 .guide-trigger.is-active,
 .guide-trigger.is-touring {
   border-color: #c5d0f8;
-  background: #eef2ff;
-  color: #254ee8;
+  background: #f4f2ee;
+  color: #171717;
 }
 
 .guide-trigger-progress {
@@ -409,7 +409,7 @@
 .guide-hotspot:hover,
 .guide-hotspot.is-open {
   border-color: #4666f6;
-  color: #254ee8;
+  color: #171717;
 }
 
 .guide-hotspot-card {
@@ -432,7 +432,7 @@
 .guide-empty-tour button {
   border: 0;
   background: none;
-  color: #254ee8;
+  color: #171717;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

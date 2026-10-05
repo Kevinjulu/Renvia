@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getRecentlyViewed } from "../lib/localCollections";
+import { HELP_ARTICLES } from "../help/content";
 
 const ICONS: Record<string, ReactNode> = {
   play: <path d="M8 5.5v13l10.5-6.5Z" />,
@@ -26,11 +27,19 @@ function tourHref(): string {
   return recent ? `/project/${recent.id}?tour=1` : "/help/getting-started";
 }
 
+const ARTICLE_CARDS: Array<Pick<LearningItem, "slug" | "image" | "focus" | "icon" | "kind">> = [
+  { slug: "getting-started", image: "/dashboard/lakeside-house-sketch.png", focus: "50% 55%", icon: "upload", kind: "Guide" },
+  { slug: "consistent-results", image: "/dashboard/interior.jpg", focus: "50% 50%", icon: "spark", kind: "Tips" },
+  { slug: "regional-editing", image: "/dashboard/lakeside-house.jpg", focus: "50% 60%", icon: "brush", kind: "Advanced" },
+];
+
+/** Article cards read their title, summary and read time from the help content, so they can't drift from it. */
 const learning: LearningItem[] = [
-  { slug: "getting-started", image: "/dashboard/house-detail.jpg", focus: "50% 38%", icon: "play", kind: "Tour", length: "1 min", title: "Getting started with Renvia", detail: "A walkthrough of the studio, from elevation slots to Generate." },
-  { slug: "getting-started", image: "/dashboard/lakeside-house-sketch.png", focus: "50% 55%", icon: "upload", kind: "Guide", length: "4 min read", title: "Uploading your model or sketch", detail: "Prepare elevations, sketches and exports for clean results." },
-  { slug: "consistent-results", image: "/dashboard/interior.jpg", focus: "50% 50%", icon: "spark", kind: "Tips", length: "6 min read", title: "Prompting for better results", detail: "Describe materials, light and mood with examples that work." },
-  { slug: "regional-editing", image: "/dashboard/lakeside-house.jpg", focus: "50% 60%", icon: "brush", kind: "Advanced", length: "7 min read", title: "Advanced editing techniques", detail: "Refine regions of a render without losing the structure." },
+  { slug: "tour", image: "/dashboard/house-detail.jpg", focus: "50% 38%", icon: "play", kind: "Tour", length: "Interactive", title: "Take the Studio tour", detail: "A guided walkthrough of the studio, from elevation slots to Generate." },
+  ...ARTICLE_CARDS.flatMap((card) => {
+    const article = HELP_ARTICLES.find((candidate) => candidate.slug === card.slug);
+    return article ? [{ ...card, length: article.readTime, title: article.title, detail: article.summary }] : [];
+  }),
 ];
 
 export function HelpArticles() {
@@ -41,10 +50,10 @@ export function HelpArticles() {
         <Link to="/help/getting-started">View all&nbsp; →</Link>
       </div>
       <div className="dashboard-learning-grid">
-        {learning.map((item, index) => (
+        {learning.map((item) => (
           <Link
-            key={`${item.slug}-${index}`}
-            to={index === 0 ? tourHref() : `/help/${item.slug}`}
+            key={item.slug}
+            to={item.slug === "tour" ? tourHref() : `/help/${item.slug}`}
             className="learning-card"
           >
             <div className="learning-card-media">
@@ -53,11 +62,6 @@ export function HelpArticles() {
                 <svg viewBox="0 0 24 24" aria-hidden="true">{ICONS[item.icon]}</svg>
                 {item.kind}
               </span>
-              {item.icon === "play" && (
-                <span className="learning-card-play" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">{ICONS.play}</svg>
-                </span>
-              )}
             </div>
             <div className="learning-card-body">
               <h3>{item.title}</h3>

@@ -26,6 +26,37 @@ function timeAgo(iso: string, now: number) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+/** A ticking clock kept local to the leaf that displays it, so the whole panel doesn't re-render. */
+function useNow(intervalMs: number, enabled = true) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(interval);
+  }, [intervalMs, enabled]);
+  return now;
+}
+
+function TimeAgo({ iso }: { iso: string }) {
+  const now = useNow(30_000);
+  return <span>{timeAgo(iso, now)}</span>;
+}
+
+function JobProgress({ job, label }: { job: Parameters<typeof jobProgress>[0]; label: string }) {
+  const progress = Math.round(jobProgress(job, useNow(400)));
+  return (
+    <>
+      <span>
+        {label}… <b>{progress}%</b>
+      </span>
+      <i>
+        <em style={{ width: `${progress}%` }} />
+      </i>
+    </>
+  );
+}
+
 export function RenderResultsPanel() {
   useRenderJobsPolling();
   useAutoShowFinishedRender();
@@ -56,17 +87,10 @@ export function RenderResultsPanel() {
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
 
   const activeJob = jobs.find((job) => job.id === activeJobId) ?? jobs[0] ?? null;
   const hasInFlight = jobs.some((job) => job.status === "pending" || job.status === "processing");
   const fact = useArchitectureFact(hasInFlight);
-
-  useEffect(() => {
-    if (!hasInFlight) return;
-    const interval = setInterval(() => setNow(Date.now()), 400);
-    return () => clearInterval(interval);
-  }, [hasInFlight]);
 
   useEffect(() => {
     if (!copied) return;
@@ -137,8 +161,9 @@ export function RenderResultsPanel() {
         ? await apiClient.upscaleRender(activeJob.settings.upscale.parentRenderId, { target: activeJob.settings.upscale.target })
         : await apiClient.createRender(buildRetryRequest(activeJob, projectId));
       addJob(job);
+      void refreshAccount(apiClient.getMe);
     } catch (error) {
-      reportLimit(error);
+      if (!reportLimit(error)) setActionError("Couldn't start the retry. Try again.");
     } finally {
       setIsRetrying(false);
     }
@@ -171,6 +196,7 @@ export function RenderResultsPanel() {
     if (!activeJob?.resultImageUrl) return;
     if (activeJob.viewKey) selectView(activeJob.viewKey);
     setIsPromoting(true);
+    setActionError(null);
     try {
       const { kind, node } = await setImageAsBaseNode(activeJob.resultImageUrl);
       const projectId = useCanvasStore.getState().projectId;
@@ -183,6 +209,7 @@ export function RenderResultsPanel() {
       }
     } catch (error) {
       reportClientError(error);
+      setActionError("Couldn't set this render as the base image. Try again.");
     } finally {
       setIsPromoting(false);
     }
@@ -222,7 +249,6 @@ export function RenderResultsPanel() {
   const inFlight = job.status === "pending" || job.status === "processing";
   const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
   const starred = job.isFavorite;
-  const progress = Math.round(jobProgress(job, now));
   const parent = job.settings?.edit
     ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
     : undefined;
@@ -330,12 +356,7 @@ export function RenderResultsPanel() {
           )}
           {inFlight && (
             <figcaption className="rp-progress">
-              <span>
-                {job.status === "pending" ? "Queued" : job.settings?.upscale ? "Enhancing" : "Rendering"}… <b>{progress}%</b>
-              </span>
-              <i>
-                <em style={{ width: `${progress}%` }} />
-              </i>
+              <JobProgress job={job} label={job.status === "pending" ? "Queued" : job.settings?.upscale ? "Enhancing" : "Rendering"} />
               <small key={fact}>{fact}</small>
               <button type="button" className="rp-progress-cancel" disabled={isCancelling} onClick={() => void handleCancel()}>
                 {isCancelling ? "Cancelling…" : "Cancel"}
@@ -355,7 +376,7 @@ export function RenderResultsPanel() {
         <div className="rp-meta">
           <p className="rp-title">
             <strong>{[job.settings?.upscale ? `${job.settings.upscale.target.toUpperCase()} export` : job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ")}</strong>
-            <span>{timeAgo(job.createdAt, now)}</span>
+            <TimeAgo iso={job.createdAt} />
           </p>
           <div className="rp-tags">
             {tags.map((tag) => (

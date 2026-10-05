@@ -4,6 +4,7 @@ import { useCanvasStore } from "./hooks/useCanvasStore";
 import { useFittedBox, type Size } from "./hooks/useFittedBox";
 import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
 import { useApiClient } from "../lib/apiClient";
+import { useFocusTrap } from "../lib/useFocusTrap";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
 import { formatAspectRatio } from "./utils/aspectRatio";
@@ -207,6 +208,7 @@ export function RenderPreview() {
   const index = viewable.findIndex((job) => job.id === previewJobId);
   const job = (index >= 0 ? viewable[index] : undefined) ?? null;
   const isEditing = job !== null && targetJobId === job.id;
+  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(job?.resultImageUrl), ".render-preview-back", { contain: false });
 
   useEffect(() => setLoaded(false), [job?.resultImageUrl, mode]);
 
@@ -302,7 +304,7 @@ export function RenderPreview() {
   })();
 
   return (
-    <div className={`render-preview ${isEditing ? "is-editing" : ""}`} role="dialog" aria-label={`${title} ${isEditing ? "editor" : "preview"}`}>
+    <div ref={dialogRef} className={`render-preview ${isEditing ? "is-editing" : ""}`} role="dialog" aria-label={`${title} ${isEditing ? "editor" : "preview"}`}>
       <header className="render-preview-bar">
         <button type="button" className="render-preview-back" onClick={() => setPreviewJob(null)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>

@@ -7,8 +7,8 @@
 .account-menu{position:relative;flex:none}
 .account-trigger{display:flex;height:38px;align-items:center;gap:6px;border:1px solid #e7e4dd;border-radius:999px;padding:3px 9px 3px 3px;background:#fff;cursor:pointer;box-shadow:0 1px 2px rgba(20,20,20,.04);transition:border-color .15s,box-shadow .15s,background .15s}
 .account-trigger:hover{border-color:#d8d8d4;box-shadow:0 3px 10px rgba(20,20,20,.07)}
-.account-trigger.is-open{border-color:#c9d6f5;box-shadow:0 0 0 3px rgba(47,111,237,.12)}
-.account-trigger:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(47,111,237,.3)}
+.account-trigger.is-open{border-color:#cfcbc5;box-shadow:0 0 0 3px rgba(23,23,23,.12)}
+.account-trigger:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(23,23,23,.3)}
 .account-trigger-name{max-width:120px;overflow:hidden;color:#141414;font-size:13px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
 .account-trigger-chevron{width:12px;height:12px;fill:none;stroke:#8a8a8a;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
 .account-trigger.is-open .account-trigger-chevron{transform:rotate(180deg)}
@@ -30,12 +30,12 @@
 .account-credits-row+.account-credits-meter{margin-top:9px}
 .account-credits-meter+.account-credits-row{margin-top:8px}
 .account-credits-label{display:flex;align-items:center;gap:6px;color:#141414;font-size:12.5px;font-weight:600}
-.account-credits-label svg{color:#2f6fed}
+.account-credits-label svg{color:#171717}
 .account-credits-value{color:#666;font-size:12.5px}
 .account-credits-value b{color:#141414;font-family:var(--font-general-sans),system-ui,sans-serif;font-size:15px;font-weight:600}
 .account-credits-row small{color:#8a8a8a;font-size:11px}
 .account-credits-meter{height:6px;overflow:hidden;border-radius:999px;background:#e9e6e0}
-.account-credits-meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2f6fed,#5b8ff5);transition:width .4s ease}
+.account-credits-meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#171717,#3a3733);transition:width .4s ease}
 .account-credits-meter.is-large{height:8px}
 .account-credits.is-low .account-credits-meter span{background:linear-gradient(90deg,#e8a857,#d98a2b)}
 .account-credits.is-low .account-credits-row small{color:#a26414}
@@ -66,7 +66,7 @@
 .account-dialog-nav button:hover{background:#f2f0ec}
 .account-dialog-nav button.is-active{background:#fff;box-shadow:0 1px 3px rgba(20,20,20,.08),0 0 0 1px #ebe8e2}
 .account-dialog-nav button.is-active span{color:#141414;font-weight:600}
-.account-dialog-nav button:focus-visible{outline:2px solid #2f6fed;outline-offset:1px}
+.account-dialog-nav button:focus-visible{outline:2px solid #171717;outline-offset:1px}
 .account-dialog-body{display:flex;min-width:0;min-height:0;flex-direction:column}
 .account-dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid #f0ede8;padding:22px 26px 16px}
 .account-dialog-header h2{margin:0;font-family:var(--font-general-sans),system-ui,sans-serif;font-size:20px;font-weight:600;letter-spacing:-.02em}
@@ -91,14 +91,14 @@
 .account-field{display:flex;flex-direction:column;gap:6px}
 .account-field span{color:#141414;font-size:12.5px;font-weight:500}
 .account-field input{height:40px;border:1px solid #e2dfd9;border-radius:9px;padding:0 12px;background:#fff;color:#141414;font-size:13.5px;outline:0;transition:border-color .15s,box-shadow .15s}
-.account-field input:focus{border-color:#7fa2eb;box-shadow:0 0 0 3px rgba(47,111,237,.12)}
+.account-field input:focus{border-color:#cfcbc5;box-shadow:0 0 0 3px rgba(23,23,23,.12)}
 .account-check{display:flex;align-items:center;gap:8px;color:#4a4a4a;font-size:12.5px;cursor:pointer}
-.account-check input{width:15px;height:15px;accent-color:#2f6fed}
+.account-check input{width:15px;height:15px;accent-color:#171717}
 .account-form-actions{display:flex;justify-content:flex-end}
 
 .account-button{display:inline-flex;height:36px;align-items:center;justify-content:center;border:1px solid #dedad3;border-radius:9px;padding:0 14px;background:#fff;color:#141414;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .12s,opacity .12s,border-color .12s}
 .account-button:hover{background:#f7f6f3}
-.account-button:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(47,111,237,.25)}
+.account-button:focus-visible{outline:0;box-shadow:0 0 0 3px rgba(23,23,23,.25)}
 .account-button:disabled{opacity:.45;cursor:default}
 .account-button.is-primary{border-color:#141414;background:#141414;color:#fff}
 .account-button.is-primary:hover{background:#2a2a2a}
@@ -119,7 +119,7 @@
 .account-list small{overflow:hidden;margin-top:1px;color:#8a8a8a;font-size:11.5px;text-overflow:ellipsis;white-space:nowrap}
 .account-list-icon{display:grid;width:34px;height:34px;flex:none;place-items:center;border-radius:9px;background:#f3f2ef;color:#555;font-size:13px;font-weight:600}
 .account-list-icon svg{width:17px;height:17px;fill:none;stroke:#555;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.account-pill{border-radius:999px;padding:2px 7px;background:#eaf0fe;color:#2f6fed;font-size:10px;font-weight:600}
+.account-pill{border-radius:999px;padding:2px 7px;background:#f4f2ee;color:#171717;font-size:10px;font-weight:600}
 .account-list-loading{height:118px;border-radius:12px;background:linear-gradient(90deg,#f4f2ee 25%,#faf9f7 50%,#f4f2ee 75%);background-size:200% 100%;animation:account-shimmer 1.2s linear infinite}
 @keyframes account-shimmer{to{background-position:-200% 0}}
 

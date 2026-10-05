@@ -3,6 +3,7 @@ import { useElevationUpload } from "../../canvas/hooks/useElevationUpload";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { filledBuildingViews, isDefaultViewId, nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { viewImage } from "../../canvas/utils/viewImage";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -19,6 +20,7 @@ export function ActiveElevationCard() {
   const { uploadToView, clearViewImage, removeView, isUploading, uploadingViewId } = useElevationUpload();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const index = Math.max(0, views.findIndex((view) => view.id === activeViewId));
   const view = views[index];
@@ -95,7 +97,7 @@ export function ActiveElevationCard() {
             </button>
             <button
               type="button"
-              onClick={() => void (removesSlot ? removeView(view.id) : clearViewImage(view.id))}
+              onClick={() => setConfirmingRemove(true)}
               disabled={isUploading}
               title={removesSlot ? `Remove ${view.label} and its image` : `Remove this image; the ${view.label} slot stays empty`}
             >
@@ -115,6 +117,24 @@ export function ActiveElevationCard() {
           <input type="checkbox" checked={!skipped} onChange={() => toggleViewSkipped(view.id)} aria-label={`Render ${view.label}`} />
           <span aria-hidden="true" />
         </label>
+      )}
+
+      {confirmingRemove && (
+        <ConfirmDialog
+          title={removesSlot ? `Remove ${view.label}?` : `Remove the ${view.label.toLowerCase()} image?`}
+          description={
+            removesSlot
+              ? "This removes the elevation and its uploaded image from the project. Renders already made from it stay in your history."
+              : "The image is removed from this project and the slot stays empty. Renders already made from it stay in your history."
+          }
+          confirmLabel="Remove"
+          confirmingLabel="Removing…"
+          onCancel={() => setConfirmingRemove(false)}
+          onConfirm={() => {
+            setConfirmingRemove(false);
+            void (removesSlot ? removeView(view.id) : clearViewImage(view.id));
+          }}
+        />
       )}
     </section>
   );

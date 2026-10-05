@@ -180,7 +180,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
                   </div>
                 )}
                 <div className="account-credits-row">
-                  <small>{isLow ? "Running low — paid credits are coming soon." : "Standard render: 1 credit · Strict fidelity: 2"}</small>
+                  <small>{isLow ? "Running low — top up from Billing." : "Standard render: 1 credit · Strict fidelity: 2"}</small>
                   <button type="button" role="menuitem" className="account-credits-cta" onClick={() => go("/billing")}>
                     Billing
                   </button>

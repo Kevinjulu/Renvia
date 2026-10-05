@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { useMenu } from "../../lib/useMenu";
 
 export interface StyleOption {
   id: string;
@@ -33,32 +34,27 @@ export function StylePicker({ value, onChange }: StylePickerProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const selected = STYLE_OPTIONS.find((option) => option.id === value) ?? STYLE_OPTIONS[0]!;
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
+  const { menuRef, triggerRef, onMenuKeyDown } = useMenu<HTMLDivElement>({ open, onClose: () => setOpen(false), rootRef: containerRef });
+  const id = useId();
+  const labelId = `${id}-label`;
+  const valueId = `${id}-value`;
 
   return (
     <div ref={containerRef} className="style-picker relative">
-      <p className="cp-field-label">Style</p>
+      <p className="cp-field-label" id={labelId}>Style</p>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-labelledby={`${labelId} ${valueId}`}
         className={`style-picker-trigger ${open ? "is-open" : ""}`}
       >
         <span className="style-swatch">
           <StyleSwatch styleId={selected.id} />
         </span>
-        <span className="style-picker-label">{selected.label}</span>
+        <span className="style-picker-label" id={valueId}>{selected.label}</span>
         <svg
           width="11"
           height="11"
@@ -72,7 +68,7 @@ export function StylePicker({ value, onChange }: StylePickerProps) {
       </button>
 
       {open && (
-        <div className="style-picker-menu" role="listbox">
+        <div ref={menuRef} className="style-picker-menu" role="listbox" aria-labelledby={labelId} onKeyDown={onMenuKeyDown}>
           {STYLE_OPTIONS.map((option) => {
             const isSelected = option.id === value;
             return (
@@ -84,6 +80,7 @@ export function StylePicker({ value, onChange }: StylePickerProps) {
                 onClick={() => {
                   onChange(option.id);
                   setOpen(false);
+                  triggerRef.current?.focus();
                 }}
                 className={`style-picker-option ${isSelected ? "is-selected" : ""}`}
               >

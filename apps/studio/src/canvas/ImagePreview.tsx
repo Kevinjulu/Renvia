@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useCanvasStore } from "./hooks/useCanvasStore";
+import { useFocusTrap } from "../lib/useFocusTrap";
 
 function downloadImage(url: string) {
   const link = document.createElement("a");
@@ -24,6 +25,7 @@ export function ImagePreview() {
   const setPreviewImage = useRenderJobsStore((state) => state.setPreviewImage);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const [loaded, setLoaded] = useState(false);
+  const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(image && !previewJobId), ".render-preview-back", { contain: false });
 
   // Picking another view tab means the user wants the canvas back.
   const firstViewId = useRef(activeViewId);
@@ -51,7 +53,7 @@ export function ImagePreview() {
   if (!image || previewJobId) return null;
 
   return (
-    <div className="render-preview" role="dialog" aria-label={`${image.title} preview`}>
+    <div ref={dialogRef} className="render-preview" role="dialog" aria-label={`${image.title} preview`}>
       <header className="render-preview-bar">
         <button type="button" className="render-preview-back" onClick={() => setPreviewImage(null)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>

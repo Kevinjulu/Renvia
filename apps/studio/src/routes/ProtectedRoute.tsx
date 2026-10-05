@@ -23,14 +23,17 @@ export function ProtectedRoute() {
       return;
     }
     setSynced(false);
+    let cancelled = false;
+    // Credit history only fills the granted total for the meters, so it runs alongside
+    // /me instead of after it and never holds up the first render.
+    loadCreditHistory(apiClient.getMyCredits).catch(() => undefined);
     refreshAccount(apiClient.getMe).finally(() => {
-      setSynced(true);
-      // Fills the granted-credits total for the credit meters; not needed to render the app.
-      loadCreditHistory(apiClient.getMyCredits).catch(() => undefined);
+      if (!cancelled) setSynced(true);
     });
-    // apiClient is a new object each render; only re-sync when sign-in state actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, isSignedIn]);
 
   if (!isLoaded || (isSignedIn && !synced)) {
     return <AppLoader />;

@@ -47,10 +47,11 @@ function ToolButton({ icon, label, active, disabled, onClick }: ToolButtonProps)
       type="button"
       disabled={disabled}
       title={disabled ? `${label} (coming soon)` : label}
+      aria-pressed={active ?? undefined}
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm transition-colors ${
         active
-          ? "bg-blueprint-soft text-blueprint"
+          ? "bg-primary text-white"
           : disabled
             ? "cursor-not-allowed text-faint"
             : "text-secondary hover:bg-surface-muted hover:text-primary"

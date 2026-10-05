@@ -116,8 +116,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       .getRenderBudget()
       .then(setBudget)
       .catch(() => setBudget(null));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [apiClient, isAdmin]);
 
   const refreshAfterSubmit = () => {
     refreshBudget();
@@ -129,8 +128,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   // A failed render refunds its credits server-side; pull the new balance.
   useEffect(() => {
     if (failedJobCount > 0) void refreshAccount(apiClient.getMe);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [failedJobCount]);
+  }, [apiClient, failedJobCount]);
 
   const isEdit = activeTab === "edit";
   const filled = renderableBuildingViews(views, nodes, skippedViewIds);

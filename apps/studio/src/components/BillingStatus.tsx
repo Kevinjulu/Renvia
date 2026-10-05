@@ -15,7 +15,7 @@ export function BillingStatus() {
         className={`flex items-center gap-1.5 text-sm tabular-nums ${isLow ? "text-[#a26414]" : "text-secondary"}`}
         title={isAdmin ? "Admins render without credits" : `${credits} ${credits === 1 ? "credit" : "credits"} left`}
       >
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" className={isLow ? "text-glow" : "text-blueprint"}>
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" className={isLow ? "text-glow" : "text-primary"}>
           <path d="M6.5 1.2 7.6 4.4 10.8 5.5 7.6 6.6 6.5 9.8 5.4 6.6 2.2 5.5 5.4 4.4Z" fill="currentColor" />
         </svg>
         {me === null ? "–" : isAdmin ? "∞" : credits}

@@ -6,6 +6,7 @@ import { useCanvasStore } from "./useCanvasStore";
 import { nodeForView, type BuildingView } from "../buildingViews";
 import { useUploadProgressStore } from "./useUploadProgressStore";
 import { reportClientError } from "../../components/AppErrorHandling";
+import { showStudioNotice } from "../../shell/StudioNotice";
 
 export function useElevationUpload() {
   const apiClient = useApiClient();
@@ -26,7 +27,10 @@ export function useElevationUpload() {
           kind === "created"
             ? apiClient.createCanvasNode({ id: node.id, projectId, type: node.type, data: nodeToPersistedData(node) })
             : apiClient.updateCanvasNode(node.id, { data: nodeToPersistedData(node) });
-        persist.catch((error) => reportClientError(error));
+        persist.catch((error) => {
+          reportClientError(error);
+          showStudioNotice(`${view.label} is on the canvas, but it couldn't be saved. Upload it again before you reload.`);
+        });
 
         apiClient
           .updateProject(projectId, { thumbnailUrl: publicUrl })
@@ -50,7 +54,10 @@ export function useElevationUpload() {
         ok = true;
       } catch (error) {
         // An oversized image is a limit refusal, not a broken upload — explain it and stop.
-        if (!reportLimit(error)) throw error;
+        if (!reportLimit(error)) {
+          reportClientError(error);
+          showStudioNotice("Upload failed. Check that the file is a PNG, JPG, or WEBP and try again.");
+        }
       } finally {
         progress.finish(ok);
         setIsUploading(false);
