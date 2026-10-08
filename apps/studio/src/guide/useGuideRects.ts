@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { queryGuideTarget, rectsEqual } from "./geometry";
 
 function snapshot(ids: readonly string[]): Map<string, DOMRect> {
@@ -24,8 +24,13 @@ function sameMaps(a: Map<string, DOMRect>, b: Map<string, DOMRect>): boolean {
 
 export function useGuideRects(ids: readonly string[], enabled: boolean): Map<string, DOMRect> {
   const [rects, setRects] = useState<Map<string, DOMRect>>(() => new Map());
+  // The effect re-runs when the set of ids changes (idsKey), and reads the current list from here.
+  const idsRef = useRef(ids);
+  idsRef.current = ids;
+  const idsKey = ids.join("|");
 
   useLayoutEffect(() => {
+    const ids = idsRef.current;
     if (!enabled) {
       setRects(new Map());
       return;
@@ -62,7 +67,7 @@ export function useGuideRects(ids: readonly string[], enabled: boolean): Map<str
       window.removeEventListener("scroll", update, true);
       mo.disconnect();
     };
-  }, [enabled, ids.join("|")]);
+  }, [enabled, idsKey]);
 
   return rects;
 }

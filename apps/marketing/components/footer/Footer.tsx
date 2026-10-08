@@ -33,47 +33,6 @@ const FOOTER_LINKS = [
   },
 ];
 
-function TwitterIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M22 5.9c-.7.3-1.5.55-2.3.65a4 4 0 0 0 1.75-2.2c-.78.46-1.64.8-2.56.98a4 4 0 0 0-6.82 3.65A11.35 11.35 0 0 1 3.9 4.6a4 4 0 0 0 1.24 5.34 4 4 0 0 1-1.81-.5v.05a4 4 0 0 0 3.21 3.92 4 4 0 0 1-1.8.07 4 4 0 0 0 3.74 2.78A8.03 8.03 0 0 1 2 18.4a11.32 11.32 0 0 0 6.13 1.8c7.35 0 11.37-6.09 11.37-11.37l-.01-.52A8.1 8.1 0 0 0 22 5.9Z" />
-    </svg>
-  );
-}
-
-function LinkedInIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM.5 21.5h9V8.75h-9V21.5ZM13 8.75V21.5h9v-6.9c0-3.7-2-5.4-4.66-5.4a4.02 4.02 0 0 0-3.64 2v-1.72H13Z" />
-    </svg>
-  );
-}
-
-function InstagramIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-      <rect x="2" y="2" width="20" height="20" rx="5" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="4.5" strokeWidth="1.6" />
-      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function YoutubeIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.5 12 4.5 12 4.5s-7 0-8.9.6A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8A3 3 0 0 0 3.1 19c1.9.6 8.9.6 8.9.6s7 0 8.9-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 23.5 12a31 31 0 0 0-.5-4.8ZM9.8 15.5V8.5l6 3.5-6 3.5Z" />
-    </svg>
-  );
-}
-
-const SOCIAL_LINKS = [
-  { label: "X", href: "#", icon: <TwitterIcon /> },
-  { label: "LinkedIn", href: "#", icon: <LinkedInIcon /> },
-  { label: "Instagram", href: "#", icon: <InstagramIcon /> },
-  { label: "YouTube", href: "#", icon: <YoutubeIcon /> },
-];
-
 function ArrowIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">

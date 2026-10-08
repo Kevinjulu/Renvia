@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BillingCatalogResponse, BillingCheckout, CreditPack, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
@@ -56,7 +56,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
   }, [catalog]);
   const packNames = useMemo(() => new Map(catalog?.creditPacks.map((pack) => [pack.sku, pack.name]) ?? []), [catalog]);
 
-  const loadCatalog = async () => setCatalog(await api.getBillingCatalog());
+  const loadCatalog = useCallback(async () => setCatalog(await api.getBillingCatalog()), [api]);
   const buy = async (pack: CreditPack) => {
     setStarting(pack.sku);
     setError(null);
@@ -91,7 +91,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, loadCatalog]);
 
   const standardCost = me?.creditsPerImage ?? 1;
   const planName = me?.entitlement.plan.name ?? "Your plan";
