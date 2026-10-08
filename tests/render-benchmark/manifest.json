@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "purpose": "Compare structure-preservation strategies on identical source + reference inputs. Read-only with respect to the product: nothing here changes the production engine, pricing or prompts.",
+  "defaults": {
+    "seed": 12345,
+    "userPrompt": "Photorealistic architectural render. Use the reference only for its colours and surface finishes. Keep the source building, roof, openings, massing and camera angle exactly as drawn."
+  },
+  "approaches": {
+    "A": "Production today: FLUX 3 edit, source + original reference image (exact production prompt and input builder, Strict mode)",
+    "B": "Kontext Pro, source only, finishes supplied as a text material specification",
+    "C1": "FLUX General img2img + Canny EasyControl, strength 0.60, text material specification",
+    "C2": "FLUX General img2img + Canny EasyControl, strength 0.85, text material specification",
+    "CIP": "PROBE: FLUX General + Canny EasyControl + IP-Adapter carrying the reference image. May be rejected by fal; a rejection is a result.",
+    "AL": "Round 2: FLUX 3 edit, source + reference image, SHORT prompt (tests whether the long repeated contract suppresses realism and finish transfer)",
+    "BP": "Round 2: Kontext Pro, source only, material spec + explicit structure inventory; run over 3 seeds (BP1,BP2,BP3)",
+    "CP": "Round 2: FLUX General + Canny from a blank base at strength 0.95, so it must render rather than hand back the sketch"
+  },
+  "cases": [
+    {
+      "id": "BM-01",
+      "title": "Lakeside elevation, compatible modern reference",
+      "source": "tests/render-fidelity/fixtures/Test Elevation/Original Lakeside house.png",
+      "reference": "tests/render-fidelity/fixtures/test reference images/lakeside-house.jpg",
+      "materialSpec": "Smooth off-white/light-grey rendered walls on the upper volume and the right end volume; dark-brown vertical timber cladding on the lower left volume and the terrace base; black aluminium window and door frames; black roof fascia and edge trims; warm timber-lined soffit; dusk lighting with warm glow through the glazing.",
+      "mustKeep": [
+        "flat-roof two-storey massing",
+        "upper-level vertical glazing with fins",
+        "left service block with door and horizontal window",
+        "covered terrace with glass guardrail and right-side wing",
+        "source camera angle and framing"
+      ],
+      "mustNeverAdd": [
+        "pitched or gabled roof",
+        "porch, columns, new balcony",
+        "relocated or resized openings"
+      ],
+      "structureInventory": "Two-storey flat-roofed building. Upper box: a row of eleven tall glazed panels separated by projecting black vertical fins, with a small horizontal window and a tall narrow window at its left end. Lower-left block: flat roof, vertical board cladding, a framed door, a wide two-pane horizontal window and a small square panel above the door. Centre: a full-height glazed wall with an internal staircase. Right: a flat-roofed covered terrace on slim steel posts with a glass-panel guardrail and a clad base, ending in a boxed volume with one tall window; downpipes at the posts."
+    },
+    {
+      "id": "BM-02",
+      "title": "Lakeside elevation, adverse pitched-roof reference",
+      "source": "tests/render-fidelity/fixtures/Test Elevation/Original Lakeside house.png",
+      "reference": "tests/render-fidelity/fixtures/test reference images/download (1).jfif",
+      "materialSpec": "Bright white smooth rendered walls; black aluminium window and door frames; warm orange-brown timber door and decking tones; terracotta-red as a colour accent only on surfaces the source already has (keep every flat roof flat: never add tiles, pitches, gables or eaves); pale grey plinth; green lawn.",
+      "mustKeep": [
+        "every BM-01 structural invariant",
+        "flat rooflines",
+        "source terrace instead of a front porch"
+      ],
+      "mustNeverAdd": [
+        "gables or red tiled pitched roofs",
+        "columns, arches, front porch",
+        "reference window or door layout"
+      ],
+      "structureInventory": "Two-storey flat-roofed building. Upper box: a row of eleven tall glazed panels separated by projecting black vertical fins, with a small horizontal window and a tall narrow window at its left end. Lower-left block: flat roof, vertical board cladding, a framed door, a wide two-pane horizontal window and a small square panel above the door. Centre: a full-height glazed wall with an internal staircase. Right: a flat-roofed covered terrace on slim steel posts with a glass-panel guardrail and a clad base, ending in a boxed volume with one tall window; downpipes at the posts."
+    },
+    {
+      "id": "BM-03",
+      "title": "Lakeside elevation, adverse columns + balcony reference",
+      "source": "tests/render-fidelity/fixtures/Test Elevation/Original Lakeside house.png",
+      "reference": "tests/render-fidelity/fixtures/test reference images/download (2).jfif",
+      "materialSpec": "Warm cream smooth-render walls with white trim; dark grey stone-veneer cladding at the building base; black-framed windows; deep red-brown timber doors; terracotta only as a colour on surfaces the source already has (never add pitched roofs, columns, arches or balconies); grey paving and green lawn.",
+      "mustKeep": [
+        "every BM-01 structural invariant"
+      ],
+      "mustNeverAdd": [
+        "columns, arched portico, balcony with railing",
+        "pitched terracotta roof",
+        "extra storeys or rooms"
+      ],
+      "structureInventory": "Two-storey flat-roofed building. Upper box: a row of eleven tall glazed panels separated by projecting black vertical fins, with a small horizontal window and a tall narrow window at its left end. Lower-left block: flat roof, vertical board cladding, a framed door, a wide two-pane horizontal window and a small square panel above the door. Centre: a full-height glazed wall with an internal staircase. Right: a flat-roofed covered terrace on slim steel posts with a glass-panel guardrail and a clad base, ending in a boxed volume with one tall window; downpipes at the posts."
+    },
+    {
+      "id": "BM-04",
+      "title": "Low-resolution perspective sketch (680x360), adverse reference",
+      "source": "tests/render-fidelity/fixtures/Test Elevation/architectural elevation design 2.jpg",
+      "reference": "tests/render-fidelity/fixtures/test reference images/download (1).jfif",
+      "materialSpec": "Bright white smooth rendered walls; black aluminium window and door frames; warm orange-brown timber accents; terracotta-red as a colour accent only on surfaces the source already has (keep the source's flat/low roofs: never add tiles, pitches or gables); pale grey plinth; green lawn.",
+      "mustKeep": [
+        "two-storey volume with cantilevered flat roof",
+        "glazed corner and vertical timber panel on the upper level",
+        "ground-floor canopy and stepping stones",
+        "source camera angle"
+      ],
+      "mustNeverAdd": [
+        "pitched or hip roof",
+        "balconies not in the sketch",
+        "carport, columns, new porch"
+      ],
+      "structureInventory": "Two-storey modern house seen from a three-quarter corner view. Upper volume with a flat cantilevered roof overhang, a large glazed corner opening with mullions and vertical timber panels beside it, and a tall blank side wall at the left. Ground floor: a deep flat canopy over a recessed glazed entrance with a few steps, a horizontal strip window at the right, and a lower glazed wing at the left. Stepping-stone path in the foreground."
+    }
+  ]
+}
