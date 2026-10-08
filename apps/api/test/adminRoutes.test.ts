@@ -204,12 +204,47 @@ describe("admin read responses", () => {
     const bodies: Record<string, unknown> = {};
     for (const [name, path] of readEndpoints(seeded)) {
       const response = await call("admin", "GET", path);
-      const body = (await response.json().catch(() => null)) as { margins?: { byCustomer?: { email: string }[] } } | null;
-      // Customers with identical figures come back in arbitrary order; pin one for comparison.
-      const byCustomer = body?.margins?.byCustomer;
-      byCustomer?.sort((a, b) => a.email.localeCompare(b.email));
-      bodies[name] = { status: response.status, body: normalize(body) };
+      bodies[name] = { status: response.status, body: normalize(await response.json().catch(() => null)) };
     }
     expect(bodies).toMatchSnapshot();
+  });
+});
+
+describe("admin list ordering", () => {
+  it("ranks top users by renders, then spend, then email", async () => {
+    // Three more one-render customers: spend orders them, and email breaks the amy/zed tie.
+    for (const [email, cost] of [["zed@example.test", 90_000], ["amy@example.test", 90_000], ["bob@example.test", 10_000]] as const) {
+      const user = await makeUser({ email });
+      const project = await makeProject(user.id);
+      await makeRender(project.id, { status: "succeeded", model: "mock", costMicros: cost, createdAt: ago(DAY), updatedAt: ago(DAY) });
+    }
+
+    const first = (await (await call("admin", "GET", "/overview")).json()) as { topUsers: { email: string }[] };
+    const emails = first.topUsers.map((u) => u.email);
+
+    expect(emails).toEqual([
+      "customer@example.test", // 2 renders
+      "amy@example.test", // 1 render, $0.09: ties with zed, email breaks it
+      "zed@example.test",
+      "other@example.test", // 1 render, $0.02
+      "bob@example.test", // 1 render, $0.01
+    ]);
+    for (let i = 0; i < 3; i++) {
+      const again = (await (await call("admin", "GET", "/overview")).json()) as { topUsers: { email: string }[] };
+      expect(again.topUsers.map((u) => u.email)).toEqual(emails);
+    }
+  });
+
+  it("lists customers with equal revenue alphabetically by email", async () => {
+    const body = (await (await call("admin", "GET", "/financials")).json()) as {
+      margins: { byCustomer: { email: string; revenueUsd: number }[] };
+    };
+    const rows = body.margins.byCustomer;
+
+    // The one paying customer leads; everyone else has $0 and follows in email order.
+    expect(rows[0]).toMatchObject({ email: "customer@example.test", revenueUsd: 10 });
+    const rest = rows.slice(1).map((r) => r.email);
+    expect(rest).toEqual([...rest].sort((a, b) => a.localeCompare(b)));
+    expect(new Set(rows.slice(1).map((r) => r.revenueUsd))).toEqual(new Set([0]));
   });
 });

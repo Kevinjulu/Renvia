@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { schema } from "@renvia/db";
 import type { AdminOverviewResponse, RenderStatus } from "@renvia/types";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode } from "../../lib/settings.js";
@@ -88,7 +88,8 @@ overviewRoutes.get("/overview", async (c) => {
       .innerJoin(schema.users, eq(schema.projects.ownerId, schema.users.id))
       .where(ne(schema.renders.status, "failed"))
       .groupBy(schema.users.id, schema.users.email)
-      .orderBy(desc(sql`count(${schema.renders.id})`))
+      // Ties (same render count) break by spend, then email, so the ranking is stable.
+      .orderBy(desc(sql`count(${schema.renders.id})`), desc(sql`sum(${schema.renders.costMicros})`), asc(schema.users.email), asc(schema.users.id))
       .limit(5),
     db
       .select({ count: sql<number>`count(*)::int` })

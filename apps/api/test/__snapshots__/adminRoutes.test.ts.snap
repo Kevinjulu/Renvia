@@ -560,6 +560,13 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "margins": {
         "byCustomer": [
           {
+            "email": "customer@example.test",
+            "estimatedCostUsd": 0.07,
+            "marginUsd": 9.93,
+            "revenueUsd": 10,
+            "userId": "<uuid>",
+          },
+          {
             "email": "admin@renvia.test",
             "estimatedCostUsd": 0,
             "marginUsd": 0,
@@ -578,13 +585,6 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
             "estimatedCostUsd": 0,
             "marginUsd": 0,
             "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
-            "email": "customer@example.test",
-            "estimatedCostUsd": 0.07,
-            "marginUsd": 9.93,
-            "revenueUsd": 10,
             "userId": "<uuid>",
           },
           {
