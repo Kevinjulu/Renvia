@@ -10,7 +10,7 @@ import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
 import { references } from "./routes/references.js";
-import { admin } from "./routes/admin.js";
+import { admin } from "./routes/admin/index.js";
 import { cron } from "./routes/cron.js";
 import { billing } from "./routes/billing.js";
 import { allowedOrigins } from "./lib/origins.js";
