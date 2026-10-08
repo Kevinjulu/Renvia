@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Real Postgres for the API tests: they exercise check constraints, unique indexes,
+    # transactions and advisory locks, which a mock cannot reproduce. No PayPal, Clerk, fal or
+    # Neon credentials are needed anywhere in this workflow.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: renvia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/renvia_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm's version comes from "packageManager" in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      # The studio unit test runs .ts directly, which needs Node 22.18+.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `pnpm -r` runs in dependency order, so packages/types and packages/db build first.
+      - name: Lint
+        run: pnpm -r lint
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Unit and API tests
+        run: pnpm test
+
+# The Playwright auth e2e suite (apps/studio) needs real Clerk keys and is not run here.
