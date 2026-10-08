@@ -4,5 +4,5 @@
     "lib": ["ES2022", "DOM"],
     "noEmit": true
   },
-  "include": ["src", "api"]
+  "include": ["src", "api", "test", "vitest.config.ts"]
 }
