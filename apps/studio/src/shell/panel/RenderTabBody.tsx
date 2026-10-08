@@ -3,7 +3,7 @@ import { suggestedEditPartForPrompt, type ProtectedGeometryFeature, type PromptR
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
-import { SeedControl } from "./SeedControl";
+import { KeepLookControl } from "./KeepLookControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
 import { useApiClient } from "../../lib/apiClient";
@@ -80,7 +80,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
   const advancedSummary = [
     `${STYLE_INFLUENCE_LABELS[styleInfluence - 1]} influence`,
     referenceCount > 0 ? "Reference structure lock" : preserveStructure ? "Structure kept" : "Loose structure",
-    seed === null ? "Random seed" : `Seed ${seed}`,
+    seed === null ? "Fresh takes" : "Keeping a look",
   ].join(" · ");
 
   return (
@@ -221,7 +221,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
             )}
           </div>
         )}
-        <SeedControl />
+        <KeepLookControl />
       </AdvancedSection>
     </div>
   );

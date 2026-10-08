@@ -191,7 +191,6 @@
 .cp-range { display: flex; flex: none; align-items: center; gap: 8px; }
 .cp-range input { width: 78px; accent-color: var(--cp-accent); }
 .cp-range b { min-width: 58px; border-radius: 6px; padding: 3px 6px; background: var(--cp-accent-soft); color: var(--cp-accent); font-size: 10.5px; font-weight: 600; text-align: center; }
-.cp-seed > div input { width: 84px; }
 .cp-fidelity { padding-bottom: 12px; }
 .cp-fidelity-review { align-self: flex-start; }
 

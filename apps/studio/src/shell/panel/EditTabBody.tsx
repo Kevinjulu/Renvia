@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ReferenceBar } from "./ReferenceBar";
-import { SeedControl } from "./SeedControl";
+import { KeepLookControl } from "./KeepLookControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import {
@@ -292,7 +292,7 @@ export function EditTabBody({
 
       <p className="cp-ai-note">{modeSentence(hasReferences, editMode, targetTag?.label ?? null)}</p>
 
-      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength · ${seed === null ? "Random seed" : `Seed ${seed}`}`}>
+      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength · ${seed === null ? "Fresh takes" : "Keeping a look"}`}>
         <label className="cp-setting is-stacked" data-guide="control.influence">
           <span>
             <strong>Edit strength</strong>
@@ -309,7 +309,7 @@ export function EditTabBody({
             <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
           </span>
         </label>
-        <SeedControl />
+        <KeepLookControl />
       </AdvancedSection>
     </div>
   );

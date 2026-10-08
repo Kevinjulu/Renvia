@@ -249,7 +249,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       } else if (rejected.length > 0) {
         setStatus(`Couldn't queue ${rejected.length} of ${results.length} renders. Try again in a moment.`);
       } else if (seed !== null && results.length > 1) {
-        setStatus("Locked seed applied to the first image; the rest used a new one each.");
+        setStatus("Look kept for the first image; the rest are fresh takes.");
       }
     } finally {
       setIsSubmitting(false);

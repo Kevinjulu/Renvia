@@ -75,13 +75,13 @@ export function RenderResultsPanel() {
   const updateJob = useRenderJobsStore((state) => state.updateJob);
   const openDownload = useDownloadDialogStore((state) => state.open);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
+  const keptSeed = useGenerationSettingsStore((state) => state.seed);
   const setSeed = useGenerationSettingsStore((state) => state.setSeed);
 
   const [isPromoting, setIsPromoting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [seedCopied, setSeedCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -97,12 +97,6 @@ export function RenderResultsPanel() {
     const timeout = setTimeout(() => setCopied(false), 1500);
     return () => clearTimeout(timeout);
   }, [copied]);
-
-  useEffect(() => {
-    if (!seedCopied) return;
-    const timeout = setTimeout(() => setSeedCopied(false), 1500);
-    return () => clearTimeout(timeout);
-  }, [seedCopied]);
 
   const filledCount = filledBuildingViews(views, nodes).length;
   const favoriteCount = jobs.filter((item) => item.isFavorite).length;
@@ -183,13 +177,10 @@ export function RenderResultsPanel() {
     }
   };
 
-  const handleReuseSeed = () => {
-    if (activeJob?.seed != null) setSeed(activeJob.seed);
-  };
-
-  const handleCopySeed = () => {
+  // Keeping a look pins this render's seed for the next one; choosing it again lets go.
+  const handleKeepLook = () => {
     if (activeJob?.seed == null) return;
-    void navigator.clipboard.writeText(String(activeJob.seed)).then(() => setSeedCopied(true));
+    setSeed(keptSeed === activeJob.seed ? null : activeJob.seed);
   };
 
   const handleSetAsBase = async () => {
@@ -269,7 +260,6 @@ export function RenderResultsPanel() {
   const detailsSummary = [
     parent ? "Edited from a render" : "Source",
     references.length ? `${references.length} ${references.length === 1 ? "reference" : "references"}` : null,
-    job.seed != null ? `Seed ${job.seed}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -475,15 +465,14 @@ export function RenderResultsPanel() {
                 </div>
               )}
               {job.seed != null && (
-                <div className="rp-seed">
+                <div className="rp-look">
                   <span>
-                    Seed <b>{job.seed}</b>
+                    {keptSeed === job.seed
+                      ? "Your next render keeps this look."
+                      : "Like this one? Keep its look and refine it."}
                   </span>
-                  <button type="button" onClick={handleCopySeed}>
-                    {seedCopied ? "Copied" : "Copy"}
-                  </button>
-                  <button type="button" onClick={handleReuseSeed} title="Lock this seed for the next render">
-                    Reuse
+                  <button type="button" onClick={handleKeepLook}>
+                    {keptSeed === job.seed ? "Stop" : "Keep this look"}
                   </button>
                 </div>
               )}
