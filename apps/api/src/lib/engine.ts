@@ -36,20 +36,21 @@ function falClient(env: Env): FalClient {
 
 /**
  * Spend is global, not per user — it tracks the single fal account's credit.
- * Failed jobs are excluded since fal doesn't bill requests that error out.
+ * Failed jobs are excluded since fal doesn't bill requests that error out. Summed as bigint
+ * (the driver returns it as a string): an `::int` cast errors once spend passes ~$2,147.
  */
 async function spentMicros(db: Database): Promise<number> {
   const [[renders], [segments]] = await Promise.all([
     db
-      .select({ total: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::int` })
+      .select({ total: sql<string>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint` })
       .from(schema.renders)
       .where(ne(schema.renders.status, "failed")),
     db
-      .select({ total: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::int` })
+      .select({ total: sql<string>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint` })
       .from(schema.segmentations)
       .where(ne(schema.segmentations.status, "failed")),
   ]);
-  return (renders?.total ?? 0) + (segments?.total ?? 0);
+  return Number(renders?.total ?? 0) + Number(segments?.total ?? 0);
 }
 
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {
