@@ -1,42 +1,19 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { AdminUser, AdminUserOrder, AdminUserSort } from "@renvia/types";
-import {
-  ArrowDown,
-  ArrowUp,
-  Ban,
-  Check,
-  Coins,
-  MoreHorizontal,
-  Search,
-  Shield,
-  UserCheck,
-  Users,
-  X,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Ban, Coins, Search, Shield, Users, X } from "lucide-react";
 import { Button, Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
 import { PageHero } from "../components/PageHero";
 import { RoleChangeModal } from "../components/RoleChangeModal";
-import { ApiError, useAdminApi } from "../lib/api";
+import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
-
-const PAGE_SIZE = 25;
-const LOW_BALANCE = 5;
-
-type RoleFilter = "" | "user" | "analyst" | "support" | "billing" | "admin";
-type StatusFilter = "" | "active" | "disabled";
-type BalanceFilter = "" | "low" | "zero";
-
-const SORTABLE: { key: AdminUserSort; label: string }[] = [
-  { key: "lastActiveAt", label: "Last active" },
-  { key: "createdAt", label: "Joined" },
-  { key: "creditBalance", label: "Credits" },
-  { key: "renderCount", label: "Renders" },
-  { key: "spentUsd", label: "Spend" },
-];
+import { PAGE_SIZE, LOW_BALANCE, type RoleFilter, type StatusFilter, type BalanceFilter, SORTABLE } from "./users/helpers";
+import { FilterGroup, FilterChip } from "./users/parts";
+import { RowActions } from "./users/RowActions";
+import { GrantCreditsModal } from "./users/GrantCreditsModal";
 
 export function UsersPage() {
   const api = useAdminApi();
@@ -375,208 +352,5 @@ export function UsersPage() {
         />
       )}
     </>
-  );
-}
-
-function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
-      <div className="flex gap-1 rounded-xl bg-surface-muted p-1">{children}</div>
-    </div>
-  );
-}
-
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
-        active ? "bg-canvas text-primary shadow-card" : "text-muted hover:text-primary"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function RowActions({
-  user,
-  isSelf,
-  busy,
-  onGrant,
-  onToggleDisabled,
-  onChangeRole,
-}: {
-  user: AdminUser;
-  isSelf: boolean;
-  busy: boolean;
-  onGrant: () => void;
-  onToggleDisabled: () => void;
-  onChangeRole: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const isAdmin = user.role === "admin";
-
-  return (
-    <div className="relative flex justify-end">
-      <button
-        type="button"
-        aria-label={`Actions for ${user.email}`}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-primary"
-      >
-        <MoreHorizontal size={16} />
-      </button>
-      {open && (
-        <>
-          <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border border-hairline bg-canvas py-1 shadow-lift">
-            <Link
-              to={`/users/${user.id}`}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface"
-              onClick={() => setOpen(false)}
-            >
-              Open detail
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onGrant();
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface"
-            >
-              <Coins size={14} /> Grant credits
-            </button>
-            <button
-              type="button"
-              disabled={isSelf || busy || (user.disabled && !isAdmin)}
-              title={
-                isSelf
-                  ? "You can't change your own role"
-                  : user.disabled && !isAdmin
-                    ? "Enable the account before promoting"
-                    : undefined
-              }
-              onClick={() => {
-                setOpen(false);
-                onChangeRole();
-              }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40 ${
-                isAdmin ? "text-rose-700" : "text-primary"
-              }`}
-            >
-              <Shield size={14} />
-              {isAdmin ? "Remove admin…" : "Make admin…"}
-            </button>
-            <button
-              type="button"
-              disabled={isSelf || busy}
-              title={isSelf ? "You can't disable your own account" : undefined}
-              onClick={() => {
-                setOpen(false);
-                onToggleDisabled();
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {user.disabled ? <UserCheck size={14} /> : <Ban size={14} />}
-              {user.disabled ? "Enable" : "Disable"}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function GrantCreditsModal({ users, onClose, onDone }: { users: AdminUser[]; onClose: () => void; onDone: () => void }) {
-  const api = useAdminApi();
-  const [amount, setAmount] = useState("25");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const value = Number(amount);
-  const valid = Number.isInteger(value) && value > 0 && value <= 10_000 && note.trim().length > 0;
-  const bulk = users.length > 1;
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!valid) return;
-    setSaving(true);
-    setError(null);
-    try {
-      if (bulk) {
-        await api.bulkGrantCredits({ userIds: users.map((user) => user.id), amount: value, note: note.trim() });
-      } else {
-        await api.adjustCredits(users[0]!.id, { amount: value, note: note.trim() });
-      }
-      onDone();
-    } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : reason instanceof Error ? reason.message : "Couldn't grant credits");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm">
-      <form
-        onSubmit={(event) => void submit(event)}
-        className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-6 shadow-lift"
-        role="dialog"
-        aria-labelledby="grant-credits-title"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="grant-credits-title" className="text-lg font-semibold text-primary">
-              Grant credits
-            </h2>
-            <p className="mt-1 text-sm text-muted">{bulk ? `${users.length} users selected` : users[0]?.email}</p>
-          </div>
-          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-muted" aria-label="Close">
-            <X size={16} />
-          </button>
-        </div>
-
-        <label className="mt-5 block text-sm">
-          <span className="font-medium text-primary">Credits</span>
-          <input
-            type="number"
-            min={1}
-            max={10_000}
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            className="mt-1 w-full rounded-xl border border-hairline bg-surface px-3 py-2 tabular-nums outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
-          />
-        </label>
-        <label className="mt-4 block text-sm">
-          <span className="font-medium text-primary">Reason</span>
-          <input
-            type="text"
-            value={note}
-            maxLength={200}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="e.g. Demo allowance"
-            className="mt-1 w-full rounded-xl border border-hairline bg-surface px-3 py-2 outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
-          />
-        </label>
-
-        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-
-        <div className="mt-6 flex justify-end gap-2">
-          <Button type="button" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" icon={Check} disabled={!valid || saving}>
-            {saving ? "Granting…" : `Grant ${Number.isInteger(value) && value > 0 ? formatNumber(value) : ""} credits`}
-          </Button>
-        </div>
-      </form>
-    </div>
   );
 }
