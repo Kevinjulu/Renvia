@@ -125,8 +125,8 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
   "canvas.editToolbar": {
     id: "canvas.editToolbar",
     title: "Selection tools",
-    short: "Rectangle or polygon — only the marked area is regenerated.",
-    body: "Manual Edit uses these tools on the canvas. Draw a rectangle, or click to place a polygon and close it on the first point.",
+    short: "Brush, rectangle or polygon — only the marked area is regenerated.",
+    body: "Click Edit and your render opens with these tools on top. Paint with the brush, draw a rectangle, or click to place a polygon and close it on the first point.",
     how: "Switch Selection mode to Manual first, then draw. Clear removes the current mark.",
     article: "regional-editing",
     tab: "edit",

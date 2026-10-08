@@ -15,11 +15,9 @@ import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
-import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
 import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
-import { buildSelectionMask } from "../../canvas/utils/buildSelectionMask";
 import { editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
 import { selectPart } from "../../canvas/utils/partSelection";
 
@@ -91,8 +89,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const geometryReviewedAt = useGenerationSettingsStore((state) => state.geometryReviewedAt);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const seed = useGenerationSettingsStore((state) => state.seed);
-  const selection = useSelectionToolStore((state) => state.selection);
-  const selectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
   const addJob = useRenderJobsStore((state) => state.addJob);
   const jobs = useRenderJobsStore((state) => state.jobs);
   const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
@@ -133,12 +129,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const filled = renderableBuildingViews(views, nodes, skippedViewIds);
   const editNode = nodeForView(nodes, activeViewId);
   const editView = views.find((view) => view.id === activeViewId);
-  // A selection only applies to the image it was drawn on.
-  const editSelection = selection && editNode && selectionNodeId === editNode.id ? selection : null;
   // A render open in the viewer's edit mode takes over from the canvas image as the edit target.
   const editRender = jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null;
-  const hasEditSelection = editRender ? hasSelection(renderStrokes) : Boolean(editSelection);
-  // A finished render for this view means region-select happens in the render editor, not on the canvas image.
+  // An area can only be painted on a render open in the viewer.
+  const hasEditSelection = editRender ? hasSelection(renderStrokes) : false;
+  // A finished render for this view means areas are painted on it in the render editor.
   const hasRenderForView = jobs.some((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId);
 
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
@@ -276,7 +271,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           ? "Paint over the area to change first, or switch to Auto select."
           : hasRenderForView
             ? "Open \"Edit this render\" to select an area, or switch to Auto select."
-            : "Draw a selection on the image first, or switch to Auto select.",
+            : "Generate a render first to paint an area on it, or switch to Auto select.",
       );
       return;
     }
@@ -309,13 +304,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         // No mask: the edit is applied to the whole image.
       } else {
         const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
-        const mask = !naturalSize
-          ? null
-          : editRender
-            ? await buildStrokeMask(renderStrokes, naturalSize)
-            : editSelection && editNode
-              ? await buildSelectionMask(editSelection, editNode, naturalSize)
-              : null;
+        const mask = naturalSize && editRender ? await buildStrokeMask(renderStrokes, naturalSize) : null;
         if (mask) maskFile = new File([mask], "mask.png", { type: "image/png" });
       }
 

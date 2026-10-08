@@ -121,7 +121,7 @@ function EditToolbar({ onDone, onTextSelect, isSelecting, autoDisabled }: EditTo
   const clearStrokes = useRenderEditStore((state) => state.clearStrokes);
 
   return (
-    <div className="render-edit-toolbar">
+    <div className="render-edit-toolbar" data-guide="canvas.editToolbar">
       <div className="render-edit-tools" role="toolbar" aria-label="Selection tools">
         {EDIT_TOOLS.map((item) => (
           <button

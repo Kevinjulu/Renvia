@@ -47,17 +47,9 @@ interface EditTabBodyProps {
   currentImageUrl: string | null;
   /** A finished render for this view that isn't currently open in the render editor. */
   pendingRenderJobId?: string | null;
-  /** A rectangle/polygon drawn on the original upload (no render exists for this view yet). */
-  hasCanvasSelection?: boolean;
-  onClearCanvasSelection?: () => void;
 }
 
-export function EditTabBody({
-  currentImageUrl,
-  pendingRenderJobId = null,
-  hasCanvasSelection = false,
-  onClearCanvasSelection,
-}: EditTabBodyProps) {
+export function EditTabBody({ currentImageUrl, pendingRenderJobId = null }: EditTabBodyProps) {
   const apiClient = useApiClient();
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const applyInferredEditMode = useGenerationSettingsStore((state) => state.applyInferredEditMode);
@@ -86,7 +78,8 @@ export function EditTabBody({
 
   const part = editPartById(selectedPart);
   const wholeImage = selectedPart === WHOLE_IMAGE;
-  const manualAreaSelected = isEditingRender ? renderAreaSelected : hasCanvasSelection;
+  // A manual area can only be painted on a render open in the viewer.
+  const manualAreaSelected = isEditingRender && renderAreaSelected;
   const targeted = selectionMode === "manual" ? manualAreaSelected : Boolean(part);
   const hasReferences = referenceCount > 0;
 
@@ -98,7 +91,7 @@ export function EditTabBody({
         ? { label: part.label, onClear: () => void handlePart(part.id) }
         : null
       : manualAreaSelected
-        ? { label: "Selected area", onClear: isEditingRender ? clearStrokes : onClearCanvasSelection }
+        ? { label: "Selected area", onClear: clearStrokes }
         : null;
 
   // The mode follows the inputs unless the user has overridden it.
@@ -229,7 +222,7 @@ export function EditTabBody({
           </button>
         </div>
       ) : (
-        <p className="cp-hint">Draw a rectangle or polygon on the image — only that area is regenerated.</p>
+        <p className="cp-hint">Generate a render first, then paint the area to change on it — or choose a part above to select it automatically.</p>
       )}
 
       {notice && <p className="cp-notice">{notice}</p>}

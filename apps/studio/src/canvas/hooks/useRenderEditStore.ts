@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { useCanvasStore } from "./useCanvasStore";
 import { useRenderJobsStore } from "./useRenderJobsStore";
 import { useGenerationSettingsStore } from "./useGenerationSettingsStore";
+import { pickRenderToEdit } from "../utils/pickRenderToEdit";
 
 export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon" | "magic";
 
@@ -62,6 +63,27 @@ export function startRenderEdit(jobId: string) {
   useRenderEditStore.setState(targetJobId === jobId ? {} : { targetJobId: jobId, strokes: [] });
   useRenderJobsStore.getState().setPreviewJob(jobId);
   useCanvasStore.getState().setActiveTab("edit");
+}
+
+/**
+ * The Edit tab was clicked. With a finished render, open it on the canvas in edit mode (tools on
+ * top) exactly as "Edit this render" does. With nothing rendered yet, only the panel changes:
+ * the canvas is left alone.
+ */
+export function openEditTab() {
+  const { jobs, activeJobId } = useRenderJobsStore.getState();
+  const render = pickRenderToEdit(jobs, activeJobId, useCanvasStore.getState().activeViewId);
+  if (render) startRenderEdit(render.id);
+  else useCanvasStore.getState().setActiveTab("edit");
+}
+
+/** The Render tab was clicked. If a render is open for editing, close it and show the normal canvas. */
+export function leaveEditTab() {
+  if (useRenderEditStore.getState().targetJobId !== null) {
+    useRenderEditStore.getState().stopEditing();
+    useRenderJobsStore.getState().setPreviewJob(null);
+  }
+  useCanvasStore.getState().setActiveTab("render");
 }
 
 /** True when the selection has anything to keep (erasing everything leaves it empty in practice, but that's rare). */
@@ -151,7 +173,7 @@ export function drawStrokes(context: CanvasRenderingContext2D, strokes: RenderMa
   context.globalCompositeOperation = "source-over";
 }
 
-/** White-on-black edit mask at the image's natural size — same format as the canvas selection masks. */
+/** White-on-black edit mask at the image's natural size, as the edit endpoint expects. */
 export function buildStrokeMask(strokes: RenderMaskStroke[], naturalSize: { width: number; height: number }): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = naturalSize.width;

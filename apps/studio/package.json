@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --test src/dashboard/*.test.mjs",
+    "test": "node --test \"src/**/*.test.mjs\"",
     "test:e2e": "playwright test"
   },
   "dependencies": {

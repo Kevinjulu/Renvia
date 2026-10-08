@@ -9,9 +9,8 @@ import { GenerateBar } from "./panel/GenerateBar";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { nodeForView } from "../canvas/buildingViews";
-import { useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
+import { leaveEditTab, openEditTab, useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
 import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
-import { useSelectionToolStore } from "../canvas/hooks/useSelectionToolStore";
 import { suggestedEditPartForPrompt } from "@renvia/types";
 
 interface ControlPanelProps {
@@ -35,12 +34,6 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
   const latestRenderForView = useRenderJobsStore((state) =>
     state.jobs.find((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId) ?? null,
   );
-  // A rectangle/polygon drawn on the original upload, before any render exists for this view.
-  const editNode = nodeForView(nodes, activeViewId);
-  const canvasSelection = useSelectionToolStore((state) => state.selection);
-  const canvasSelectionNodeId = useSelectionToolStore((state) => state.targetNodeId);
-  const clearCanvasSelection = useSelectionToolStore((state) => state.clearSelection);
-  const hasCanvasSelection = Boolean(canvasSelection && editNode && canvasSelectionNodeId === editNode.id);
   const movePromptToEdit = () => {
     const suggestedPart = suggestedEditPartForPrompt(prompt);
     if (!suggestedPart) return;
@@ -52,7 +45,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
 
   return (
     <div className="cp-panel">
-      <RenderEditTabs active={activeTab} onChange={setActiveTab} />
+      <RenderEditTabs active={activeTab} onChange={(tab) => (tab === "edit" ? openEditTab() : leaveEditTab())} />
 
       <div className="cp-scroll">
         {activeTab === "render" ? (
@@ -70,8 +63,6 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
             <EditTabBody
               currentImageUrl={currentImageUrl}
               pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)}
-              hasCanvasSelection={hasCanvasSelection}
-              onClearCanvasSelection={clearCanvasSelection}
             />
           </>
         )}
