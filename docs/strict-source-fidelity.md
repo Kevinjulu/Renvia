@@ -143,7 +143,7 @@ This verifies the fixture files with SHA-256 checksums. It does **not** grade ge
 5. Save source, reference order, prompt, model route, settings, returned seed, and result for review.
 6. Compare every `mustKeep` and `mustNeverAdd` rule; rerun the worst output with its returned seed.
 
-Historical render examples under `public/Rendered Results` are comparison aids only. They are not proof for a newer model or deployment.
+Historical render examples under `tests/render-fidelity/fixtures/Rendered Results` are comparison aids only. They are not proof for a newer model or deployment.
 
 ## Verification completed for this implementation
 

@@ -2,7 +2,7 @@
   "version": 2,
   "purpose": "Manual visual-regression cases for source-led prototype rendering.",
   "source": {
-    "path": "public/Test Elevation/Original Lakeside house.png",
+    "path": "tests/render-fidelity/fixtures/Test Elevation/Original Lakeside house.png",
     "sha256": "15A4CB94CA402FD520245616343A3B5EDBD59ED781F1FEF52CEF42AE7E735A9A"
   },
   "cases": [
@@ -11,7 +11,7 @@
       "title": "Modern prototype changes finish, not the Lakeside elevation",
       "referenceImages": [
         {
-          "path": "public/test reference images/lakeside-house.jpg",
+          "path": "tests/render-fidelity/fixtures/test reference images/lakeside-house.jpg",
           "sha256": "9DC915A3E89F4E69F3FFA5851BE2870480E0C553576DD085A85236394D51088A"
         }
       ],
@@ -44,11 +44,11 @@
       "title": "Pitched-roof references cannot redesign the Lakeside elevation",
       "referenceImages": [
         {
-          "path": "public/test reference images/download (1).jfif",
+          "path": "tests/render-fidelity/fixtures/test reference images/download (1).jfif",
           "sha256": "11481B8EBB39DE1E2FD4C16F266F07B30E705CEFBDC5F43867F67F6FC75E4E4F"
         },
         {
-          "path": "public/test reference images/download (2).jfif",
+          "path": "tests/render-fidelity/fixtures/test reference images/download (2).jfif",
           "sha256": "153637CDDEE71D9A7734FD717B65032281D115C07DAEA1033799177AFBECA17B"
         }
       ],
@@ -76,12 +76,12 @@
   ],
   "legacyRenderedResults": [
     {
-      "path": "public/Rendered Results/Exterior - Detailed.jpeg",
+      "path": "tests/render-fidelity/fixtures/Rendered Results/Exterior - Detailed.jpeg",
       "sha256": "343A8273F6065B8BF9B59491BC9BE50354B8F740218973FC56D0D7F28813E10D",
       "note": "Historical source-preserving example; it is not evidence for the current code until the cases are re-run."
     },
     {
-      "path": "public/Rendered Results/Exterior - Detailed (1).jpeg",
+      "path": "tests/render-fidelity/fixtures/Rendered Results/Exterior - Detailed (1).jpeg",
       "sha256": "E79E7DA77C597D8785108533E240858DE7956D99D4BA98B9D7F0F33BEC6BCBBB",
       "note": "Historical alternate material treatment; it is not evidence for the current code until the cases are re-run."
     }

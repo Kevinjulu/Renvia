@@ -24,6 +24,6 @@ For each case in `manifest.json`:
 
 Each structural item under `mustKeep` must pass and every item under `mustNeverAdd` must be absent. Any structural failure fails the case, even if the materials look good. The current model route has a source-first contract but not a deterministic geometry proof; strict mode is therefore an acceptance gate and review record, not a claim that the model is mathematically locked.
 
-The files in `public/Rendered Results` are historical examples only. They are useful for a before/after comparison but cannot validate the new safeguards until the cases have been re-run against the updated application.
+The files in `tests/render-fidelity/fixtures/Rendered Results` are historical examples only. They are useful for a before/after comparison but cannot validate the new safeguards until the cases have been re-run against the updated application.
 
 Open `client-comparison.html` for the ready-to-review side-by-side sheet. It intentionally labels historical outputs and leaves the new-output slot pending until the updated deployed application has been tested.

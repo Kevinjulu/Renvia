@@ -9,8 +9,7 @@ node_modules/
 .next/
 out/
 dist/
-!packages/db/dist/
-!packages/types/dist/
+*.tsbuildinfo
 .turbo/
 .wrangler/
 
@@ -36,9 +35,7 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
-.vercel
-.env*
-
-.vercel
-.env*
+# scratch
+tmp/
 tmp-studio-deploy.json
+apps/studio/*.cjs
