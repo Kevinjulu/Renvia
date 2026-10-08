@@ -3,7 +3,6 @@ import type { AspectRatio, EditAction, EditMode, FidelityMode, ProtectedGeometry
 import { readStudioPreferences } from "../../lib/studioPreferences";
 
 export type { EditAction, EditMode };
-export type SelectionMode = "auto" | "manual";
 
 /**
  * Which edit the inputs describe, so the panel doesn't ask. A reference aimed at a selected
@@ -49,9 +48,6 @@ interface GenerationSettingsState {
   /** False once the user picks a mode by hand, which stops inference overriding them. */
   editModeAuto: boolean;
   editAction: EditAction | null;
-  selectionMode: SelectionMode;
-  /** Part of the building the edit targets, `WHOLE_IMAGE`, or null while nothing is chosen. */
-  selectedPart: string | null;
   setPrompt: (prompt: string) => void;
   setEditPrompt: (prompt: string) => void;
   setAspectRatio: (aspectRatio: AspectRatio) => void;
@@ -68,8 +64,6 @@ interface GenerationSettingsState {
   /** Sets the mode the inputs imply, unless the user has chosen one themselves. */
   applyInferredEditMode: (mode: EditMode) => void;
   setEditAction: (action: EditAction | null) => void;
-  setSelectionMode: (mode: SelectionMode) => void;
-  setSelectedPart: (part: string | null) => void;
   /** Restores a previous render's prompt, style and generation settings. */
   applyRenderSettings: (render: {
     prompt: string;
@@ -100,8 +94,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   editMode: "prompt",
   editModeAuto: true,
   editAction: null,
-  selectionMode: "auto",
-  selectedPart: null,
   setPrompt: (prompt) => set({ prompt }),
   setEditPrompt: (editPrompt) => set({ editPrompt }),
   setAspectRatio: (aspectRatio) => set({ aspectRatio }),
@@ -124,8 +116,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setEditMode: (editMode) => set({ editMode, editModeAuto: false }),
   applyInferredEditMode: (editMode) => set((state) => (state.editModeAuto ? { editMode } : {})),
   setEditAction: (editAction) => set({ editAction }),
-  setSelectionMode: (selectionMode) => set({ selectionMode }),
-  setSelectedPart: (selectedPart) => set({ selectedPart }),
   applyRenderSettings: ({ prompt, style, aspectRatio, seed, settings }) =>
     set((state) => ({
       // Edit jobs restore into the Edit tab's fields; renders into the Render tab's.

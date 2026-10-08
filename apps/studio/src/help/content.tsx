@@ -121,16 +121,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
           <H2>Edit</H2>
           <P>
-            Switch to Edit after you have a render. Element / texture borrows a finish, Whole building follows a
-            reference house, and Prompt edit describes the change in a sentence. Auto select finds the region;
-            Manual lets you draw it on the canvas.
+            Click Edit after you have a render and it opens full-size with the selection tools on top. Describe the
+            change in a sentence, or attach a reference to borrow a finish or follow a reference house. Paint an
+            area first to limit the change to it; with nothing painted, the whole image is edited.
           </P>
 
           <H2>The in-studio guide</H2>
           <P>
             The first time you open a project, a short tour names each region. Press Guide in the top bar to
-            inspect the layout anytime, or the small question marks on Source, Style influence, Preserve
-            structure, and Selection mode.
+            inspect the layout anytime, or the small question marks on Style influence and Preserve
+            structure.
           </P>
         </>
       );
@@ -140,7 +140,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "regional-editing",
     eyebrow: "Guide — Regional editing",
     title: "Three ways to change one part of a building",
-    summary: "Texture, whole-building, and prompt modes, plus automatic vs. manual selection.",
+    summary: "Texture, whole-building, and prompt modes, plus limiting a change to one area.",
     image: "/auth/sign-up.jpg",
     accent: "glow",
     readTime: "2 min read",
@@ -148,7 +148,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Texture and material reference",
       "Whole-building reference",
       "Prompt-based editing",
-      "Automatic vs. manual selection",
+      "Limiting a change to one area",
       "Generating",
     ],
     Body: function RegionalEditingBody() {
@@ -178,19 +178,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
             system locates the area on its own.
           </P>
 
-          <H2>Automatic vs. manual selection</H2>
+          <H2>Limiting a change to one area</H2>
           <P>
-            Automatic selection groups similar elements by region rather than grabbing the whole building. On a
-            Decra-tile roof, it can select just a portion of it.
+            With nothing selected, your description applies to the whole image. To change only one part, paint it
+            on your render with the brush, draw a rectangle or polygon, or use the Auto tool and click an object.
+            Only the marked area is regenerated.
           </P>
           <Callout label="Why this matters" accent="glow">
-            A door isn't one selectable piece. Automatic selection tells the frame, the leaf, and the hardware
-            apart, so you can edit one without dragging the rest along. Manual selection is still there for when
-            you want to draw the exact area yourself.
+            A door isn't one selectable piece. Marking just the frame, or just the leaf, lets you edit one without
+            dragging the rest along. Click Edit again any time to reopen your render and adjust the area.
           </Callout>
 
           <H2>Generating</H2>
-          <P>Once your selection or prompt is set, click Generate to apply it.</P>
+          <P>Once your description is set, click Apply edit.</P>
         </>
       );
     },

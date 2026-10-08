@@ -18,8 +18,6 @@ import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
-import { editPartById, WHOLE_IMAGE } from "../../canvas/editParts";
-import { selectPart } from "../../canvas/utils/partSelection";
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
@@ -77,8 +75,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const editMode = useGenerationSettingsStore((state) => state.editMode);
   const editAction = useGenerationSettingsStore((state) => state.editAction);
-  const selectionMode = useGenerationSettingsStore((state) => state.selectionMode);
-  const selectedPart = useGenerationSettingsStore((state) => state.selectedPart);
   const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
@@ -133,8 +129,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const editRender = jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null;
   // An area can only be painted on a render open in the viewer.
   const hasEditSelection = editRender ? hasSelection(renderStrokes) : false;
-  // A finished render for this view means areas are painted on it in the render editor.
-  const hasRenderForView = jobs.some((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId);
 
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
@@ -155,7 +149,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
-  const isSegMaintenance = Boolean(me?.maintenanceSegments) && !isAdmin;
   const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
 
   // The first reason this request would be refused, or null when it should go through.
@@ -191,7 +184,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       const settings = useGenerationSettingsStore.getState();
       settings.setEditPrompt(prompt);
       settings.setEditAction("change");
-      settings.setSelectedPart(suggestedEditPart);
       setActiveTab("edit");
       return;
     }
@@ -256,55 +248,20 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     const sourceImageUrl = editRender?.resultImageUrl ?? editNode?.imageUrl;
     if (!sourceImageUrl) return;
     const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
-    // An existing render-viewer selection (a painted or already-chosen part) always wins;
-    // otherwise auto mode needs a part chip or Whole image picked before it can select anything.
-    const needsPartChoice = selectionMode === "auto" && !(editRender && hasEditSelection);
-    const chosenPart = editPartById(selectedPart);
-    const wholeImageChosen = selectedPart === WHOLE_IMAGE;
     if (!editPrompt.trim() && referenceImageUrls.length === 0) {
       setStatus("Describe an edit or attach a reference first.");
       return;
     }
-    if (selectionMode === "manual" && !hasEditSelection) {
-      setStatus(
-        editRender
-          ? "Paint over the area to change first, or switch to Auto select."
-          : hasRenderForView
-            ? "Open \"Edit this render\" to select an area, or switch to Auto select."
-            : "Generate a render first to paint an area on it, or switch to Auto select.",
-      );
-      return;
-    }
-    if (needsPartChoice && !chosenPart && !wholeImageChosen) {
-      setStatus("Choose what to change above, or switch to Manual.");
-      return;
-    }
-    if (needsPartChoice && chosenPart && isSegMaintenance) {
-      setStatus(me?.maintenanceMessage?.trim() || "Automatic selections are temporarily paused for maintenance.");
-      return;
-    }
-
     setIsSubmitting(true);
     setStatus(null);
     try {
       const edit: RenderEditSettings = { mode: editMode, action };
       let maskFile: File | null = null;
 
-      if (needsPartChoice && chosenPart) {
-        const result = await selectPart(apiClient.createSegmentation, sourceImageUrl, chosenPart.term);
-        if (!result.cached) void refreshAccount(apiClient.getMe);
-        if (!result.maskDataUrl || !result.objectCount) {
-          setStatus(`No ${chosenPart.label.toLowerCase()} found here — your credit was refunded. Try Manual instead.`);
-          return;
-        }
-        const response = await fetch(result.maskDataUrl);
-        const blob = await response.blob();
-        maskFile = new File([blob], "mask.png", { type: "image/png" });
-      } else if (needsPartChoice && wholeImageChosen) {
-        // No mask: the edit is applied to the whole image.
-      } else {
-        const naturalSize = hasEditSelection ? await loadImageSize(sourceImageUrl) : null;
-        const mask = naturalSize && editRender ? await buildStrokeMask(renderStrokes, naturalSize) : null;
+      // An area painted on the render limits the edit; with nothing painted it applies to the whole image.
+      if (editRender && hasEditSelection) {
+        const naturalSize = await loadImageSize(sourceImageUrl);
+        const mask = naturalSize ? await buildStrokeMask(renderStrokes, naturalSize) : null;
         if (mask) maskFile = new File([mask], "mask.png", { type: "image/png" });
       }
 

@@ -39,7 +39,6 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
     if (!suggestedPart) return;
     useGenerationSettingsStore.getState().setEditPrompt(prompt);
     useGenerationSettingsStore.getState().setEditAction("change");
-    useGenerationSettingsStore.getState().setSelectedPart(suggestedPart);
     setActiveTab("edit");
   };
 
@@ -61,7 +60,6 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
           <>
             <EditModeHeader render={editRender} currentImageUrl={editRender ? null : currentImageUrl} />
             <EditTabBody
-              currentImageUrl={currentImageUrl}
               pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)}
             />
           </>

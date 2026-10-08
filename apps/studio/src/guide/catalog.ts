@@ -14,9 +14,7 @@ export type GuideTopicId =
   | "canvas.tabs"
   | "canvas.filmstrip"
   | "canvas.editToolbar"
-  | "results.panel"
-  | "edit.modes"
-  | "edit.selection";
+  | "results.panel";
 
 export interface GuideTopic {
   id: GuideTopicId;
@@ -127,7 +125,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     title: "Selection tools",
     short: "Brush, rectangle or polygon — only the marked area is regenerated.",
     body: "Click Edit and your render opens with these tools on top. Paint with the brush, draw a rectangle, or click to place a polygon and close it on the first point.",
-    how: "Switch Selection mode to Manual first, then draw. Clear removes the current mark.",
+    how: "Optional: mark the area to change, then describe the change. Clear removes the current mark; with nothing marked the whole image is edited.",
     article: "regional-editing",
     tab: "edit",
   },
@@ -139,25 +137,6 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     how: "The column stays empty until an elevation is uploaded or a render finishes. Star important results so they are easier to find.",
     article: "getting-started",
     legend: 6,
-  },
-  "edit.modes": {
-    id: "edit.modes",
-    title: "What to change",
-    short: "Tap the part you want to change, or Whole image for a global edit.",
-    body: "Windows, Roof, Balconies and the rest each run an automatic selection for that part. Add a reference and it borrows that material; describe the change instead and it's applied to just that part.",
-    how: "Tap a part, then describe the change or attach a reference, then Generate. Tapping it again clears it; re-selecting the same part later doesn't cost another credit.",
-    article: "regional-editing",
-    tab: "edit",
-    legend: 8,
-  },
-  "edit.selection": {
-    id: "edit.selection",
-    title: "Selection mode",
-    short: "Auto picks a named part. Manual lets you draw the region.",
-    body: "Auto turns a part chip into a selection — a roof face, a window set — instead of grabbing the whole elevation. Manual is the brush, rectangle and polygon tools.",
-    how: "Auto needs a part chip or Whole image chosen. Manual needs a drawn or painted region before Generate will run.",
-    article: "regional-editing",
-    tab: "edit",
   },
 };
 
