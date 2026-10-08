@@ -12,7 +12,7 @@ import { ApiError, useApiClient } from "../../lib/apiClient";
 import { limitRefusal, type LimitRefusal } from "../../components/LimitDialog";
 import { reportLimit, useLimitDialogStore } from "../../lib/useLimitDialog";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
-import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { RENDER_SOURCE_TYPE, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
@@ -83,7 +83,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const selectedPart = useGenerationSettingsStore((state) => state.selectedPart);
   const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
-  const sourceType = useGenerationSettingsStore((state) => state.sourceType);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const preserveStructure = useGenerationSettingsStore((state) => state.preserveStructure);
@@ -148,7 +147,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const costSettings = isEdit
     ? { referenceImageUrls, edit: { mode: editMode } }
     : {
-        sourceType,
+        sourceType: RENDER_SOURCE_TYPE,
         referenceImageUrls,
         fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
       };
@@ -204,7 +203,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     setIsSubmitting(true);
     setStatus(null);
     const generationSettings = {
-      sourceType,
+      sourceType: RENDER_SOURCE_TYPE,
       styleInfluence,
       preserveStructure,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,

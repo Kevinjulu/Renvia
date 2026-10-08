@@ -7,7 +7,6 @@ export type GuideTopicId =
   | "control.style"
   | "control.tabs"
   | "control.direction"
-  | "control.source"
   | "control.influence"
   | "control.preserve"
   | "control.generate"
@@ -69,15 +68,6 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     article: "getting-started",
     tab: "render",
     legend: 4,
-  },
-  "control.source": {
-    id: "control.source",
-    title: "Source type",
-    short: "Photo / 3D vs a line drawing — the model follows them differently.",
-    body: "Photo / 3D is for a photograph or massing render. Drawing tells the model to follow CAD or elevation lines exactly, so openings and edges stay put.",
-    how: "Use Drawing for sketches and CAD exports. Use Photo / 3D for photographs and 3D views.",
-    article: "consistent-results",
-    tab: "render",
   },
   "control.influence": {
     id: "control.influence",

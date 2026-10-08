@@ -3,6 +3,13 @@ import type { AspectRatio, EditAction, EditMode, FidelityMode, ProtectedGeometry
 import { readStudioPreferences } from "../../lib/studioPreferences";
 
 export type { EditAction, EditMode };
+
+/**
+ * Every render is submitted as a line elevation (Renvia's primary workflow). The Photo / 3D
+ * choice was removed from the panel because it confused people; the API still accepts "photo"
+ * so renders saved earlier keep working.
+ */
+export const RENDER_SOURCE_TYPE: RenderSourceType = "drawing";
 export type SelectionMode = "auto" | "manual";
 
 /**
@@ -32,7 +39,6 @@ interface GenerationSettingsState {
   editPrompt: string;
   aspectRatio: AspectRatio;
   style: string;
-  sourceType: RenderSourceType;
   styleInfluence: number;
   /** Edit tab's own strength control — never shares state with the Render tab's. */
   editInfluence: number;
@@ -46,8 +52,6 @@ interface GenerationSettingsState {
    * Null means a fresh random seed — the normal case.
    */
   seed: number | null;
-  /** UI-only: which quick-atmosphere chip filled the prompt. */
-  atmospherePreset: string | null;
   editMode: EditMode;
   /** False once the user picks a mode by hand, which stops inference overriding them. */
   editModeAuto: boolean;
@@ -59,7 +63,6 @@ interface GenerationSettingsState {
   setEditPrompt: (prompt: string) => void;
   setAspectRatio: (aspectRatio: AspectRatio) => void;
   setStyle: (style: string) => void;
-  setSourceType: (sourceType: RenderSourceType) => void;
   setStyleInfluence: (value: number) => void;
   setEditInfluence: (value: number) => void;
   setPreserveStructure: (value: boolean) => void;
@@ -68,7 +71,6 @@ interface GenerationSettingsState {
   confirmGeometryReview: () => void;
   setReferenceImageUrls: (urls: string[]) => void;
   setSeed: (seed: number | null) => void;
-  setAtmospherePreset: (label: string | null) => void;
   setEditMode: (mode: EditMode) => void;
   /** Sets the mode the inputs imply, unless the user has chosen one themselves. */
   applyInferredEditMode: (mode: EditMode) => void;
@@ -94,9 +96,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   editPrompt: "",
   aspectRatio: preferences.defaultAspectRatio,
   style: preferences.defaultStyle,
-  // Renvia starts in its primary elevation workflow. Photo / 3D remains an explicit option
-  // for massing images, but a line elevation should not accidentally receive photo framing.
-  sourceType: "drawing",
   styleInfluence: preferences.defaultStyleInfluence,
   editInfluence: preferences.defaultEditInfluence,
   preserveStructure: preferences.defaultPreserveStructure,
@@ -105,7 +104,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   geometryReviewedAt: null,
   referenceImageUrls: [],
   seed: null,
-  atmospherePreset: null,
   editMode: "prompt",
   editModeAuto: true,
   editAction: null,
@@ -115,7 +113,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setEditPrompt: (editPrompt) => set({ editPrompt }),
   setAspectRatio: (aspectRatio) => set({ aspectRatio }),
   setStyle: (style) => set({ style }),
-  setSourceType: (sourceType) => set({ sourceType }),
   setStyleInfluence: (styleInfluence) => set({ styleInfluence }),
   setEditInfluence: (editInfluence) => set({ editInfluence }),
   setPreserveStructure: (preserveStructure) => set({ preserveStructure }),
@@ -131,7 +128,6 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       preserveStructure: referenceImageUrls.length > 0 ? true : state.preserveStructure,
     })),
   setSeed: (seed) => set({ seed }),
-  setAtmospherePreset: (atmospherePreset) => set({ atmospherePreset }),
   setEditMode: (editMode) => set({ editMode, editModeAuto: false }),
   applyInferredEditMode: (editMode) => set((state) => (state.editModeAuto ? { editMode } : {})),
   setEditAction: (editAction) => set({ editAction }),
@@ -142,11 +138,10 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       // Edit jobs restore into the Edit tab's fields; renders into the Render tab's.
       ...(settings?.edit
         ? { editPrompt: prompt, editMode: settings.edit.mode, editModeAuto: false, editAction: settings.edit.action ?? null }
-        : { prompt, atmospherePreset: null }),
+        : { prompt }),
       style,
       aspectRatio: (aspectRatio as AspectRatio) || "auto",
       seed,
-      sourceType: settings?.sourceType ?? state.sourceType,
       styleInfluence: settings?.styleInfluence ?? state.styleInfluence,
       editInfluence: settings?.editInfluence ?? state.editInfluence,
       preserveStructure: settings?.referenceImageUrls?.length ? true : (settings?.preserveStructure ?? state.preserveStructure),
