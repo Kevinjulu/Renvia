@@ -13,6 +13,7 @@ import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reser
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
+import { detectSourceType } from "../lib/sourceKind.js";
 import { ownUploadKey, presentUploadUrl } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
 import { ensureEntitlement } from "../lib/billing.js";
@@ -149,7 +150,14 @@ renders.post("/", async (c) => {
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return c.json(allowance, allowance.status);
 
-  const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(settings));
+  // Nobody has to say whether the source is a photo or a line drawing: work it out from the image
+  // itself (unless the caller already did, or this is an edit, which doesn't use it).
+  const generationSettings =
+    settings.edit || settings.sourceType
+      ? settings
+      : { ...settings, sourceType: await detectSourceType(c.env, body.sourceImageUrl, origin) };
+
+  const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(generationSettings));
   const reservation = await reserveBudget(db, model.costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);
@@ -159,7 +167,7 @@ renders.post("/", async (c) => {
   // Admins aren't charged; their renders still count toward the global fal budget.
   // Strict source fidelity costs two credits because its Canny-controlled route costs
   // materially more than the standard image/reference routes.
-  const credits = isAdmin ? 0 : baseCreditCostForRender(settings) * appSettings.creditsPerImage;
+  const credits = isAdmin ? 0 : baseCreditCostForRender(generationSettings) * appSettings.creditsPerImage;
   try {
     let created;
     try {
@@ -174,7 +182,7 @@ renders.post("/", async (c) => {
         status: "pending",
         model: model.id,
         costMicros: model.costMicros,
-        settings,
+        settings: generationSettings,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {

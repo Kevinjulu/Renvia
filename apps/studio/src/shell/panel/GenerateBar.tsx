@@ -12,7 +12,7 @@ import { ApiError, useApiClient } from "../../lib/apiClient";
 import { limitRefusal, type LimitRefusal } from "../../components/LimitDialog";
 import { reportLimit, useLimitDialogStore } from "../../lib/useLimitDialog";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
-import { RENDER_SOURCE_TYPE, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
+import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { useSelectionToolStore } from "../../canvas/hooks/useSelectionToolStore";
@@ -144,10 +144,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
+  // The source kind (photo or line drawing) is detected by the server; both cost the same.
   const costSettings = isEdit
     ? { referenceImageUrls, edit: { mode: editMode } }
     : {
-        sourceType: RENDER_SOURCE_TYPE,
         referenceImageUrls,
         fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
       };
@@ -203,7 +203,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     setIsSubmitting(true);
     setStatus(null);
     const generationSettings = {
-      sourceType: RENDER_SOURCE_TYPE,
       styleInfluence,
       preserveStructure,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,

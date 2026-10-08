@@ -1,15 +1,8 @@
 import { create } from "zustand";
-import type { AspectRatio, EditAction, EditMode, FidelityMode, ProtectedGeometryFeature, RenderGenerationSettings, RenderSourceType } from "@renvia/types";
+import type { AspectRatio, EditAction, EditMode, FidelityMode, ProtectedGeometryFeature, RenderGenerationSettings } from "@renvia/types";
 import { readStudioPreferences } from "../../lib/studioPreferences";
 
 export type { EditAction, EditMode };
-
-/**
- * Every render is submitted as a line elevation (Renvia's primary workflow). The Photo / 3D
- * choice was removed from the panel because it confused people; the API still accepts "photo"
- * so renders saved earlier keep working.
- */
-export const RENDER_SOURCE_TYPE: RenderSourceType = "drawing";
 export type SelectionMode = "auto" | "manual";
 
 /**
