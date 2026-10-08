@@ -83,31 +83,33 @@ export async function reserveBudget(db: Database, costMicros: number, budgetUsd:
   if (costMicros === 0) return "free";
   const id = crypto.randomUUID();
   const budgetMicros = Math.round(budgetUsd * MICROS_PER_USD);
-  const result = await db.execute<{ reserved: boolean }>(sql`
-    with locked as (
-      select pg_advisory_xact_lock(88420371) as locked
-    ),
-    cleared as (
-      delete from budget_reservations where created_at < now() - interval '15 minutes' returning id
-    ),
-    spent as (
-      select
-        coalesce(sum(r.cost_micros) filter (where r.status <> 'failed'), 0)
-        + coalesce((select sum(s.cost_micros) from segmentations s where s.status <> 'failed'), 0)
-        + coalesce((select sum(b.cost_micros) from budget_reservations b), 0)
-        + 0 * (select count(*) from cleared) as total
-      from locked
-      left join renders r on true
-    ),
-    reserved as (
-      insert into budget_reservations (id, cost_micros)
-      select ${id}::uuid, ${costMicros}
-      from spent
-      where total + ${costMicros} <= ${budgetMicros}
-      returning id
-    )
-    select exists(select 1 from reserved) as reserved
-  `);
+  // The lock and the check must be separate statements of one transaction: a statement's
+  // snapshot is taken before it waits for a lock, so a check inside the locking statement
+  // would not see a hold committed by the request it waited behind.
+  const [, result] = await db.batch([
+    db.execute(sql`select pg_advisory_xact_lock(88420371)`),
+    db.execute<{ reserved: boolean }>(sql`
+      with cleared as (
+        delete from budget_reservations where created_at < now() - interval '15 minutes' returning id
+      ),
+      spent as (
+        select
+          coalesce(sum(r.cost_micros) filter (where r.status <> 'failed'), 0)
+          + coalesce((select sum(s.cost_micros) from segmentations s where s.status <> 'failed'), 0)
+          + coalesce((select sum(b.cost_micros) from budget_reservations b where b.created_at >= now() - interval '15 minutes'), 0)
+          + 0 * (select count(*) from cleared) as total
+        from renders r
+      ),
+      reserved as (
+        insert into budget_reservations (id, cost_micros)
+        select ${id}::uuid, ${costMicros}
+        from spent
+        where total + ${costMicros} <= ${budgetMicros}
+        returning id
+      )
+      select exists(select 1 from reserved) as reserved
+    `),
+  ]);
   return result.rows[0]?.reserved ? id : null;
 }
 
