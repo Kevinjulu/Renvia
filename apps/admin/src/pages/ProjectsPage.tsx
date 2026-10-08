@@ -9,7 +9,8 @@ import { formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type HealthFilter, HEALTH, SORTABLE } from "./projects/helpers";
-import { HealthPills, FilterGroup, FilterChip } from "./projects/parts";
+import { HealthPills } from "./projects/parts";
+import { FilterChip, FilterGroup } from "../components/FilterControls";
 import { RowActions } from "./projects/RowActions";
 import { ProjectDetailDrawer } from "./projects/ProjectDetailDrawer";
 

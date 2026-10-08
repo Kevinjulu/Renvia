@@ -11,7 +11,8 @@ import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, LOW_BALANCE, type RoleFilter, type StatusFilter, type BalanceFilter, SORTABLE } from "./users/helpers";
-import { FilterGroup, FilterChip } from "./users/parts";
+import { FilterGroup } from "./users/parts";
+import { FilterChip } from "../components/FilterControls";
 import { RowActions } from "./users/RowActions";
 import { GrantCreditsModal } from "./users/GrantCreditsModal";
 

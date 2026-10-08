@@ -9,7 +9,7 @@ import { formatDateTime, formatModel, formatNumber, formatUsd } from "../lib/for
 import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type StatusFilter, type ModeFilter, STATUSES, MODES, SORTABLE } from "./segmentations/helpers";
-import { FilterGroup, FilterChip } from "./segmentations/parts";
+import { FilterChip, FilterGroup } from "../components/FilterControls";
 import { RowActions } from "./segmentations/RowActions";
 import { SegmentationDetailDrawer } from "./segmentations/SegmentationDetailDrawer";
 

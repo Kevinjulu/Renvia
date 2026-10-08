@@ -5,7 +5,7 @@ import { ErrorNote, Pill, Skeleton, StatusBadge } from "../../components/ui";
 import { useAdminApi } from "../../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatUsd } from "../../lib/format";
 import { useLoad } from "../../lib/useLoad";
-import { DetailField } from "./parts";
+import { DetailField } from "../../components/DetailField";
 
 export function SegmentationDetailDrawer({ segmentationId, onClose }: { segmentationId: string; onClose: () => void }) {
   const api = useAdminApi();

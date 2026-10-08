@@ -6,7 +6,7 @@ import { useAdminApi } from "../../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatRelative, formatUsd } from "../../lib/format";
 import { useLoad } from "../../lib/useLoad";
 import { useAdmin } from "../../lib/useAdmin";
-import { DetailField } from "./parts";
+import { DetailField } from "../../components/DetailField";
 
 export function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: () => void }) {
   const api = useAdminApi();

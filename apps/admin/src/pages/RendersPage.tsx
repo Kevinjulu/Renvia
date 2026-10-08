@@ -9,7 +9,8 @@ import { formatDateTime, formatModel, formatNumber, formatUsd } from "../lib/for
 import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type StatusFilter, type KindFilter, STATUSES, KINDS, SORTABLE } from "./renders/helpers";
-import { FilterGroup, FilterChip, ScopeChip } from "./renders/parts";
+import { ScopeChip } from "./renders/parts";
+import { FilterChip, FilterGroup } from "../components/FilterControls";
 import { RowActions } from "./renders/RowActions";
 import { RenderDetailDrawer } from "./renders/RenderDetailDrawer";
 
