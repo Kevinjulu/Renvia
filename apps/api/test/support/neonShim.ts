@@ -16,7 +16,8 @@ type WireQuery = { query: string; params?: unknown[] };
 let pool: pg.Pool | null = null;
 
 export function getPool(connectionString: string): pg.Pool {
-  pool ??= new pg.Pool({ connectionString, max: 10 });
+  // Neon sessions run in UTC. Match it, or day-grouped SQL depends on the machine's time zone.
+  pool ??= new pg.Pool({ connectionString, max: 10, options: "-c timezone=UTC" });
   return pool;
 }
 
