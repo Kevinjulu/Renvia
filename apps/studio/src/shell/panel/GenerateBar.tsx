@@ -5,7 +5,6 @@ import {
   suggestedEditPartForPrompt,
   type CreateRenderResponse,
   type RenderBudgetResponse,
-  type RenderEditSettings,
   type MeResponse,
 } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
@@ -15,7 +14,8 @@ import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
-import { buildStrokeMask, hasSelection, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
+import { buildStrokeMask, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
+import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 
@@ -70,11 +70,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const views = useCanvasStore((state) => state.views);
   const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
   const nodes = useCanvasStore((state) => state.nodes);
-  const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
-  const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
-  const editMode = useGenerationSettingsStore((state) => state.editMode);
-  const editAction = useGenerationSettingsStore((state) => state.editAction);
   const aspectRatio = useGenerationSettingsStore((state) => state.aspectRatio);
   const style = useGenerationSettingsStore((state) => state.style);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
@@ -86,8 +82,6 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const seed = useGenerationSettingsStore((state) => state.seed);
   const addJob = useRenderJobsStore((state) => state.addJob);
-  const jobs = useRenderJobsStore((state) => state.jobs);
-  const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
   const renderStrokes = useRenderEditStore((state) => state.strokes);
   const failedJobCount = useRenderJobsStore((state) => state.jobs.filter((job) => job.status === "failed").length);
   const me = useAccountStore((state) => state.me);
@@ -123,25 +117,23 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   const isEdit = activeTab === "edit";
   const filled = renderableBuildingViews(views, nodes, skippedViewIds);
-  const editNode = nodeForView(nodes, activeViewId);
-  const editView = views.find((view) => view.id === activeViewId);
-  // A render open in the viewer's edit mode takes over from the canvas image as the edit target.
-  const editRender = jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null;
-  // An area can only be painted on a render open in the viewer.
-  const hasEditSelection = editRender ? hasSelection(renderStrokes) : false;
+  // Edits only ever change a finished render open in the viewer.
+  const draft = useEditDraft();
+  const editRender = draft.render;
 
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
   // The source kind (photo or line drawing) is detected by the server; both cost the same.
   const costSettings = isEdit
-    ? { referenceImageUrls, edit: { mode: editMode } }
+    ? draft.costSettings
     : {
         referenceImageUrls,
         fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
       };
   const route = renderRouteFor(costSettings);
-  const estimateUsd = budget ? imageCount * budget.pricing[route] : 0;
+  // A two-pass edit's environment pass runs on the single-image edit model.
+  const estimateUsd = budget ? imageCount * budget.pricing[route] + (isEdit && draft.passes > 1 ? budget.pricing.edit : 0) : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
   const creditsPerImage = me?.creditsPerImage ?? 1;
   const creditsNeeded = imageCount * baseCreditCostForRender(costSettings) * creditsPerImage;
@@ -149,7 +141,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
-  const hasTarget = isEdit ? Boolean(editRender ?? editNode) : filled.length > 0;
+  const hasTarget = isEdit ? editRender !== null : filled.length > 0;
+  const editProblem = isEdit ? draft.problem : null;
 
   // The first reason this request would be refused, or null when it should go through.
   // The button stays enabled for these so clicking opens the dialog rather than doing nothing.
@@ -162,7 +155,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         : isOverBudget
           ? localRefusal("budget_exhausted", me?.limitMessages)
           : null;
-  const canSubmit = hasTarget && !isSubmitting;
+  const canSubmit = hasTarget && !isSubmitting && !editProblem;
 
   const viewWord = filled.length === 1 ? "elevation" : "elevations";
   const buttonLabel = (() => {
@@ -183,7 +176,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     if (suggestedEditPart) {
       const settings = useGenerationSettingsStore.getState();
       settings.setEditPrompt(prompt);
-      settings.setEditAction("change");
+      settings.setEditMethod("prompt");
       setActiveTab("edit");
       return;
     }
@@ -245,56 +238,45 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   };
 
   const handleEditApply = async () => {
-    const sourceImageUrl = editRender?.resultImageUrl ?? editNode?.imageUrl;
-    if (!sourceImageUrl) return;
-    const action = editMode === "prompt" ? undefined : (editAction ?? undefined);
-    if (!editPrompt.trim() && referenceImageUrls.length === 0) {
-      setStatus("Describe an edit or attach a reference first.");
-      return;
-    }
+    if (!editRender?.resultImageUrl || draft.problem) return;
+    const sourceImageUrl = editRender.resultImageUrl;
     setIsSubmitting(true);
     setStatus(null);
     try {
-      const edit: RenderEditSettings = { mode: editMode, action };
-      let maskFile: File | null = null;
-
-      // An area painted on the render limits the edit; with nothing painted it applies to the whole image.
-      if (editRender && hasEditSelection) {
+      const edit = { ...draft.edit };
+      // A selected area limits the edit; Whole image sends no mask at all.
+      if (draft.hasArea) {
         const naturalSize = await loadImageSize(sourceImageUrl);
         const mask = naturalSize ? await buildStrokeMask(renderStrokes, naturalSize) : null;
-        if (mask) maskFile = new File([mask], "mask.png", { type: "image/png" });
-      }
-
-      if (maskFile) {
-        const { publicUrl } = await apiClient.uploadImage(maskFile);
+        if (!mask) throw new Error("Couldn't read the selected area");
+        const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }));
         edit.maskImageUrl = publicUrl;
       }
 
-      // "style" tells the model what look to preserve — that's the style the image on screen
-      // actually was rendered in, not whatever the Render tab's dropdown happens to be set to
-      // right now (unrelated, and often left over from a different elevation).
+      // "style" tells the model what look to preserve: the style this render was made in.
       const { job } = await apiClient.createRender({
         projectId,
         sourceImageUrl,
-        prompt: editPrompt.trim(),
+        prompt: draft.prompt,
         aspectRatio,
-        style: editRender ? editRender.style : "Photorealistic",
-        viewKey: editRender ? (editRender.viewKey ?? undefined) : editView?.id,
-        viewLabel: editRender ? (editRender.viewLabel ?? undefined) : editView?.label,
+        style: editRender.style,
+        viewKey: editRender.viewKey ?? undefined,
+        viewLabel: editRender.viewLabel ?? undefined,
         generationSettings: {
           // The Edit tab's own strength control — the Render tab's styleInfluence and
           // preserveStructure never reach an edit (see engine.ts).
           editInfluence,
-          referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+          referenceImageUrls: draft.references.length > 0 ? draft.references : undefined,
           seed: seed ?? undefined,
           edit,
         },
       });
       addJob(job);
-      if (editRender) useRenderEditStore.getState().setAwaitingJob(job.id);
+      useRenderEditStore.getState().setAwaitingJob(job.id);
     } catch (error) {
       reportLimit(error);
-      const refusal = refusalMessage(errorCode(error), me?.maintenanceMessage);
+      const code = errorCode(error);
+      const refusal = code === "invalid_edit" && error instanceof ApiError ? error.detail : refusalMessage(code, me?.maintenanceMessage);
       setStatus(refusal ? `${refusal} The edit wasn't applied.` : "Couldn't apply the edit. Try again in a moment.");
     } finally {
       setIsSubmitting(false);
@@ -302,7 +284,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     }
   };
 
-  const scope = isEdit ? (hasEditSelection ? "Selected area" : "1 edit") : plural(imageCount, "image");
+  const scope = isEdit ? (draft.passes > 1 ? "2 steps" : draft.hasArea ? "Selected area" : "1 edit") : plural(imageCount, "image");
   const costLine = (() => {
     if (!hasTarget || !me) return null;
     if (isMaintenance) {
@@ -368,6 +350,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           </button>
         </p>
       )}
+      {editProblem && hasTarget && !status && <p className="mt-2 text-xs text-muted">{editProblem}</p>}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>
   );

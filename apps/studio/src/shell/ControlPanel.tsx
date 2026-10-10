@@ -8,7 +8,6 @@ import { EditModeHeader } from "./panel/EditModeHeader";
 import { GenerateBar } from "./panel/GenerateBar";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
-import { nodeForView } from "../canvas/buildingViews";
 import { leaveEditTab, openEditTab, useRenderEditStore } from "../canvas/hooks/useRenderEditStore";
 import { useRenderJobsStore } from "../canvas/hooks/useRenderJobsStore";
 import { suggestedEditPartForPrompt } from "@renvia/types";
@@ -20,7 +19,6 @@ interface ControlPanelProps {
 export function ControlPanel({ projectId }: ControlPanelProps) {
   const activeTab = useCanvasStore((state) => state.activeTab);
   const setActiveTab = useCanvasStore((state) => state.setActiveTab);
-  const nodes = useCanvasStore((state) => state.nodes);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const prompt = useGenerationSettingsStore((state) => state.prompt);
   const setPrompt = useGenerationSettingsStore((state) => state.setPrompt);
@@ -30,7 +28,6 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
   const setStyle = useGenerationSettingsStore((state) => state.setStyle);
   const editTargetJobId = useRenderEditStore((state) => state.targetJobId);
   const editRender = useRenderJobsStore((state) => state.jobs.find((job) => job.id === editTargetJobId && job.resultImageUrl) ?? null);
-  const currentImageUrl = editRender?.resultImageUrl ?? nodeForView(nodes, activeViewId)?.imageUrl ?? null;
   const latestRenderForView = useRenderJobsStore((state) =>
     state.jobs.find((job) => job.status === "succeeded" && job.resultImageUrl && job.viewKey === activeViewId) ?? null,
   );
@@ -38,7 +35,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
     const suggestedPart = suggestedEditPartForPrompt(prompt);
     if (!suggestedPart) return;
     useGenerationSettingsStore.getState().setEditPrompt(prompt);
-    useGenerationSettingsStore.getState().setEditAction("change");
+    useGenerationSettingsStore.getState().setEditMethod("prompt");
     setActiveTab("edit");
   };
 
@@ -58,7 +55,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
           </>
         ) : (
           <>
-            <EditModeHeader render={editRender} currentImageUrl={editRender ? null : currentImageUrl} />
+            {editRender && <EditModeHeader render={editRender} />}
             <EditTabBody
               pendingRenderJobId={editRender ? null : (latestRenderForView?.id ?? null)}
             />

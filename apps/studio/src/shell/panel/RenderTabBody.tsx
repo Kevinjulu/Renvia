@@ -8,8 +8,9 @@ import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
 import { useApiClient } from "../../lib/apiClient";
 
-/** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
+/** Server defaults before /me has loaded — match app_settings's defaults. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
+const DEFAULT_MAX_REFERENCES = 8;
 const FIDELITY_TOAST_STORAGE_KEY = "renvia:fidelity-feature-toast:v1";
 
 interface RenderTabBodyProps {
@@ -41,10 +42,13 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
   const setProtectedGeometry = useGenerationSettingsStore((state) => state.setProtectedGeometry);
   const geometryReviewedAt = useGenerationSettingsStore((state) => state.geometryReviewedAt);
   const confirmGeometryReview = useGenerationSettingsStore((state) => state.confirmGeometryReview);
-  const referenceCount = useGenerationSettingsStore((state) => state.referenceImageUrls.length);
+  const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
+  const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
+  const referenceCount = referenceImageUrls.length;
   const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const maxReferences = me?.limits.maxReferenceImages ?? DEFAULT_MAX_REFERENCES;
   const suggestedEditPart = suggestedEditPartForPrompt(prompt);
 
   // Announce the new source-fidelity tools at the moment they matter, once per browser.
@@ -151,7 +155,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
             <strong>Reference images</strong>
             <span>Guides materials, light and setting</span>
           </div>
-          <ReferenceBar />
+          <ReferenceBar urls={referenceImageUrls} onChange={setReferenceImageUrls} maxReferences={maxReferences} />
         </section>
       </div>
 

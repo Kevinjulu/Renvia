@@ -122,8 +122,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <H2>Edit</H2>
           <P>
             Click Edit after you have a render and it opens full-size with the selection tools on top. Describe the
-            change in a sentence, or attach a reference to borrow a finish or follow a reference house. Paint an
-            area first to limit the change to it; with nothing painted, the whole image is edited.
+            change, use one reference image, or both. Choose Selected area and paint the part to limit the change
+            to it. Environment changes such as time of day, season or facade colour apply to the whole image.
           </P>
 
           <H2>The in-studio guide</H2>
@@ -139,58 +139,66 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "regional-editing",
     eyebrow: "Guide — Regional editing",
-    title: "Three ways to change one part of a building",
-    summary: "Texture, whole-building, and prompt modes, plus limiting a change to one area.",
+    title: "Three ways to edit a render",
+    summary: "Describe a change, use a reference, or both — plus limiting it to one area and changing the environment.",
     image: "/auth/sign-up.jpg",
     accent: "glow",
     readTime: "2 min read",
     sections: [
-      "Texture and material reference",
-      "Whole-building reference",
-      "Prompt-based editing",
+      "Describe",
+      "Reference",
+      "Both",
       "Limiting a change to one area",
+      "Environment",
       "Generating",
     ],
     Body: function RegionalEditingBody() {
       return (
         <>
           <P>
-            The editing screen splits in two: the image you're changing sits on the left, and a reference image
-            sits on the right. From there, a change can come in three different ways.
+            Edits change a finished render. Click Edit and the render opens full-size with the selection tools on
+            top; the Edit panel asks how you want to make the change.
           </P>
 
-          <H2>Texture and material reference</H2>
+          <H2>Describe</H2>
           <P>
-            Borrow a specific material or finish from an image, such as a paint colour, a roofing material like
-            Decra tiles, a floor finish, or any single component, and apply it to the target. This is how you
-            repaint a wall, swap a roof finish, or update a floor without touching anything else on the building.
+            Type the change in a sentence, for example &ldquo;replace the front door with a dark oak pivot door&rdquo;. Everything
+            you don&apos;t mention stays as it is.
           </P>
 
-          <H2>Whole-building reference</H2>
+          <H2>Reference</H2>
           <P>
-            Upload a full house photo instead of a swatch. Pick the features you want from it, such as roof tiles,
-            floor finish, windows, or doors, then select where each one lands on the target image.
+            Upload one image and the render takes on its look: materials, finishes and colours. With an area
+            selected, that area takes on the matching element&apos;s design instead. The building&apos;s shape, openings
+            and camera never change. One reference works best; more would leave the edit guessing which to follow.
           </P>
 
-          <H2>Prompt-based editing</H2>
+          <H2>Both</H2>
           <P>
-            Describe the change in a sentence instead, for example "change roof to brown decra tile," and the
-            system locates the area on its own.
+            Upload a reference and say what to take from it, such as &ldquo;make the windows match the reference&rdquo;. The quick
+            picks fill in the common ones: windows, roof, doors, pillars, outdoors and the exterior design.
           </P>
 
           <H2>Limiting a change to one area</H2>
           <P>
-            With nothing selected, your description applies to the whole image. To change only one part, paint it
-            on your render with the brush, draw a rectangle or polygon, or use the Auto tool and click an object.
-            Only the marked area is regenerated.
+            Apply to is Whole image unless you choose Selected area. Then paint the part on your render with the
+            brush, draw a rectangle or polygon, or use the Auto tool and click an object. Only the marked area is
+            regenerated.
           </P>
           <Callout label="Why this matters" accent="glow">
             A door isn't one selectable piece. Marking just the frame, or just the leaf, lets you edit one without
             dragging the rest along. Click Edit again any time to reopen your render and adjust the area.
           </Callout>
 
+          <H2>Environment</H2>
+          <P>
+            Open Environment to change the time of day, season, weather, architectural look, facade material or
+            facade colour. These always apply over the whole image. Combined with a selected area, the edit runs in
+            two steps — first the area, then the environment over the result — and costs two credits.
+          </P>
+
           <H2>Generating</H2>
-          <P>Once your description is set, click Apply edit.</P>
+          <P>&ldquo;What will happen&rdquo; sums up the edit in plain words. When it reads right, click Apply edit.</P>
         </>
       );
     },
