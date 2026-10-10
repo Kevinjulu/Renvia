@@ -4,6 +4,7 @@ import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { filledBuildingViews, isDefaultViewId, nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { viewImage } from "../../canvas/utils/viewImage";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -21,6 +22,7 @@ export function ActiveElevationCard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const suggestUpload = useNextStepHint() === "upload";
 
   const index = Math.max(0, views.findIndex((view) => view.id === activeViewId));
   const view = views[index];
@@ -43,8 +45,10 @@ export function ActiveElevationCard() {
       : `${renderCount} of ${filledCount} uploaded ${renderCount === 1 ? "elevation" : "elevations"} will render`;
 
   return (
+    <>
+    {suggestUpload && <NextStepCallout step="upload" />}
     <section
-      className={`cp-elevation ${node ? "is-filled" : "is-empty"} ${skipped ? "is-skipped" : ""} ${isDragOver ? "is-dragover" : ""}`}
+      className={`cp-elevation ${node ? "is-filled" : "is-empty"} ${skipped ? "is-skipped" : ""} ${isDragOver ? "is-dragover" : ""} ${nextStepClass(suggestUpload)}`}
       data-guide="control.uploads"
       onDragOver={(event) => {
         event.preventDefault();
@@ -137,5 +141,6 @@ export function ActiveElevationCard() {
         />
       )}
     </section>
+    </>
   );
 }

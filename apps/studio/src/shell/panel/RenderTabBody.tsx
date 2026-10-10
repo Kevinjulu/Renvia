@@ -6,6 +6,7 @@ import { useAccountStore } from "../../lib/useAccountStore";
 import { KeepLookControl } from "./KeepLookControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
+import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
 import { useApiClient } from "../../lib/apiClient";
 
 /** Server defaults before /me has loaded — match app_settings's defaults. */
@@ -45,6 +46,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
   const referenceCount = referenceImageUrls.length;
+  const suggestReference = useNextStepHint() === "reference";
   const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
@@ -102,7 +104,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
         <div className="cp-prompt">
           <div className="cp-prompt-head">
             <label htmlFor="render-prompt">
-              Prompt <span>optional</span>
+              Prompt <span>{referenceCount > 0 ? "optional" : "or add a reference"}</span>
             </label>
             <span>
               {prompt.length}/{maxPromptChars}
@@ -150,7 +152,8 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
           )}
         </div>
 
-        <section className="cp-card cp-references">
+        {suggestReference && <NextStepCallout step="reference" />}
+        <section className={`cp-card cp-references ${nextStepClass(suggestReference)}`}>
           <div className="cp-card-head">
             <strong>Reference images</strong>
             <span>Guides materials, light and setting</span>

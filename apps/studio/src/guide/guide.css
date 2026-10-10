@@ -462,3 +462,78 @@
     transition: none;
   }
 }
+
+/* First-run next-step hints: the suggested control pulses, with a short callout beside it. */
+.next-step-target {
+  animation: next-step-pulse 1.8s ease-out infinite;
+}
+
+.next-step-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 8px;
+  border: 1px solid rgba(70, 102, 246, 0.28);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f3f5ff;
+  color: #1b2340;
+  font-size: 12px;
+  line-height: 1.4;
+  animation: next-step-in 0.24s ease-out;
+}
+
+.next-step-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #4666f6;
+  box-shadow: 0 0 0 3px rgba(70, 102, 246, 0.2);
+}
+
+.next-step-copy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+
+.next-step-copy strong {
+  font-weight: 600;
+}
+
+.next-step-copy span {
+  color: #4a5270;
+}
+
+.next-step-callout button {
+  flex: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #4a5270;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.next-step-callout button:hover {
+  color: #1b2340;
+}
+
+@keyframes next-step-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(70, 102, 246, 0.45); }
+  70% { box-shadow: 0 0 0 9px rgba(70, 102, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(70, 102, 246, 0); }
+}
+
+@keyframes next-step-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .next-step-target { animation: none; box-shadow: 0 0 0 2px #4666f6; }
+  .next-step-callout { animation: none; }
+}

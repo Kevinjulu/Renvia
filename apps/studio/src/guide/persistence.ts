@@ -6,12 +6,15 @@ export interface GuidePersistence {
   catalogVersion: number;
   orientationDone: boolean;
   toursCompleted: string[];
+  /** First-run next-step hints are finished: the user queued a render or hid the hints. */
+  firstRunHintsDone: boolean;
 }
 
 const FALLBACK: GuidePersistence = {
   catalogVersion: GUIDE_CATALOG_VERSION,
   orientationDone: false,
   toursCompleted: [],
+  firstRunHintsDone: false,
 };
 
 export function readGuidePersistence(): GuidePersistence {
@@ -23,6 +26,7 @@ export function readGuidePersistence(): GuidePersistence {
       catalogVersion: typeof parsed.catalogVersion === "number" ? parsed.catalogVersion : GUIDE_CATALOG_VERSION,
       orientationDone: Boolean(parsed.orientationDone),
       toursCompleted: Array.isArray(parsed.toursCompleted) ? parsed.toursCompleted.filter((id) => typeof id === "string") : [],
+      firstRunHintsDone: Boolean(parsed.firstRunHintsDone),
     };
   } catch {
     return { ...FALLBACK };

@@ -19,6 +19,9 @@ import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
+import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
+import { hasRenderDirection } from "../../guide/nextStep";
+import { useGuideStore } from "../../guide/useGuideStore";
 
 const COUNT_OPTIONS = [1, 2, 3, 4];
 
@@ -148,6 +151,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
   const hasTarget = isEdit ? editRender !== null : filled.length > 0;
   const editProblem = isEdit ? draft.problem : null;
+  // A render needs direction beyond the elevation itself: a prompt or a reference image.
+  const needsDirection = !isEdit && !hasRenderDirection({ hasPrompt: prompt.trim().length > 0, hasReference: referenceImageUrls.length > 0 });
+  const suggestGenerate = useNextStepHint() === "generate";
 
   // The first reason this request would be refused, or null when it should go through.
   // The button stays enabled for these so clicking opens the dialog rather than doing nothing.
@@ -160,9 +166,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         : isOverBudget
           ? localRefusal("budget_exhausted", me?.limitMessages)
           : null;
-  const canSubmit = hasTarget && !isSubmitting && !editProblem;
+  const canSubmit = hasTarget && !isSubmitting && !editProblem && !needsDirection;
 
-  const viewWord = filled.length === 1 ? "elevation" : "elevations";
   const buttonLabel = (() => {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isDisabled) return "Account disabled";
@@ -170,13 +175,12 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     if (isOverBudget) return "Over render budget";
     if (isOutOfCredits) return creditBalance === 0 ? "Out of credits" : "Not enough credits";
     if (isEdit) return "Apply edit";
-    if (filled.length === 0) return "Generate";
-    if (count === 1) return `Generate ${filled.length} ${viewWord}`;
-    return `Generate ${filled.length} ${viewWord} × ${count}`;
+    // The image count is in the cost line and the variations picker beside the button.
+    return "Generate";
   })();
 
   const handleGenerate = async () => {
-    if (filled.length === 0) return;
+    if (filled.length === 0 || needsDirection) return;
     const suggestedEditPart = suggestedEditPartForPrompt(prompt);
     if (suggestedEditPart) {
       const settings = useGenerationSettingsStore.getState();
@@ -226,6 +230,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         (result): result is PromiseFulfilledResult<CreateRenderResponse> => result.status === "fulfilled",
       );
       queued.forEach(({ value }) => addJob(value.job));
+      // A first render queued: the first-run hints have done their job.
+      if (queued.length > 0) useGuideStore.getState().finishFirstRunHints();
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
       const unconfirmed = rejected.filter(({ reason }) => reason instanceof RenderNotConfirmedError).length;
@@ -336,6 +342,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   return (
     <div>
+      {suggestGenerate && <NextStepCallout step="generate" />}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -348,7 +355,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
             if (isEdit) void handleEditApply();
             else void handleGenerate();
           }}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${nextStepClass(suggestGenerate)}`}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -381,6 +388,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         </p>
       )}
       {editProblem && hasTarget && !status && <p className="mt-2 text-xs text-muted">{editProblem}</p>}
+      {needsDirection && hasTarget && !status && <p className="mt-2 text-xs text-muted">Add a reference image or write a prompt to generate.</p>}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>
   );

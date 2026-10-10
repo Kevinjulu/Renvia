@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ORIENTATION_TOUR, type GuideTopicId, type TourStep } from "./catalog";
-import { markTourFinished, readGuidePersistence } from "./persistence";
+import { markTourFinished, readGuidePersistence, writeGuidePersistence } from "./persistence";
 
 export type GuideMode = "idle" | "tour" | "legend";
 
@@ -10,6 +10,9 @@ interface GuideState {
   stepIndex: number;
   inspectId: GuideTopicId | null;
   hotspotId: GuideTopicId | null;
+  /** Mirrors the saved flag so hints disappear the moment they are finished. */
+  firstRunHintsDone: boolean;
+  finishFirstRunHints: () => void;
   startTour: (tourId?: string) => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -38,6 +41,12 @@ export const useGuideStore = create<GuideState>((set, get) => ({
   stepIndex: 0,
   inspectId: null,
   hotspotId: null,
+  firstRunHintsDone: readGuidePersistence().firstRunHintsDone,
+  finishFirstRunHints: () => {
+    if (get().firstRunHintsDone) return;
+    writeGuidePersistence({ firstRunHintsDone: true });
+    set({ firstRunHintsDone: true });
+  },
   startTour: (tourId = "orientation") =>
     set({
       mode: "tour",

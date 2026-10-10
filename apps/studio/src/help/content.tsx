@@ -92,7 +92,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
           <H2>Prompt, references, and style</H2>
           <P>
-            Direction is optional. A short prompt sets atmosphere and materials. Reference images are stronger:
+            Generate needs direction: a reference image, a prompt, or both. A short prompt sets atmosphere and materials. Reference images are stronger:
             the model blends them with your elevation so cladding, landscape, and lighting follow what you show.
             Style and aspect ratio sit above the prompt — Auto keeps the source image's own shape.
           </P>

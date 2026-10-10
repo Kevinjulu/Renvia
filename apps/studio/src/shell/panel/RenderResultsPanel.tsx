@@ -233,8 +233,8 @@ export function RenderResultsPanel() {
           <strong>{filledCount ? "Ready when you are" : "No renders yet"}</strong>
           <p>
             {filledCount
-              ? `${filledCount} ${filledCount === 1 ? "elevation is" : "elevations are"} ready. Press Generate and your renders will land here.`
-              : "Upload an elevation, then press Generate. Finished renders land here."}
+              ? `${filledCount} ${filledCount === 1 ? "elevation is" : "elevations are"} ready. Add a reference image or a prompt, then press Generate. Your renders land here.`
+              : "Upload an elevation, add a reference image or a prompt, then press Generate. Finished renders land here."}
           </p>
           <ol>
             <li className={filledCount ? "is-done" : ""}>Upload an elevation</li>
