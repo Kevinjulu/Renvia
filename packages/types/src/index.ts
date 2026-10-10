@@ -1091,9 +1091,11 @@ export interface AdminBillingResponse {
 
 /** Revenue is confirmed provider capture data; FAL cost is an internal estimate, never a wallet balance. */
 export interface AdminFinancialsResponse {
+  /** Payment figures cover the last 30 days; conversionRate is paid checkouts over checkouts started in that window. */
   revenue: { capturedUsd: number; refundedUsd: number; netUsd: number; mrrUsd: number; failedPayments: number; conversionRate: number; churnedSubscribers: number };
   estimatedCost: { falUsd: number; dailyBurnUsd: number; projectedBudgetExhaustion: string | null; trackedBudgetUsd: number | null; reconciliationStatus: "not_connected" };
-  margins: { byPlan: { label: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[]; byPack: { label: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[]; byModel: { label: string; estimatedCostUsd: number; renders: number }[]; byCustomer: { userId: string; email: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[] };
+  /** Last 30 days. byPlan and byPack carry revenue only: credit spend can't be traced back to the purchase that paid for it. */
+  margins: { byPlan: { label: string; revenueUsd: number }[]; byPack: { label: string; revenueUsd: number }[]; byModel: { label: string; estimatedCostUsd: number; renders: number }[]; byCustomer: { userId: string; email: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[] };
   daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
 }
 

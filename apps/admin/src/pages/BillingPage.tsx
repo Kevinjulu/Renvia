@@ -34,10 +34,10 @@ export function BillingPage() {
     {refundError && <ErrorNote onRetry={() => setRefundError(null)}>{refundError}</ErrorNote>}
     {!data ? null : <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Captured revenue" value={formatUsd(data.summary.paidUsd)} icon={CreditCard} accent="emerald" />
-        <StatCard label="Refunded" value={formatUsd(data.summary.refundedUsd)} icon={ReceiptText} accent={data.summary.refundedUsd ? "amber" : "neutral"} />
-        <StatCard label="Webhook failures" value={formatNumber(data.summary.failedWebhooks)} icon={AlertTriangle} accent={data.summary.failedWebhooks ? "rose" : "neutral"} />
-        <StatCard label="Awaiting webhook" value={formatNumber(data.summary.pendingWebhooks)} icon={Webhook} accent={data.summary.pendingWebhooks ? "amber" : "neutral"} />
+        <StatCard label="Captured revenue" value={formatUsd(data.summary.paidUsd)} icon={CreditCard} accent="emerald" detail="All time" />
+        <StatCard label="Refunded" value={formatUsd(data.summary.refundedUsd)} icon={ReceiptText} accent={data.summary.refundedUsd ? "amber" : "neutral"} detail="All time" />
+        <StatCard label="Webhook failures" value={formatNumber(data.summary.failedWebhooks)} icon={AlertTriangle} accent={data.summary.failedWebhooks ? "rose" : "neutral"} detail="All events" />
+        <StatCard label="Awaiting webhook" value={formatNumber(data.summary.pendingWebhooks)} icon={Webhook} accent={data.summary.pendingWebhooks ? "amber" : "neutral"} detail="All events" />
       </div>
       <Card title="Plans">
         <div className="-mx-5 overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="border-b border-hairline text-xs uppercase tracking-wide text-faint"><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Subscribers</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-hairline">{data.plans.map((plan) => <tr key={plan.id}><td className="px-5 py-3"><p className="font-medium text-primary">{plan.name}</p><p className="text-xs text-faint">{plan.slug}</p></td><td className="px-5 py-3">{plan.currency} {(plan.priceCents / 100).toFixed(2)}</td><td className="px-5 py-3">{formatNumber(plan.subscribers)}</td><td className="px-5 py-3"><Pill tone={plan.active ? "emerald" : "neutral"}>{plan.active ? "Active" : "Inactive"}</Pill></td></tr>)}</tbody></table></div>

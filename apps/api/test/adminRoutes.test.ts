@@ -248,3 +248,50 @@ describe("admin list ordering", () => {
     expect(new Set(rows.slice(1).map((r) => r.revenueUsd))).toEqual(new Set([0]));
   });
 });
+
+describe("admin financial figures", () => {
+  type Financials = {
+    revenue: { conversionRate: number };
+    margins: { byPlan: object[]; byPack: object[]; byCustomer: { email: string; revenueUsd: number; estimatedCostUsd: number; marginUsd: number }[] };
+  };
+  const financials = async () => (await (await call("admin", "GET", "/financials")).json()) as Financials;
+
+  it("reports product revenue without an invented cost or margin", async () => {
+    const body = await financials();
+    // The seeded pack purchase counts once, under its pack, and not again as an unattributed plan.
+    expect(body.margins.byPack).toEqual([{ label: expect.any(String), revenueUsd: 10 }]);
+    expect(body.margins.byPack[0]).not.toMatchObject({ label: "Unattributed" });
+    expect(body.margins.byPlan).toEqual([]);
+  });
+
+  it("measures customer revenue over the same 30 days as cost", async () => {
+    // The seeded $10 capture moves outside the window; its customer still has recent render cost.
+    await db.update(schema.billingPayments).set({ createdAt: ago(40 * DAY) });
+    const rows = (await financials()).margins.byCustomer;
+
+    expect(rows.find((row) => row.email === "customer@example.test")).toEqual(
+      expect.objectContaining({ revenueUsd: 0, estimatedCostUsd: 0.07, marginUsd: -0.07 }),
+    );
+    // Customers with neither revenue nor cost in the window are left out.
+    expect(rows.map((row) => row.email).sort()).toEqual(["customer@example.test", "other@example.test"]);
+  });
+
+  it("computes conversion from checkouts started, not payments recorded", async () => {
+    expect((await financials()).revenue.conversionRate).toBe(1);
+    const pack = await makeCreditPack({ credits: 10, priceCents: 500 });
+    await makePaypalCheckout(seeded.customer.id, pack.id, { status: "created" });
+    expect((await financials()).revenue.conversionRate).toBe(0.5);
+  });
+
+  it("counts webhook health over every event, not only the listed ones", async () => {
+    await db.insert(schema.billingWebhookEvents).values(
+      Array.from({ length: 35 }, (_, i) => ({
+        provider: "paypal" as const, providerEventId: `WH-OLD-${i}`, eventType: "PAYMENT.CAPTURE.COMPLETED", payload: {},
+        failedAt: ago(DAY), failureMessage: "old failure", verificationStatus: "verified", attempts: 1,
+      })),
+    );
+    const body = (await (await call("admin", "GET", "/billing")).json()) as { summary: { failedWebhooks: number }; webhooks: object[] };
+    expect(body.webhooks).toHaveLength(30);
+    expect(body.summary.failedWebhooks).toBe(36);
+  });
+});

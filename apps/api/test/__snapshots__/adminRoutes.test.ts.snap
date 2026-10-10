@@ -567,44 +567,9 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
             "userId": "<uuid>",
           },
           {
-            "email": "admin@renvia.test",
-            "estimatedCostUsd": 0,
-            "marginUsd": 0,
-            "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
-            "email": "analyst@renvia.test",
-            "estimatedCostUsd": 0,
-            "marginUsd": 0,
-            "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
-            "email": "billing@renvia.test",
-            "estimatedCostUsd": 0,
-            "marginUsd": 0,
-            "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
             "email": "other@example.test",
             "estimatedCostUsd": 0.02,
             "marginUsd": -0.02,
-            "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
-            "email": "support@renvia.test",
-            "estimatedCostUsd": 0,
-            "marginUsd": 0,
-            "revenueUsd": 0,
-            "userId": "<uuid>",
-          },
-          {
-            "email": "user@renvia.test",
-            "estimatedCostUsd": 0,
-            "marginUsd": 0,
             "revenueUsd": 0,
             "userId": "<uuid>",
           },
@@ -618,20 +583,11 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         ],
         "byPack": [
           {
-            "estimatedCostUsd": 0,
             "label": "Starter",
-            "marginUsd": 10,
             "revenueUsd": 10,
           },
         ],
-        "byPlan": [
-          {
-            "estimatedCostUsd": 0,
-            "label": "Unattributed",
-            "marginUsd": 10,
-            "revenueUsd": 10,
-          },
-        ],
+        "byPlan": [],
       },
       "revenue": {
         "capturedUsd": 10,
