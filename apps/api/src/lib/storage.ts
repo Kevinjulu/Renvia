@@ -28,6 +28,11 @@ export function renderResultKeyFor(renderId: string, contentType: string): strin
   return `renders/${renderId}.${requireExtension(contentType)}`;
 }
 
+/** The first pass of a two-pass edit, kept apart from the final result it feeds. */
+export function renderIntermediateKeyFor(renderId: string, contentType: string): string {
+  return `renders/${renderId}-selection.${requireExtension(contentType)}`;
+}
+
 // The whole app is mounted under "/api" for Vercel's api/ directory convention
 // (see apps/api/api/[...route].ts), so served objects live under this prefix.
 const UPLOADS_PATH = "/api/uploads/";

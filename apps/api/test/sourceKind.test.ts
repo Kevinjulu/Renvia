@@ -94,7 +94,7 @@ describe("POST /api/renders", () => {
 
   it("leaves edits alone", async () => {
     objects.set("u/house.jpg", fixture("test reference images", "lakeside-house.jpg"));
-    const edit = await submit("u/house.jpg", { edit: { mode: "prompt" } });
+    const edit = await submit("u/house.jpg", { edit: { mode: "prompt", environment: { season: "winter" } } });
     expect(edit.stored?.sourceType).toBeUndefined();
   });
 });

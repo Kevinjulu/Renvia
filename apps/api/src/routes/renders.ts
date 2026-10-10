@@ -8,7 +8,19 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { baseCreditCostForRender, renderRouteFor, suggestedEditPartForPrompt } from "@renvia/types";
+import {
+  baseCreditCostForRender,
+  EDIT_SEASONS,
+  EDIT_STYLES,
+  EDIT_TIMES_OF_DAY,
+  EDIT_WEATHER,
+  editPassCount,
+  editRequestProblem,
+  FACADE_MATERIALS,
+  MAX_FACADE_COLOR_CHARS,
+  renderRouteFor,
+  suggestedEditPartForPrompt,
+} from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
@@ -50,8 +62,20 @@ const createRenderSchema = z.object({
       edit: z
         .object({
           mode: z.enum(["element", "building", "prompt"]),
+          method: z.enum(["prompt", "reference", "reference-prompt"]).optional(),
           action: z.enum(["add", "remove", "change"]).optional(),
           maskImageUrl: z.string().url().optional(),
+          environment: z
+            .object({
+              timeOfDay: z.enum(EDIT_TIMES_OF_DAY).optional(),
+              season: z.enum(EDIT_SEASONS).optional(),
+              weather: z.enum(EDIT_WEATHER).optional(),
+              style: z.enum(EDIT_STYLES).optional(),
+              facadeColor: z.string().trim().min(1).max(MAX_FACADE_COLOR_CHARS).optional(),
+              facadeMaterial: z.enum(FACADE_MATERIALS).optional(),
+            })
+            .strict()
+            .optional(),
         })
         .optional(),
       // fal seeds are non-negative unsigned 32-bit ints (up to 2^32 - 1, not the signed int32
@@ -87,7 +111,11 @@ async function presentRender(c: Context<AppContext>, job: typeof schema.renders.
           ? await Promise.all(job.settings.referenceImageUrls.map((url) => presentUploadUrl(c.env, origin, url)))
           : undefined,
         edit: job.settings.edit
-          ? { ...job.settings.edit, maskImageUrl: await presentUploadUrl(c.env, origin, job.settings.edit.maskImageUrl ?? null) ?? undefined }
+          ? {
+              ...job.settings.edit,
+              maskImageUrl: (await presentUploadUrl(c.env, origin, job.settings.edit.maskImageUrl ?? null)) ?? undefined,
+              intermediateImageUrl: (await presentUploadUrl(c.env, origin, job.settings.edit.intermediateImageUrl ?? null)) ?? undefined,
+            }
           : undefined,
       }
     : job.settings;
@@ -127,6 +155,12 @@ renders.post("/", async (c) => {
       422,
     );
   }
+  const editProblem = settings.edit
+    ? editRequestProblem({ edit: settings.edit, prompt: body.prompt, referenceCount: settings.referenceImageUrls?.length ?? 0 })
+    : null;
+  if (editProblem) {
+    return c.json({ code: "invalid_edit", error: editProblem }, 422);
+  }
   const origin = new URL(c.req.url).origin;
   const maskImageUrl = settings.edit?.maskImageUrl;
   // The masked area is composited back from our own copies of the source and mask.
@@ -157,8 +191,15 @@ renders.post("/", async (c) => {
       ? settings
       : { ...settings, sourceType: await detectSourceType(c.env, body.sourceImageUrl, origin) };
 
-  const model = modelFor(effectiveEngineMode(c.env, appSettings), renderRouteFor(generationSettings));
-  const reservation = await reserveBudget(db, model.costMicros, effectiveBudgetUsd(c.env, appSettings));
+  const engineMode = effectiveEngineMode(c.env, appSettings);
+  const model = modelFor(engineMode, renderRouteFor(generationSettings));
+  // A selection edit that also changes the environment runs a second, whole-image pass on the
+  // single-image edit model once the first finishes (see startEnvironmentPass).
+  const costMicros =
+    generationSettings.edit && editPassCount(generationSettings.edit) > 1
+      ? model.costMicros + modelFor(engineMode, "edit").costMicros
+      : model.costMicros;
+  const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);
     return c.json(refusal, refusal.status);
@@ -181,7 +222,7 @@ renders.post("/", async (c) => {
         viewLabel: body.viewLabel,
         status: "pending",
         model: model.id,
-        costMicros: model.costMicros,
+        costMicros,
         settings: generationSettings,
       });
     } catch (error) {

@@ -74,15 +74,118 @@ export type EditMode = "element" | "building" | "prompt";
 export type EditAction = "add" | "remove" | "change";
 export type UpscaleTarget = "4k" | "8k";
 
+/**
+ * How the person asked for the edit, picked explicitly in the Edit tab. Older edit jobs
+ * predate it and only carry `mode`; see editMethodFor.
+ */
+export type EditMethod = "prompt" | "reference" | "reference-prompt";
+
+// Option lists are shared so the Studio's controls and the API's validation can't drift.
+export const EDIT_TIMES_OF_DAY = ["morning", "midday", "golden-hour", "dusk", "night"] as const;
+export const EDIT_SEASONS = ["spring", "summer", "autumn", "winter"] as const;
+export const EDIT_WEATHER = ["clear", "overcast", "rain", "snow", "fog"] as const;
+export const FACADE_MATERIALS = ["brick", "stone", "stucco", "timber", "concrete", "metal", "glass"] as const;
+/** Architectural looks: they restyle finishes and details, never the building's form. */
+export const EDIT_STYLES = ["modern", "minimalist", "scandinavian", "mediterranean", "farmhouse", "industrial", "tropical", "classic"] as const;
+
+export type EditTimeOfDay = (typeof EDIT_TIMES_OF_DAY)[number];
+export type EditSeason = (typeof EDIT_SEASONS)[number];
+export type EditWeather = (typeof EDIT_WEATHER)[number];
+export type FacadeMaterial = (typeof FACADE_MATERIALS)[number];
+export type EditStyle = (typeof EDIT_STYLES)[number];
+
+/** Longest facade colour (a name or hex value) the API accepts. */
+export const MAX_FACADE_COLOR_CHARS = 40;
+/** Edits take a single reference: more than one leaves the model guessing which to follow. */
+export const MAX_EDIT_REFERENCES = 1;
+
+/**
+ * Scene-wide changes applied over the whole result, never limited to a selected area.
+ * Every field is optional; an unset field means "leave it as it is".
+ */
+export interface EditEnvironment {
+  timeOfDay?: EditTimeOfDay;
+  season?: EditSeason;
+  weather?: EditWeather;
+  style?: EditStyle;
+  /** A colour name or hex value, e.g. "warm white" or "#e8e2d4". */
+  facadeColor?: string;
+  facadeMaterial?: FacadeMaterial;
+}
+
 /** Present on edit jobs (Edit tab); absent on renders. */
 export interface RenderEditSettings {
   mode: EditMode;
+  method?: EditMethod;
   action?: EditAction;
   /**
    * White-on-black PNG at the source image's size; white marks the area to edit.
    * Only that area of the model's output is pasted back onto the source.
    */
   maskImageUrl?: string;
+  environment?: EditEnvironment;
+  /**
+   * Set by the API, never the client: the selection's composited result, stored when the first
+   * of a two-pass edit finishes. Its presence means the environment pass has taken over.
+   */
+  intermediateImageUrl?: string;
+}
+
+/** True when the environment asks for at least one change. */
+export function hasEnvironmentChange(environment: EditEnvironment | undefined): boolean {
+  if (!environment) return false;
+  return Object.values(environment).some((value) => typeof value === "string" && value.trim() !== "");
+}
+
+/** The edit's method, deriving one for older jobs that only recorded `mode`. */
+export function editMethodFor(edit: RenderEditSettings, { hasReferences, hasPrompt }: { hasReferences: boolean; hasPrompt: boolean }): EditMethod {
+  if (edit.method) return edit.method;
+  if (!hasReferences) return "prompt";
+  return hasPrompt ? "reference-prompt" : "reference";
+}
+
+/**
+ * Model passes an edit takes. A selection edit composites only the selected area back, so an
+ * environment change on top of it needs a second pass over the whole result; everything else
+ * is a single pass.
+ */
+export function editPassCount(edit: RenderEditSettings): number {
+  return edit.maskImageUrl && hasEnvironmentChange(edit.environment) ? 2 : 1;
+}
+
+/**
+ * Why an edit request can't run, or null when it can. Shared so the Studio explains the same
+ * thing the API would refuse.
+ */
+export function editRequestProblem({
+  edit,
+  prompt,
+  referenceCount,
+}: {
+  edit: RenderEditSettings;
+  prompt: string;
+  referenceCount: number;
+}): string | null {
+  const hasPrompt = prompt.trim() !== "";
+  const hasReferences = referenceCount > 0;
+  const hasEnvironment = hasEnvironmentChange(edit.environment);
+  if (referenceCount > MAX_EDIT_REFERENCES) return "Edits use one reference image.";
+  // The environment is applied over the whole result, so a selection with nothing else to do
+  // inside it would be an empty first pass.
+  if (edit.maskImageUrl && !hasPrompt && !hasReferences) {
+    return "Describe the change for the selected area, or clear the selection to change only the environment.";
+  }
+  switch (edit.method) {
+    case "prompt":
+      return hasPrompt || hasEnvironment ? null : "Describe the change or pick an environment change.";
+    case "reference":
+      return hasReferences ? null : "Add a reference image.";
+    case "reference-prompt":
+      if (!hasReferences) return "Add a reference image.";
+      return hasPrompt ? null : "Describe what to take from the reference.";
+    default:
+      return hasPrompt || hasReferences || hasEnvironment ? null : "Describe an edit, attach a reference or pick an environment change.";
+  }
 }
 
 /** Present on high-resolution export jobs, which preserve an existing render rather than generating a new design. */
@@ -173,8 +276,9 @@ export interface RenderGenerationSettings {
  */
 export function baseCreditCostForRender(settings: RenderGenerationSettings): number {
   if (settings.upscale) return settings.upscale.target === "8k" ? 2 : 1;
+  if (settings.edit) return editPassCount(settings.edit);
   const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
-  if (!settings.edit && hasReferences && settings.fidelity?.mode === "strict") return 2;
+  if (hasReferences && settings.fidelity?.mode === "strict") return 2;
   return 1;
 }
 

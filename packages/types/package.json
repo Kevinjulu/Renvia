@@ -12,7 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --test \"src/**/*.test.mjs\""
   },
   "devDependencies": {
     "@renvia/config": "workspace:*",

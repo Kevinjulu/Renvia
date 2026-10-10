@@ -2,14 +2,22 @@ import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { schema, type Database } from "@renvia/db";
-import type { AspectRatio, RenderBudgetResponse, RenderEngineMode } from "@renvia/types";
+import { editPassCount, type AspectRatio, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
 import type { Env } from "../index.js";
 import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./composite.js";
 import { refundIfFailed } from "./credits.js";
-import { modelById, pricingFor } from "./models.js";
+import { modelById, modelFor, pricingFor } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
-import { buildEditPrompt, buildEnginePrompt } from "./prompts.js";
-import { extensionForContentType, getObject, ownUploadKey, publicUploadUrl, putObject, renderResultKeyFor } from "./storage.js";
+import { buildEditPrompt, buildEnginePrompt, buildEnvironmentPrompt } from "./prompts.js";
+import {
+  extensionForContentType,
+  getObject,
+  ownUploadKey,
+  publicUploadUrl,
+  putObject,
+  renderIntermediateKeyFor,
+  renderResultKeyFor,
+} from "./storage.js";
 
 type RenderRow = typeof schema.renders.$inferSelect;
 
@@ -148,6 +156,23 @@ function failurePatch(message: string): Partial<RenderRow> {
   return { status: "failed", costMicros: 0, errorMessage: message };
 }
 
+/**
+ * failurePatch for a render that may be in the environment pass of a two-pass edit: its first
+ * pass finished and fal billed it, so that spend keeps counting against the budget. The user's
+ * credits are still refunded in full — they didn't get the edit they paid for.
+ */
+function failurePatchFor(render: RenderRow, message: string): Partial<RenderRow> {
+  if (!render.settings?.edit?.intermediateImageUrl) return failurePatch(message);
+  const secondPassMicros = modelById(render.model)?.costMicros ?? 0;
+  return { ...failurePatch(message), costMicros: Math.max(0, render.costMicros - secondPassMicros) };
+}
+
+/** A two-pass edit whose first pass (the selection) is still running. */
+function awaitsEnvironmentPass(render: RenderRow): boolean {
+  const edit = render.settings?.edit;
+  return Boolean(edit && editPassCount(edit) > 1 && !edit.intermediateImageUrl);
+}
+
 function errorMessageOf(error: unknown): string {
   if (error instanceof ApiError) {
     const detail = (error.body as { detail?: unknown } | undefined)?.detail;
@@ -258,7 +283,9 @@ interface MaskedEditInputs {
 
 /** Source, mask and crop of a selection edit; null for renders and whole-image edits. */
 async function maskedEditInputs(env: Env, render: RenderRow, origin: string): Promise<MaskedEditInputs | null> {
-  const maskUrl = render.settings?.edit?.maskImageUrl;
+  const edit = render.settings?.edit;
+  // The environment pass edits the whole composited result; the selection is already applied.
+  const maskUrl = edit?.intermediateImageUrl ? undefined : edit?.maskImageUrl;
   if (!maskUrl) return null;
   const [source, mask] = await Promise.all([readOwnUpload(env, render.sourceImageUrl, origin), readOwnUpload(env, maskUrl, origin)]);
   if (!source || !mask) throw new Error("Edit source or mask isn't one of our uploads");
@@ -315,7 +342,8 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           prompt: render.prompt,
           edit: settings.edit,
           hasReferences,
-          hasSelection: Boolean(masked?.crop),
+          hasSelection: Boolean(masked),
+          isCloseUp: Boolean(masked?.crop),
           style: render.style,
         })
       : buildEnginePrompt({
@@ -349,7 +377,13 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
   }
 }
 
-async function storeFalResult(env: Env, render: RenderRow, imageUrl: string, origin: string): Promise<string> {
+async function storeFalResult(
+  env: Env,
+  render: RenderRow,
+  imageUrl: string,
+  origin: string,
+  keyFor: (renderId: string, contentType: string) => string = renderResultKeyFor,
+): Promise<string> {
   const response = await fetch(imageUrl);
   if (!response.ok) throw new Error(`Couldn't download render result (${response.status})`);
   let bytes = new Uint8Array(await response.arrayBuffer());
@@ -383,19 +417,81 @@ async function storeFalResult(env: Env, render: RenderRow, imageUrl: string, ori
   }
 
   const storedType = extensionForContentType(contentType) ? contentType : "image/jpeg";
-  const key = renderResultKeyFor(render.id, storedType);
+  const key = keyFor(render.id, storedType);
   await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, storedType);
   return publicUploadUrl(origin, key);
 }
 
+/**
+ * The selection pass of a two-pass edit has finished: store its composite and hand it to the
+ * environment pass, which edits the whole result. The render stays processing throughout.
+ */
+async function startEnvironmentPass(env: Env, db: Database, render: RenderRow, imageUrl: string, origin: string): Promise<RenderRow> {
+  const settings = render.settings!;
+  const edit = settings.edit!;
+  const intermediateImageUrl = await storeFalResult(env, render, imageUrl, origin, renderIntermediateKeyFor);
+  const model = modelFor(await engineMode(env, db), "edit");
+
+  // Only the refresh that still sees the first pass's request id moves on, so a racing poll
+  // and webhook submit the environment pass once. The model switches now, so the failure path
+  // can tell the two passes' costs apart even if the submit below never happens.
+  const [claimed] = await db
+    .update(schema.renders)
+    .set({
+      settings: { ...settings, edit: { ...edit, intermediateImageUrl } },
+      model: model.id,
+      falRequestId: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.renders.id, render.id), eq(schema.renders.falRequestId, render.falRequestId!), eq(schema.renders.status, "processing")))
+    .returning();
+  if (!claimed) {
+    const [current] = await db.select().from(schema.renders).where(eq(schema.renders.id, render.id));
+    return current ?? render;
+  }
+
+  // Operators switched to mock mid-flight: the selection's result is the best there is.
+  if (model.id === "mock") {
+    return finishRender(db, claimed, { status: "succeeded", resultImageUrl: intermediateImageUrl, seed: settings.seed ?? null });
+  }
+
+  try {
+    const fal = falClient(env);
+    const { request_id } = await fal.queue.submit(model.id, {
+      input: model.buildInput({
+        imageUrl: await falReachableImageUrl(env, fal, intermediateImageUrl, origin),
+        referenceUrls: [],
+        prompt: buildEnvironmentPrompt({ environment: edit.environment!, style: render.style }),
+        influence: settings.editInfluence ?? 4,
+        preserveStructure: false,
+        // The composite is already the source's size; keep it.
+        aspectRatio: "auto",
+        seed: settings.seed,
+      }),
+      webhookUrl: webhookUrlFor(origin),
+    });
+    return updateRender(db, render.id, { falRequestId: request_id });
+  } catch (error) {
+    console.error("fal environment pass submit failed", render.id, error);
+    return refundIfFailed(db, await finishRender(db, claimed, failurePatchFor(claimed, errorMessageOf(error))));
+  }
+}
+
 async function refreshFalRender(env: Env, db: Database, render: RenderRow, origin: string): Promise<RenderRow> {
-  if (!render.falRequestId || !render.model) return render;
+  if (!render.model) return render;
+  if (!render.falRequestId) {
+    // An environment pass that was claimed but never submitted: the request died in between.
+    if (render.settings?.edit?.intermediateImageUrl && Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
+      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render timed out")));
+    }
+    return render;
+  }
 
   const fal = falClient(env);
   const status = await fal.queue.status(render.model, { requestId: render.falRequestId });
   if (status.status !== "COMPLETED") {
     if (Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return refundIfFailed(db, await finishRender(db, render, failurePatch("Render timed out")));
+      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render timed out")));
     }
     return render;
   }
@@ -404,7 +500,8 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
     const result = data as { images?: { url?: string }[]; image?: { url?: string }; seed?: number };
     const imageUrl = result.images?.[0]?.url ?? result.image?.url;
-    if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatch("Render returned no image")));
+    if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render returned no image")));
+    if (awaitsEnvironmentPass(render)) return await startEnvironmentPass(env, db, render, imageUrl, origin);
 
     const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
     // Some provider responses expose an internal, wider seed that does not fit our declared
@@ -419,7 +516,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     // A completed request whose result call errors is a model-side failure (bad input,
     // safety filter, …); storage/network hiccups are left processing and retried.
     if (error instanceof ApiError) {
-      return refundIfFailed(db, await finishRender(db, render, failurePatch(errorMessageOf(error))));
+      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, errorMessageOf(error))));
     }
     throw error;
   }
@@ -478,7 +575,7 @@ export async function cancelRender(env: Env, db: Database, render: RenderRow): P
 
   const [updated] = await db
     .update(schema.renders)
-    .set({ ...failurePatch("Cancelled"), updatedAt: new Date() })
+    .set({ ...failurePatchFor(render, "Cancelled"), updatedAt: new Date() })
     .where(and(eq(schema.renders.id, render.id), inArray(schema.renders.status, ["pending", "processing"])))
     .returning();
   const current = updated ?? (await db.select().from(schema.renders).where(eq(schema.renders.id, render.id)))[0]!;

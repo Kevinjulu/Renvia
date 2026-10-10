@@ -1,4 +1,17 @@
-import type { PromptRepairResponse, ProtectedGeometryFeature, RenderEditSettings, RenderSourceType } from "@renvia/types";
+import {
+  editMethodFor,
+  type EditEnvironment,
+  type EditMethod,
+  type EditSeason,
+  type EditStyle,
+  type EditTimeOfDay,
+  type EditWeather,
+  type FacadeMaterial,
+  type PromptRepairResponse,
+  type ProtectedGeometryFeature,
+  type RenderEditSettings,
+  type RenderSourceType,
+} from "@renvia/types";
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
   Photorealistic: "a photorealistic architectural visualization with physically accurate materials, lighting and shadows",
@@ -168,17 +181,93 @@ const COLOUR_FIDELITY =
   "do not warm, tint or recolour any surface.";
 
 export interface EditPromptOptions {
-  /** The user's own edit description; may be empty when references carry the intent. */
+  /** The user's own edit description; may be empty when a reference or the environment carries the intent. */
   prompt: string;
   edit: RenderEditSettings;
   hasReferences: boolean;
-  /** A brush/rectangle/polygon/magic selection is targeting part of the image, not the whole thing. */
+  /**
+   * A painted or auto-selected area limits the edit. Only that area of the result is kept, so
+   * the environment is left out here and applied by its own pass (buildEnvironmentPrompt).
+   */
   hasSelection?: boolean;
+  /** The model is sent a close-up crop of the selection rather than the whole image (see editCropFor). */
+  isCloseUp?: boolean;
   /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
   style?: string;
 }
 
 const KEEP_THE_REST = "Keep everything else in the image exactly as it is.";
+const KEEP_THE_REST_AFTER_CHANGES = "Apart from these changes, keep everything else in the image exactly as it is.";
+
+/** Every edit keeps the building itself; a reference or environment change is never a redesign. */
+const EDIT_FORM_LOCK =
+  "Keep the building's geometry, proportions, roof shape, window and door positions, and the camera angle and framing exactly as they are.";
+
+const TIME_OF_DAY: Record<EditTimeOfDay, string> = {
+  morning: "Set the scene in soft early-morning light, with a low cool sun and long gentle shadows.",
+  midday: "Set the scene at midday, with bright sun high overhead and short crisp shadows.",
+  "golden-hour": "Set the scene at golden hour, with warm low sunlight and long warm shadows across the facade.",
+  dusk: "Set the scene at dusk, with a deep blue sky after sunset and warm light glowing from the windows and exterior fixtures.",
+  night: "Set the scene at night, with a dark sky and the building lit by its warm interior and exterior lighting.",
+};
+
+const SEASONS: Record<EditSeason, string> = {
+  spring: "Make it spring: fresh green foliage, blossoming trees and new lawn.",
+  summer: "Make it summer: lush, full green trees, hedges and lawns.",
+  autumn: "Make it autumn: trees in orange, red and gold foliage, with some fallen leaves on the ground.",
+  winter: "Make it winter: bare deciduous trees and dormant planting.",
+};
+
+const WEATHER: Record<EditWeather, string> = {
+  clear: "Give it a clear blue sky.",
+  overcast: "Give it an overcast sky with soft, diffuse light and no hard shadows.",
+  rain: "Make it rainy: a grey sky, light rain, and wet, reflective paving and surfaces.",
+  snow: "Make it snowy: falling snow, with snow settled on the roof, ground, ledges and planting.",
+  fog: "Add light fog that softens the background, with muted, diffuse light.",
+};
+
+const ARCHITECTURAL_STYLES: Record<EditStyle, string> = {
+  modern: "modern: smooth light render, slim dark window frames, flush minimal trim and glass balustrades",
+  minimalist: "minimalist: a restrained palette of white and pale grey, flush detailing and no ornament",
+  scandinavian: "Scandinavian: light timber cladding, white trim, black window frames and a calm natural palette",
+  mediterranean: "Mediterranean: warm white or sand-coloured stucco, terracotta accents and wrought-iron details",
+  farmhouse: "modern farmhouse: white board-and-batten siding, black window frames and natural wood accents",
+  industrial: "industrial: exposed brick, dark steel frames and metal detailing",
+  tropical: "tropical: natural timber, light stone, shaded openings and lush planting",
+  classic: "classic: refined stone or render finishes, painted mouldings and traditional trim",
+};
+
+const FACADE_MATERIAL_TEXT: Record<FacadeMaterial, string> = {
+  brick: "clay brick",
+  stone: "natural stone cladding",
+  stucco: "smooth painted stucco render",
+  timber: "timber cladding",
+  concrete: "smooth architectural concrete",
+  metal: "standing-seam metal panels",
+  glass: "glazed panels",
+};
+
+/** One sentence per environment change, in a fixed order; empty when nothing changes. */
+function environmentSentences(environment: EditEnvironment | undefined): string[] {
+  if (!environment) return [];
+  const facadeColor = environment.facadeColor?.trim();
+  const material = environment.facadeMaterial ? FACADE_MATERIAL_TEXT[environment.facadeMaterial] : null;
+  // Colour and material describe the same walls, so they read best as one instruction.
+  const facade = material
+    ? `Clad the facade walls in ${material}${facadeColor ? `, coloured ${facadeColor}` : ""}, keeping window frames, doors, roof and trim as they are.`
+    : facadeColor
+      ? `Paint the facade walls ${facadeColor}, keeping window frames, doors, roof and trim their current colours.`
+      : null;
+  return [
+    environment.style
+      ? `Restyle the finishes and details of the building as ${ARCHITECTURAL_STYLES[environment.style]}, without changing its form.`
+      : null,
+    facade,
+    environment.timeOfDay ? TIME_OF_DAY[environment.timeOfDay] : null,
+    environment.season ? SEASONS[environment.season] : null,
+    environment.weather ? WEATHER[environment.weather] : null,
+  ].filter((sentence): sentence is string => sentence !== null);
+}
 
 /** Capitalizes and terminates free text so it reads as its own sentence next to others. */
 function asSentence(text: string): string {
@@ -189,53 +278,86 @@ function asSentence(text: string): string {
 }
 
 /**
- * Composes the model prompt for an Edit-tab job. A selection edit is already sent a cropped
- * close-up of just that region (see engine.ts) — only its result is composited back — but the
- * catch-all branch below still names it explicitly, since a short text cue costs nothing and
- * keeps the model from mistaking the crop for the whole building.
+ * A non-default style on the image being edited would otherwise drift toward photoreal —
+ * these models have no memory of how the source was rendered.
  */
-export function buildEditPrompt({ prompt, edit, hasReferences, hasSelection, style }: EditPromptOptions): string {
-  const subject = prompt.trim();
-  // A non-default style on the image being edited would otherwise drift toward photoreal —
-  // these models have no memory of how the source was rendered.
-  const styleHint = style && style !== "Photorealistic" && STYLE_DESCRIPTIONS[style]
-    ? `Keep this in ${STYLE_DESCRIPTIONS[style]}.`
-    : "";
+function styleHintFor(style: string | undefined): string {
+  return style && style !== "Photorealistic" && STYLE_DESCRIPTIONS[style] ? `Keep this in ${STYLE_DESCRIPTIONS[style]}.` : "";
+}
 
-  if (edit.mode === "element" && hasReferences) {
-    const target = subject || "the matching surfaces of the building";
-    return [`Apply the material, texture and colour from the reference images to ${target}.`, KEEP_THE_REST, styleHint]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  if (edit.mode === "building" && hasReferences) {
-    // No styleHint here — restyling via reference means leaving the current style behind,
-    // which a "keep this in ..." instruction for that same current style would contradict.
-    return [
-      "Restyle the building in the architectural style of the reference images" + (subject ? `: ${subject}.` : "."),
-      `Keep the building's geometry, proportions and camera angle. ${KEEP_THE_REST}`,
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  const instruction = {
+/** The change itself for a prompt-only edit: the user's words, or an action verb built around them. */
+function promptInstruction(subject: string, edit: RenderEditSettings): string {
+  if (!subject) return "";
+  if (edit.mode === "prompt" || !edit.action) return asSentence(subject);
+  return {
     add: `Add ${subject} to the building.`,
     remove: `Remove ${subject} from the image and fill the area to match its surroundings.`,
-    change: `Change ${subject}.`,
-  }[edit.action ?? "change"];
-  const referenceHint = hasReferences ? "Use the reference images as a guide." : "";
-  // This is already a close-up crop of just the selected region (see engine.ts), but saying
-  // so in words too keeps the model from second-guessing what it's looking at.
-  const selectionLead = hasSelection ? "This is a close-up of the selected part of the building." : "";
+    change: asSentence(`Change ${subject}`),
+  }[edit.action];
+}
+
+/**
+ * The change itself for an edit with a reference. The reference is always image 2 (an edit
+ * takes exactly one); image 1 is the render being edited, or a close-up of its selected area.
+ */
+function referenceInstruction(method: EditMethod, subject: string, hasSelection: boolean): string {
+  if (method === "reference-prompt") {
+    return (
+      `Use image 2 as the reference for this change: ${asSentence(subject)} ` +
+      "Take from image 2 only what this asks for, matching its design, shape details, material, colour and finish, " +
+      "and apply it to the corresponding elements of image 1, keeping each one in its current position and size."
+    );
+  }
+  return hasSelection
+    ? "Make the selected element match the corresponding element in image 2: its design, shape details, material, colour " +
+        "and finish, fitted to the element's current position, size and perspective."
+    : "Apply the look of image 2 to the building in image 1: its materials, finishes, colours and detailing, mapped onto " +
+        "the matching surfaces of image 1. Never copy image 2's building, layout or viewpoint.";
+}
+
+/**
+ * Composes the model prompt for an Edit-tab job's main pass. With a selection, only that area
+ * of the result is composited back (see engine.ts), so the environment is left out and applied
+ * over the whole result by its own pass; without one, it is part of this prompt.
+ */
+export function buildEditPrompt({ prompt, edit, hasReferences, hasSelection = false, isCloseUp = false, style }: EditPromptOptions): string {
+  const subject = prompt.trim();
+  const method = editMethodFor(edit, { hasReferences, hasPrompt: subject !== "" });
+  const usesReference = hasReferences && method !== "prompt";
+  const environment = hasSelection ? [] : environmentSentences(edit.environment);
+
+  const roles = usesReference
+    ? isCloseUp
+      ? "Image 1 is a close-up of the selected part of the building to edit. Image 2 is the reference."
+      : "Image 1 is the building image to edit. Image 2 is the reference."
+    : // Already a close-up crop of just the selected region, but saying so in words keeps the
+      // model from mistaking it for the whole building.
+      isCloseUp
+      ? "This is a close-up of the selected part of the building."
+      : "";
+  const instruction = usesReference ? referenceInstruction(method, subject, hasSelection) : promptInstruction(subject, edit);
+  // A prompt-only edit names its own change; a reference or the environment could otherwise be
+  // read as licence to rebuild, so those always restate the form lock.
+  const formLock = usesReference || environment.length > 0 ? EDIT_FORM_LOCK : "";
+
   return [
-    selectionLead,
-    asSentence(edit.mode === "prompt" || !edit.action ? subject : instruction),
-    referenceHint,
-    KEEP_THE_REST,
-    styleHint,
+    roles,
+    instruction,
+    ...environment,
+    formLock,
+    environment.length > 0 ? KEEP_THE_REST_AFTER_CHANGES : KEEP_THE_REST,
+    styleHintFor(style),
   ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * The second pass of a selection edit that also changes the environment: the selection's
+ * result is done, and this applies the environment over the whole image.
+ */
+export function buildEnvironmentPrompt({ environment, style }: { environment: EditEnvironment; style?: string }): string {
+  return [...environmentSentences(environment), EDIT_FORM_LOCK, KEEP_THE_REST_AFTER_CHANGES, styleHintFor(style)]
     .filter(Boolean)
     .join(" ");
 }
