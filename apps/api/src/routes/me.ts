@@ -26,11 +26,13 @@ me.get("/", async (c) => {
     limits: resolveLimits(user, settings, billing.plan),
     entitlement: {
       plan: billing.plan,
-      status: billing.entitlement.status,
+      // An admin-granted plan is in force regardless of the base subscription's state.
+      status: billing.override ? "active" : billing.entitlement.status,
       currentPeriodStart: billing.entitlement.currentPeriodStart,
       currentPeriodEnd: billing.entitlement.currentPeriodEnd,
       cancelAtPeriodEnd: billing.entitlement.cancelAtPeriodEnd,
       monthlyCreditsRemaining: billing.entitlement.monthlyCreditsRemaining,
+      complimentary: billing.override ? { endsAt: billing.override.endsAt?.toISOString() ?? null } : null,
     },
     usage,
     limitMessages: limitMessages(settings),

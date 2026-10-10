@@ -359,6 +359,77 @@ describe("bulk credit grants and approvals", () => {
   });
 });
 
+describe("granted plans", () => {
+  type Detail = { entitlement: { planSlug: string; basePlanSlug: string; status: string; override: { planSlug: string; active: boolean; reason: string; setByEmail: string } | null }; limits: { dailyRenders: number | null }; plans: { slug: string }[] };
+  const detail = async () => (await (await call("admin", "GET", `/users/${actors.customer.id}`)).json()) as Detail;
+  const studioPlan = async () => {
+    const [plan] = await db.insert(schema.billingPlans).values({ slug: "studio", name: "Studio", description: "Studio plan", priceCents: 2900, interval: "month", monthlyCredits: 200, dailyRenderLimit: 50 }).returning();
+    return plan!;
+  };
+  const inDays = (days: number) => new Date(Date.now() + days * DAY).toISOString();
+
+  it("grants a plan on top of the base plan, with the plan's limits, and audits it", async () => {
+    const studio = await studioPlan();
+    // The seeded customer has never signed in, so has no plan record until one is granted.
+    expect((await detail()).entitlement).toBeNull();
+
+    const res = await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: inDays(30), reason: "client demo" });
+
+    expect(res.status).toBe(200);
+    const after = await detail();
+    expect(after.entitlement).toMatchObject({ planSlug: "studio", basePlanSlug: "starter", status: "active", override: { planSlug: "studio", active: true, reason: "client demo", setByEmail: "admin@renvia.test" } });
+    expect(after.limits.dailyRenders).toBe(50);
+    expect(after.plans.map((plan) => plan.slug).sort()).toEqual(["starter", "studio"]);
+    const [event] = await events("billing.entitlement");
+    expect(event!.summary).toMatch(/^customer@example\.test: granted Studio until \d{4}-\d{2}-\d{2}$/);
+    expect(event!.detail).toMatchObject({ reason: "client demo", before: { plan: "starter" }, after: { plan: "studio" } });
+  });
+
+  it("falls back to the base plan once the granted plan ends", async () => {
+    const studio = await studioPlan();
+    await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: inDays(1), reason: "trial" });
+    await db.update(schema.userEntitlements).set({ overrideEndsAt: ago(60_000) }).where(eq(schema.userEntitlements.userId, actors.customer.id));
+
+    const after = await detail();
+    expect(after.entitlement).toMatchObject({ planSlug: "starter", override: { planSlug: "studio", active: false } });
+    expect(after.limits.dailyRenders).not.toBe(50);
+  });
+
+  it("removes a granted plan and refuses to remove one that isn't there", async () => {
+    const studio = await studioPlan();
+    await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: null, reason: "partner" });
+
+    const res = await call("admin", "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "partnership ended" });
+    expect(res.status).toBe(200);
+    expect((await detail()).entitlement).toMatchObject({ planSlug: "starter", override: null });
+    expect((await events("billing.entitlement")).map((e) => e.summary)).toContain("customer@example.test: removed granted Studio, back on Starter");
+
+    const again = await call("admin", "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "again" });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ code: "no_override" });
+  });
+
+  it("refuses the base plan, past end dates and missing reasons", async () => {
+    const studio = await studioPlan();
+    const [starter] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.slug, "starter"));
+
+    const same = await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: starter!.id, endsAt: null, reason: "r" });
+    expect(await same.json()).toMatchObject({ code: "same_as_base" });
+    const past = await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: ago(DAY).toISOString(), reason: "r" });
+    expect(await past.json()).toMatchObject({ code: "invalid_end" });
+    expect((await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: null, reason: "" })).status).toBe(400);
+    expect((await detail()).entitlement.override).toBeNull();
+  });
+
+  it("is admin-only", async () => {
+    const studio = await studioPlan();
+    for (const who of ["billing", "support", "analyst"]) {
+      expect((await call(who, "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: null, reason: "r" })).status).toBe(403);
+      expect((await call(who, "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "r" })).status).toBe(403);
+    }
+  });
+});
+
 describe("customer notes, tags and sessions", () => {
   it("lets support add a note and audits it", async () => {
     const res = await call("support", "POST", `/users/${actors.customer.id}/notes`, { body: "Called about billing" });

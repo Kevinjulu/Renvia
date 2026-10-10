@@ -407,6 +407,7 @@ button { color: inherit; }
 .billing-summary{display:flex;align-items:center;justify-content:space-between;gap:24px}
 .billing-balance{display:flex;flex-direction:column;gap:4px}
 .billing-balance-label,.billing-plan-label{display:inline-flex;align-items:center;gap:6px;color:#8b8883;font-size:12px;font-weight:600}
+.billing-plan-note{display:block;margin-top:6px;color:#8b8883;font-size:12px}
 .billing-balance>strong{font-family:var(--font-general-sans);font-size:42px;line-height:1.05;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
 .billing-balance>small{color:#77736e;font-size:12.5px}
 .billing-plan{display:flex;min-width:220px;flex-direction:column;gap:8px;border-left:1px solid #eeeae4;padding-left:24px}

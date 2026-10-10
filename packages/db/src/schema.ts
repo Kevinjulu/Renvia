@@ -275,6 +275,15 @@ export const userEntitlements = pgTable(
     /** Unspent included monthly credits. Purchased and manual credits are not stored here. */
     monthlyCreditsRemaining: integer("monthly_credits_remaining").notNull().default(0),
     nextCreditGrantAt: timestamp("next_credit_grant_at", { withTimezone: true }),
+    /**
+     * A plan granted by an admin without payment. It applies instead of planId until
+     * overrideEndsAt (null = until cleared); planId itself is never overwritten.
+     */
+    overridePlanId: uuid("override_plan_id").references(() => billingPlans.id),
+    overrideEndsAt: timestamp("override_ends_at", { withTimezone: true }),
+    overrideReason: text("override_reason"),
+    overrideSetBy: uuid("override_set_by").references(() => users.id),
+    overrideSetAt: timestamp("override_set_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

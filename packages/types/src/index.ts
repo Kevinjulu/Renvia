@@ -533,6 +533,8 @@ export interface BillingEntitlement {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   monthlyCreditsRemaining: number;
+  /** Set while an admin-granted plan applies; `plan` is that plan. endsAt null = until removed. */
+  complimentary: { endsAt: string | null } | null;
 }
 
 /** A server-priced, one-off credit product. The browser never supplies price or credits. */
@@ -731,8 +733,49 @@ export interface AdminUserDetailResponse {
   tags: { id: string; label: string; createdAt: string }[];
   projects: { id: string; name: string; createdAt: string; updatedAt: string }[];
   payments: { id: string; provider: string; status: string; amountCents: number; currency: string; createdAt: string; paidAt: string | null }[];
-  entitlement: { status: string; currentPeriodEnd: string | null; planName: string | null; planSlug: string | null } | null;
+  entitlement: AdminUserEntitlement | null;
+  /** Active plans an admin can assign. */
+  plans: AdminPlanOption[];
   recentErrors: { id: string; errorMessage: string | null; createdAt: string; projectName: string }[];
+}
+
+export interface AdminPlanOption {
+  id: string;
+  slug: string;
+  name: string;
+  priceCents: number;
+  monthlyCredits: number;
+}
+
+export interface AdminUserEntitlement {
+  status: string;
+  currentPeriodEnd: string | null;
+  /** The plan in effect now: the admin-granted plan while it applies, otherwise the base plan. */
+  planName: string;
+  planSlug: string;
+  /** The plan held in the user's own right; an override never changes it. */
+  basePlanName: string;
+  basePlanSlug: string;
+  provider: string | null;
+  /** The most recent admin-granted plan. `active` is false once its end date has passed. */
+  override: {
+    planId: string;
+    planName: string;
+    planSlug: string;
+    endsAt: string | null;
+    reason: string | null;
+    setByEmail: string | null;
+    setAt: string | null;
+    active: boolean;
+  } | null;
+}
+
+/** Grants a plan without payment. It sits on top of the user's base plan until endsAt. */
+export interface AdminSetPlanRequest {
+  planId: string;
+  /** ISO date-time in the future; null keeps it until an admin removes it. */
+  endsAt: string | null;
+  reason: string;
 }
 
 export interface AdminGrantCreditsRequest {

@@ -3,9 +3,10 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { createClerkClient } from "@clerk/backend";
-import { schema } from "@renvia/db";
-import type { AdminLedgerEntry } from "@renvia/types";
+import { schema, type Database } from "@renvia/db";
+import type { AdminLedgerEntry, AdminPlanOption, AdminUserEntitlement } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
+import { ensureEntitlement, getBillingEntitlement, overrideIsActive } from "../../lib/billing.js";
 import { getUsage, resolveLimits } from "../../lib/limits.js";
 import { denyUnless } from "./permissions.js";
 import { selectAdminRenders, toAdminRender, findAdminUser, recordAdminEvent } from "./shared.js";
@@ -13,6 +14,60 @@ import { governance, requestApproval } from "./governance.js";
 import type { AdminContext } from "./context.js";
 
 export const userDetailRoutes = new Hono<AdminContext>();
+
+/**
+ * The user's plan as staff see it: the plan in effect, the base plan under it, and any override.
+ * Null when they have no plan record yet (one is created when they next sign in); viewing never creates it.
+ */
+async function adminEntitlementFor(db: Database, userId: string): Promise<{ view: AdminUserEntitlement; plan: typeof schema.billingPlans.$inferSelect } | null> {
+  const billing = await getBillingEntitlement(db, userId);
+  if (!billing) return null;
+  const { entitlement, basePlan } = billing;
+  let override: AdminUserEntitlement["override"] = null;
+  if (entitlement.overridePlanId) {
+    const [[overridePlan], [setBy]] = await Promise.all([
+      db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, entitlement.overridePlanId)),
+      entitlement.overrideSetBy ? db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, entitlement.overrideSetBy)) : Promise.resolve([]),
+    ]);
+    if (overridePlan) {
+      override = {
+        planId: overridePlan.id,
+        planName: overridePlan.name,
+        planSlug: overridePlan.slug,
+        endsAt: entitlement.overrideEndsAt?.toISOString() ?? null,
+        reason: entitlement.overrideReason,
+        setByEmail: setBy?.email ?? null,
+        setAt: entitlement.overrideSetAt?.toISOString() ?? null,
+        active: overrideIsActive(entitlement),
+      };
+    }
+  }
+  return {
+    plan: billing.plan,
+    view: {
+      status: billing.override ? "active" : entitlement.status,
+      currentPeriodEnd: entitlement.currentPeriodEnd?.toISOString() ?? null,
+      planName: billing.plan.name,
+      planSlug: billing.plan.slug,
+      basePlanName: basePlan.name,
+      basePlanSlug: basePlan.slug,
+      provider: entitlement.provider,
+      override,
+    },
+  };
+}
+
+async function planOptions(db: Database): Promise<AdminPlanOption[]> {
+  return db
+    .select({ id: schema.billingPlans.id, slug: schema.billingPlans.slug, name: schema.billingPlans.name, priceCents: schema.billingPlans.priceCents, monthlyCredits: schema.billingPlans.monthlyCredits })
+    .from(schema.billingPlans)
+    .where(eq(schema.billingPlans.isActive, true))
+    .orderBy(asc(schema.billingPlans.priceCents));
+}
+
+function planLabel(name: string, endsAt: Date | null): string {
+  return endsAt ? `${name} until ${endsAt.toISOString().slice(0, 10)}` : `${name} until removed`;
+}
 
 userDetailRoutes.get("/users/:id", async (c) => {
   const denied = denyUnless(c, "users.read"); if (denied) return c.json(denied, 403);
@@ -22,7 +77,7 @@ userDetailRoutes.get("/users/:id", async (c) => {
   if (!user) return c.json({ error: "Not found" }, 404);
 
   const actor = alias(schema.users, "actor");
-  const [ledgerRows, renderRows, notes, tags, projects, payments, entitlement, failures] = await Promise.all([
+  const [ledgerRows, renderRows, notes, tags, projects, payments, entitlement, plans, failures] = await Promise.all([
     db
       .select({ entry: schema.creditLedger, actorEmail: actor.email })
       .from(schema.creditLedger)
@@ -39,8 +94,8 @@ userDetailRoutes.get("/users/:id", async (c) => {
       .from(schema.projects).where(eq(schema.projects.ownerId, id)).orderBy(desc(schema.projects.updatedAt)).limit(20),
     db.select({ id: schema.billingPayments.id, provider: schema.billingPayments.provider, status: schema.billingPayments.status, amountCents: schema.billingPayments.amountCents, currency: schema.billingPayments.currency, createdAt: schema.billingPayments.createdAt, paidAt: schema.billingPayments.paidAt })
       .from(schema.billingPayments).where(eq(schema.billingPayments.userId, id)).orderBy(desc(schema.billingPayments.createdAt)).limit(50),
-    db.select({ status: schema.userEntitlements.status, currentPeriodEnd: schema.userEntitlements.currentPeriodEnd, planName: schema.billingPlans.name, planSlug: schema.billingPlans.slug })
-      .from(schema.userEntitlements).leftJoin(schema.billingPlans, eq(schema.userEntitlements.planId, schema.billingPlans.id)).where(eq(schema.userEntitlements.userId, id)).limit(1),
+    adminEntitlementFor(db, id),
+    planOptions(db),
     db.select({ id: schema.renders.id, errorMessage: schema.renders.errorMessage, createdAt: schema.renders.updatedAt, projectName: schema.projects.name })
       .from(schema.renders).innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id)).where(and(eq(schema.projects.ownerId, id), eq(schema.renders.status, "failed"))).orderBy(desc(schema.renders.updatedAt)).limit(20),
   ]);
@@ -60,13 +115,15 @@ userDetailRoutes.get("/users/:id", async (c) => {
     user,
     ledger,
     renders: await Promise.all(renderRows.map((row) => toAdminRender(c.env, new URL(c.req.url).origin, row, settings.stuckTimeoutMinutes))),
-    limits: resolveLimits(userRow!, settings),
+    // The plan in effect sets the limits, exactly as the studio enforces them.
+    limits: resolveLimits(userRow!, settings, entitlement?.plan),
     usage: await getUsage(db, user.id),
     notes: notes.map((note) => ({ ...note, createdAt: note.createdAt.toISOString() })),
     tags: tags.map((tag) => ({ ...tag, createdAt: tag.createdAt.toISOString() })),
     projects: projects.map((project) => ({ ...project, createdAt: project.createdAt.toISOString(), updatedAt: project.updatedAt.toISOString() })),
     payments: payments.map((payment) => ({ ...payment, createdAt: payment.createdAt.toISOString(), paidAt: payment.paidAt?.toISOString() ?? null })),
-    entitlement: entitlement[0] ? { ...entitlement[0], currentPeriodEnd: entitlement[0].currentPeriodEnd?.toISOString() ?? null } : null,
+    entitlement: entitlement?.view ?? null,
+    plans,
     recentErrors: failures.map((failure) => ({ ...failure, createdAt: failure.createdAt.toISOString() })),
   });
 });
@@ -347,4 +404,60 @@ userDetailRoutes.patch("/users/:id", async (c) => {
   });
 
   return c.json({ user });
+});
+
+const setPlanSchema = z.object({
+  planId: z.string().uuid(),
+  endsAt: z.string().datetime({ offset: true }).nullable(),
+  reason: z.string().trim().min(1).max(300),
+});
+
+/** Grants a plan without payment, on top of the user's base plan. Admin-only and audited. */
+userDetailRoutes.put("/users/:id/plan", async (c) => {
+  const denied = denyUnless(c, "plans.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const body = setPlanSchema.parse(await c.req.json());
+  const actor = c.get("admin");
+  const target = await findAdminUser(db, id);
+  if (!target) return c.json({ error: "Not found" }, 404);
+
+  const [plan] = await db.select().from(schema.billingPlans).where(and(eq(schema.billingPlans.id, body.planId), eq(schema.billingPlans.isActive, true)));
+  if (!plan) return c.json({ error: "Choose an active plan", code: "invalid_plan" }, 400);
+  const endsAt = body.endsAt ? new Date(body.endsAt) : null;
+  if (endsAt && endsAt.getTime() <= Date.now()) return c.json({ error: "The end date must be in the future", code: "invalid_end" }, 400);
+
+  await ensureEntitlement(db, id);
+  const before = (await adminEntitlementFor(db, id))!;
+  if (plan.slug === before.view.basePlanSlug) {
+    return c.json({ error: `They already hold ${plan.name}. Remove the granted plan instead to return them to it.`, code: "same_as_base" }, 400);
+  }
+  await db.update(schema.userEntitlements).set({ overridePlanId: plan.id, overrideEndsAt: endsAt, overrideReason: body.reason, overrideSetBy: actor.id, overrideSetAt: new Date(), updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id));
+  await recordAdminEvent(db, {
+    actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
+    summary: `${target.email}: granted ${planLabel(plan.name, endsAt)}`,
+    detail: { reason: body.reason, before: { plan: before.view.planSlug, override: before.view.override }, after: { plan: plan.slug, endsAt: endsAt?.toISOString() ?? null } },
+  });
+  return c.json({ entitlement: (await adminEntitlementFor(db, id))!.view });
+});
+
+/** Ends an admin-granted plan now; the user's base plan applies again. */
+userDetailRoutes.post("/users/:id/plan/clear", async (c) => {
+  const denied = denyUnless(c, "plans.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const { reason } = z.object({ reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
+  const actor = c.get("admin");
+  const target = await findAdminUser(db, id);
+  if (!target) return c.json({ error: "Not found" }, 404);
+
+  const before = await adminEntitlementFor(db, id);
+  if (!before?.view.override) return c.json({ error: "They have no granted plan to remove", code: "no_override" }, 409);
+  await db.update(schema.userEntitlements).set({ overridePlanId: null, overrideEndsAt: null, overrideReason: null, overrideSetBy: null, overrideSetAt: null, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id));
+  await recordAdminEvent(db, {
+    actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
+    summary: `${target.email}: removed granted ${before.view.override.planName}, back on ${before.view.basePlanName}`,
+    detail: { reason, before: { override: before.view.override }, after: { plan: before.view.basePlanSlug } },
+  });
+  return c.json({ entitlement: (await adminEntitlementFor(db, id))!.view });
 });

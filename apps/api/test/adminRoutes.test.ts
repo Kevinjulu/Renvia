@@ -43,14 +43,18 @@ async function seed() {
 
   const project = await makeProject(customer.id);
   const otherProject = await makeProject(other.id);
+  // Both successful renders fall on one UTC day two days back, whatever time the suite runs,
+  // so the per-day totals in the overview and financials don't change at midnight.
+  const now = new Date();
+  const twoDaysBack = (hour: number) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 2, hour));
   const succeeded = await makeRender(project.id, {
     status: "succeeded", model: "mock", costMicros: 40_000, creditsCharged: 1, prompt: "modern house",
-    resultImageUrl: "https://example.test/result.png", createdAt: ago(2 * DAY), updatedAt: ago(2 * DAY),
+    resultImageUrl: "https://example.test/result.png", createdAt: twoDaysBack(12), updatedAt: twoDaysBack(12),
   });
   // A second successful render keeps the customers' render counts distinct, so ranked lists have no ties.
   await makeRender(project.id, {
     status: "succeeded", model: "mock", costMicros: 30_000, creditsCharged: 1, prompt: "second render",
-    resultImageUrl: "https://example.test/result-2.png", createdAt: ago(2.5 * DAY), updatedAt: ago(2.5 * DAY),
+    resultImageUrl: "https://example.test/result-2.png", createdAt: twoDaysBack(6), updatedAt: twoDaysBack(6),
   });
   await makeRender(project.id, {
     status: "failed", model: "mock", costMicros: 40_000, creditsCharged: 1, prompt: "failed one",
@@ -161,6 +165,8 @@ function writeProbes(): [string, string, string, unknown][] {
     ["revoke sessions", "POST", `/users/${MISSING_ID}/revoke-sessions`, {}],
     ["grant credits", "POST", `/users/${MISSING_ID}/credits`, {}],
     ["update user", "PATCH", `/users/${MISSING_ID}`, {}],
+    ["grant plan", "PUT", `/users/${MISSING_ID}/plan`, {}],
+    ["remove granted plan", "POST", `/users/${MISSING_ID}/plan/clear`, {}],
     ["refresh render", "POST", `/renders/${MISSING_ID}/refresh`, {}],
     ["cancel render", "POST", `/renders/${MISSING_ID}/cancel`, {}],
     ["update settings", "PUT", "/settings", { signupBonusCredits: -1 }],

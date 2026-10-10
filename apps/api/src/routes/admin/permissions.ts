@@ -22,7 +22,9 @@ export type AdminPermission =
   | "billing.read"
   | "billing.manage"
   | "incidents.read"
-  | "incidents.manage";
+  | "incidents.manage"
+  /** Grant or remove an unpaid plan. Admin-only until finer billing controls exist. */
+  | "plans.manage";
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
@@ -31,7 +33,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
-    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage",
   ],
 };
 

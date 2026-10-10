@@ -31,6 +31,8 @@ import type {
   AdminSegmentationMode,
   AdminSegmentationOrder,
   AdminSegmentationSort,
+  AdminSetPlanRequest,
+  AdminUserEntitlement,
   AdminSegmentationsResponse,
   AdminSettings,
   AdminUpdateSettingsRequest,
@@ -117,6 +119,10 @@ export function useAdminApi() {
       addCustomerNote: (id: string, body: string) => request<{ id: string }>(getToken, `/admin/users/${id}/notes`, { method: "POST", body: JSON.stringify({ body }) }),
       addCustomerTag: (id: string, label: string) => request<{ ok: true }>(getToken, `/admin/users/${id}/tags`, { method: "POST", body: JSON.stringify({ label }) }),
       revokeUserSessions: (id: string, body: { reason: string; confirmEmail: string }) => request<{ revoked: number }>(getToken, `/admin/users/${id}/revoke-sessions`, { method: "POST", body: JSON.stringify(body) }),
+      setUserPlan: (id: string, body: AdminSetPlanRequest) =>
+        request<{ entitlement: AdminUserEntitlement }>(getToken, `/admin/users/${id}/plan`, { method: "PUT", body: JSON.stringify(body) }),
+      clearUserPlan: (id: string, reason: string) =>
+        request<{ entitlement: AdminUserEntitlement }>(getToken, `/admin/users/${id}/plan/clear`, { method: "POST", body: JSON.stringify({ reason }) }),
       adjustCredits: (id: string, body: AdminGrantCreditsRequest) =>
         request<{ user: AdminUser }>(getToken, `/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify(body) }),
       bulkGrantCredits: (body: AdminBulkGrantCreditsRequest) =>

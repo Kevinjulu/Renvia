@@ -217,6 +217,13 @@ exports[`admin permission matrix > grants each role the same write access as bef
     "support": "403 Forbidden",
     "user": "403 Forbidden",
   },
+  "grant plan": {
+    "admin": "400 Invalid request",
+    "analyst": "403 Forbidden",
+    "billing": "403 Forbidden",
+    "support": "403 Forbidden",
+    "user": "403 Forbidden",
+  },
   "incident severity": {
     "admin": "400 Invalid request",
     "analyst": "403 Forbidden",
@@ -260,6 +267,13 @@ exports[`admin permission matrix > grants each role the same write access as bef
     "user": "403 Forbidden",
   },
   "reject": {
+    "admin": "400 Invalid request",
+    "analyst": "403 Forbidden",
+    "billing": "403 Forbidden",
+    "support": "403 Forbidden",
+    "user": "403 Forbidden",
+  },
+  "remove granted plan": {
     "admin": "400 Invalid request",
     "analyst": "403 Forbidden",
     "billing": "403 Forbidden",
@@ -1446,6 +1460,15 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "status": "paid",
         },
       ],
+      "plans": [
+        {
+          "id": "<uuid>",
+          "monthlyCredits": 0,
+          "name": "Starter",
+          "priceCents": 0,
+          "slug": "starter",
+        },
+      ],
       "projects": [
         {
           "createdAt": "<timestamp>",
@@ -1760,6 +1783,8 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "POST /users/:id/revoke-sessions",
   "POST /users/:id/credits",
   "PATCH /users/:id",
+  "PUT /users/:id/plan",
+  "POST /users/:id/plan/clear",
   "GET /renders",
   "GET /renders/:id",
   "POST /renders/:id/refresh",

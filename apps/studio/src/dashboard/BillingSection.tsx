@@ -96,6 +96,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
   const standardCost = me?.creditsPerImage ?? 1;
   const planName = me?.entitlement.plan.name ?? "Your plan";
   const planStatus = me?.entitlement.status ?? "active";
+  const complimentary = me?.entitlement.complimentary ?? null;
   const balanceOutcome = packOutcome(me?.creditBalance ?? 0, standardCost);
 
   if (!catalog && error) {
@@ -129,6 +130,11 @@ export function BillingSection({ api }: { api: StudioApi }) {
             <b>{planName}</b>
             <em className={`billing-status is-${planStatus}`}>{planStatus.replace("_", " ")}</em>
           </div>
+          {complimentary && (
+            <small className="billing-plan-note">
+              Complimentary{complimentary.endsAt ? ` until ${new Date(complimentary.endsAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : ""}
+            </small>
+          )}
         </div>
       </section>
 

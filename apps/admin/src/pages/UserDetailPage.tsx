@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { AdminUpdateUserRequest, AdminUser, UserLimits, UserUsage } from "@renvia/types";
 import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, Clock, Coins, DollarSign, Gauge, History, ImageIcon, Shield, SlidersHorizontal, StickyNote, LogOut, Tags } from "lucide-react";
+import { ChevronLeft, Clock, Coins, CreditCard, DollarSign, Gauge, History, ImageIcon, Shield, SlidersHorizontal, StickyNote, LogOut, Tags } from "lucide-react";
 import { RenderTable } from "../components/RenderTable";
 import { RoleChangeModal } from "../components/RoleChangeModal";
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
@@ -10,6 +10,7 @@ import { formatCreditReason } from "../lib/labels";
 import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/format";
 import { useLoad } from "../lib/useLoad";
 import { useAdmin } from "../lib/useAdmin";
+import { PlanPanel } from "./users/PlanPanel";
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
@@ -23,7 +24,7 @@ export function UserDetailPage() {
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
   if (!data) return <Skeleton className="h-64" />;
 
-  const { user, ledger, renders, limits, usage, notes, tags, projects, payments, entitlement, recentErrors } = data;
+  const { user, ledger, renders, limits, usage, notes, tags, projects, payments, entitlement, plans, recentErrors } = data;
   const isSelf = user.id === me.id;
 
   const runAction = async (action: () => Promise<unknown>) => {
@@ -144,6 +145,10 @@ export function UserDetailPage() {
         </Card>
       </div>
 
+      <Card title="Plan" icon={CreditCard} className="mt-6">
+        <PlanPanel userId={user.id} email={user.email} entitlement={entitlement} plans={plans} canManage={me.role === "admin"} onDone={reload} />
+      </Card>
+
       <Card title="Limits & overrides" icon={Gauge} className="mt-6">
         <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />
       </Card>
@@ -151,7 +156,6 @@ export function UserDetailPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card title="Customer context" icon={Tags}>
           <div className="space-y-3 text-sm">
-            <p><span className="text-muted">Plan:</span> {entitlement?.planName ?? "No entitlement"} {entitlement ? <span className="text-muted">· {entitlement.status}{entitlement.currentPeriodEnd ? ` until ${formatDateTime(entitlement.currentPeriodEnd)}` : ""}</span> : null}</p>
             <p><span className="text-muted">Tags:</span> {tags.length ? tags.map((tag) => <span key={tag.id} className="mr-1 inline-flex rounded-full bg-blueprint-soft px-2 py-0.5 text-xs text-blueprint">{tag.label}</span>) : " None"}</p>
             <p><span className="text-muted">Projects:</span> {projects.length ? projects.map((project) => <Link key={project.id} to={`/projects/${project.id}`} className="mr-2 text-blueprint hover:underline">{project.name}</Link>) : " None"}</p>
             <p><span className="text-muted">Payments:</span> {payments.length ? payments.slice(0, 3).map((payment) => <span key={payment.id} className="mr-2">{formatUsd(payment.amountCents / 100)} {payment.status}</span>) : " None"}</p>
