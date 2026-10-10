@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq, ne, sql } from "drizzle-orm";
+import { asc, desc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminSettings } from "@renvia/types";
@@ -12,8 +12,16 @@ import type { AdminContext } from "./context.js";
 
 export const settingsRoutes = new Hono<AdminContext>();
 
+async function planMonthlyCredits(db: Database) {
+  return db
+    .select({ slug: schema.billingPlans.slug, name: schema.billingPlans.name, monthlyCredits: schema.billingPlans.monthlyCredits })
+    .from(schema.billingPlans)
+    .where(eq(schema.billingPlans.isActive, true))
+    .orderBy(asc(schema.billingPlans.priceCents));
+}
+
 async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
-  const [[renderSpend], [segSpend], updaterRows, changeRows] = await Promise.all([
+  const [[renderSpend], [segSpend], updaterRows, changeRows, plans] = await Promise.all([
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
@@ -39,6 +47,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
       .where(eq(schema.adminEvents.action, "settings.update"))
       .orderBy(desc(schema.adminEvents.createdAt))
       .limit(8),
+    planMonthlyCredits(db),
   ]);
 
   const envMode = env.FAL_MODE?.trim() || null;
@@ -47,7 +56,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
   const effectiveMode = effectiveEngineMode(env, row);
 
   return {
-    signupBonusCredits: row.signupBonusCredits,
+    planMonthlyCredits: plans,
     dailyRenderLimit: row.dailyRenderLimit,
     dailySegmentLimit: row.dailySegmentLimit,
     monthlyRenderLimit: row.monthlyRenderLimit,
@@ -109,7 +118,7 @@ settingsRoutes.get("/settings", async (c) => {
 
 const updateSettingsSchema = z
   .object({
-    signupBonusCredits: z.number().int().min(0).max(1000).optional(),
+    planMonthlyCredits: z.record(z.string(), z.number().int().min(0).max(100_000)).optional(),
     dailyRenderLimit: z.number().int().min(1).max(10_000).nullable().optional(),
     dailySegmentLimit: z.number().int().min(1).max(10_000).nullable().optional(),
     monthlyRenderLimit: z.number().int().min(1).max(100_000).nullable().optional(),
@@ -163,11 +172,20 @@ settingsRoutes.put("/settings", async (c) => {
     return c.json({ error: "Critical percent must be greater than warning percent" }, 400);
   }
 
+  const { planMonthlyCredits: planCredits, ...appBody } = body;
+  const plansBefore = await planMonthlyCredits(db);
+  const unknownPlan = Object.keys(planCredits ?? {}).find((slug) => !plansBefore.some((plan) => plan.slug === slug));
+  if (unknownPlan) return c.json({ error: `No active plan "${unknownPlan}"` }, 400);
+  // Plan allowances apply from each user's next credit period; nothing already granted changes.
+  for (const [slug, monthlyCredits] of Object.entries(planCredits ?? {})) {
+    await db.update(schema.billingPlans).set({ monthlyCredits, updatedAt: new Date() }).where(eq(schema.billingPlans.slug, slug));
+  }
+
   const [updated] = await db
     .update(schema.appSettings)
     .set({
-      ...body,
-      falBudgetUsd: body.falBudgetUsd === undefined ? undefined : body.falBudgetUsd === null ? null : body.falBudgetUsd.toFixed(2),
+      ...appBody,
+      falBudgetUsd: appBody.falBudgetUsd === undefined ? undefined : appBody.falBudgetUsd === null ? null : appBody.falBudgetUsd.toFixed(2),
       updatedAt: new Date(),
       updatedBy: adminUser.id,
     })
@@ -183,7 +201,7 @@ settingsRoutes.put("/settings", async (c) => {
     summary: `Updated settings: ${changed.join(", ") || "no fields"}`,
     detail: {
       before: {
-        signupBonusCredits: before.signupBonusCredits,
+        planMonthlyCredits: Object.fromEntries(plansBefore.map((plan) => [plan.slug, plan.monthlyCredits])),
         dailyRenderLimit: before.dailyRenderLimit,
         dailySegmentLimit: before.dailySegmentLimit,
         monthlyRenderLimit: before.monthlyRenderLimit,

@@ -1,7 +1,8 @@
 import type { RenderEngineMode } from "@renvia/types";
 
 export interface Draft {
-  signupBonusCredits: string;
+  /** Plan slug to its monthly credits, as typed. */
+  planMonthlyCredits: Record<string, string>;
   dailyRenderLimit: string;
   dailySegmentLimit: string;
   monthlyRenderLimit: string;

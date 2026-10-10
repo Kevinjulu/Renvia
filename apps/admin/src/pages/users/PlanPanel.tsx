@@ -52,6 +52,11 @@ export function PlanPanel({ userId, email, entitlement, plans, canManage, onDone
         </p>
       )}
 
+      <p className="text-muted">
+        <span className="font-medium text-primary">{entitlement.planCredits} of {entitlement.monthlyAllowance}</span> monthly plan credits left
+        {entitlement.nextCreditRenewalAt ? `, renewing ${formatDateTime(entitlement.nextCreditRenewalAt)}` : ", first period starts when they next sign in"}.
+      </p>
+
       {canManage ? (
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" onClick={() => setChanging(true)}>{override?.active ? "Change granted plan" : "Grant a plan"}</Button>
@@ -163,7 +168,7 @@ function ChangePlanModal({ userId, email, plans, current, onClose, onDone }: {
           <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} placeholder="e.g. Client demo account" className="mt-1.5 w-full rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm outline-none focus:border-blueprint focus:bg-canvas" />
         </label>
 
-        <p className="mt-4 rounded-xl bg-surface px-3.5 py-2.5 text-xs text-muted">Monthly plan credits are not added yet. They arrive with the monthly credit allowance; until then, grant credits separately if needed.</p>
+        <p className="mt-4 rounded-xl bg-surface px-3.5 py-2.5 text-xs text-muted">Adds this plan's monthly credits for the current period, less what they were already granted this period. Granting the same or a lower plan again adds nothing.</p>
 
         {error && <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">

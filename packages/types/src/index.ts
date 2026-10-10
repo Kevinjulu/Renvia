@@ -396,7 +396,13 @@ export type CreditLedgerReason =
   | "purchase"
   | "purchase_refund"
   | "subscription_grant"
-  | "subscription_expiry";
+  | "subscription_expiry"
+  /** The plan's monthly allowance, at the start of a credit period or as an upgrade top-up. */
+  | "plan_grant"
+  /** Unspent monthly plan credits removed when the next period starts. */
+  | "plan_expiry"
+  /** Unspent signup or starting credits replaced by the first monthly allowance. */
+  | "promo_expiry";
 
 export interface CreditLedgerEntry {
   id: string;
@@ -532,7 +538,12 @@ export interface BillingEntitlement {
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  /** Unspent monthly plan credits; they are part of creditBalance and are spent first. */
   monthlyCreditsRemaining: number;
+  /** Credits the current plan grants each period. */
+  monthlyAllowance: number;
+  /** When unspent plan credits expire and the allowance is granted again; null if not scheduled. */
+  nextCreditRenewalAt: string | null;
   /** Set while an admin-granted plan applies; `plan` is that plan. endsAt null = until removed. */
   complimentary: { endsAt: string | null } | null;
 }
@@ -757,6 +768,11 @@ export interface AdminUserEntitlement {
   basePlanName: string;
   basePlanSlug: string;
   provider: string | null;
+  /** Unspent monthly plan credits (part of the balance) and what the plan grants each period. */
+  planCredits: number;
+  monthlyAllowance: number;
+  /** When plan credits next expire and the allowance is granted; null until the first period starts. */
+  nextCreditRenewalAt: string | null;
   /** The most recent admin-granted plan. `active` is false once its end date has passed. */
   override: {
     planId: string;
@@ -866,8 +882,16 @@ export interface AdminOverviewResponse {
   }[];
 }
 
+export interface AdminPlanCredits {
+  slug: string;
+  name: string;
+  /** Plan credits granted at the start of each monthly credit period. */
+  monthlyCredits: number;
+}
+
 export interface AdminSettings {
-  signupBonusCredits: number;
+  /** Each active plan's monthly allowance. A change applies from each user's next period. */
+  planMonthlyCredits: AdminPlanCredits[];
   /** Max renders per non-admin user per UTC day; null = unlimited. */
   dailyRenderLimit: number | null;
   /** Max segmentations per non-admin user per UTC day; null = unlimited. */
@@ -935,7 +959,6 @@ export interface AdminSettings {
 export type AdminUpdateSettingsRequest = Partial<
   Pick<
     AdminSettings,
-    | "signupBonusCredits"
     | "dailyRenderLimit"
     | "dailySegmentLimit"
     | "monthlyRenderLimit"
@@ -962,7 +985,10 @@ export type AdminUpdateSettingsRequest = Partial<
     | "stuckTimeoutMinutes"
     | "falMode"
     | "falBudgetUsd"
-  >
+  > & {
+    /** Plan slug to monthly credits; plans left out are unchanged. */
+    planMonthlyCredits: Record<string, number>;
+  }
 >;
 
 export interface AdminProject {

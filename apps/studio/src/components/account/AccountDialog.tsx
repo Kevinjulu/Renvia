@@ -30,6 +30,9 @@ const LEDGER_LABEL: Record<CreditLedgerReason, string> = {
   purchase_refund: "Purchase refund reversal",
   subscription_grant: "Monthly plan credits",
   subscription_expiry: "Unused monthly credits expired",
+  plan_grant: "Monthly plan credits",
+  plan_expiry: "Unused monthly credits expired",
+  promo_expiry: "Welcome credits replaced by monthly credits",
 };
 
 type ClerkSession = Awaited<ReturnType<NonNullable<ReturnType<typeof useUser>["user"]>["getSessions"]>>[number];

@@ -169,7 +169,7 @@ function writeProbes(): [string, string, string, unknown][] {
     ["remove granted plan", "POST", `/users/${MISSING_ID}/plan/clear`, {}],
     ["refresh render", "POST", `/renders/${MISSING_ID}/refresh`, {}],
     ["cancel render", "POST", `/renders/${MISSING_ID}/cancel`, {}],
-    ["update settings", "PUT", "/settings", { signupBonusCredits: -1 }],
+    ["update settings", "PUT", "/settings", { planMonthlyCredits: { starter: -1 } }],
     ["refund payment", "POST", `/billing/payments/${MISSING_ID}/refund`, {}],
     ["replay webhook", "POST", `/billing/webhooks/${MISSING_ID}/replay`, {}],
     ["recover segmentation", "POST", `/segmentations/${MISSING_ID}/recover`, {}],

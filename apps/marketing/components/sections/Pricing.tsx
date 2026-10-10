@@ -6,9 +6,9 @@ const TIERS = [
     description: "Explore the workflow and bring your first ideas to life.",
     price: "$0",
     period: "",
-    billing: "25 welcome credits · no card required",
+    billing: "20 free credits every month · no card required",
     features: ["Up to 5 render jobs per day", "Standard renders: 1 credit", "Strict source fidelity: 2 credits", "2 active projects"],
-    cta: "Start with 25 credits",
+    cta: "Start with 20 free credits",
     emphasized: false,
   },
   {

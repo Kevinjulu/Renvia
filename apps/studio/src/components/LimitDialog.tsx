@@ -214,6 +214,11 @@ export function LimitDialog({
   const showCredits = onViewCredits && refusal.code === "insufficient_credits";
   // The balance is context for an allowance problem, noise for a malformed request.
   const showBalance = me !== null && ALLOWANCE_CODES.includes(refusal.code);
+  // Out of credits: when the plan's monthly credits come back, and the way to get more now.
+  const outOfCredits = refusal.code === "insufficient_credits" && me !== null && me.role !== "admin";
+  const renewal = outOfCredits && me.entitlement.nextCreditRenewalAt && me.entitlement.monthlyAllowance > 0
+    ? `${me.entitlement.monthlyAllowance} credits on ${new Date(me.entitlement.nextCreditRenewalAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4" onClick={onDismiss}>
@@ -236,7 +241,7 @@ export function LimitDialog({
           </div>
         </div>
 
-        {(usage || showBalance) && (
+        {(usage || showBalance || renewal) && (
           <dl className={`mt-4 space-y-1.5 border-t pt-3 text-xs ${tone.rule}`}>
             {usage && (
               <div className="flex justify-between gap-3">
@@ -252,10 +257,26 @@ export function LimitDialog({
                 </dd>
               </div>
             )}
+            {renewal && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-faint">Monthly credits renew</dt>
+                <dd className="tabular-nums text-secondary">{renewal}</dd>
+              </div>
+            )}
           </dl>
         )}
 
         <div className="mt-5 flex justify-end gap-2.5">
+          {outOfCredits && (
+            <button
+              type="button"
+              disabled
+              title="Paid plans are coming soon"
+              className="mr-auto cursor-not-allowed rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-faint"
+            >
+              Upgrade · coming soon
+            </button>
+          )}
           {showCredits && (
             <button
               type="button"

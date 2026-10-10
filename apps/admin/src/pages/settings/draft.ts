@@ -4,7 +4,7 @@ import type { Draft, FieldErrors } from "./types";
 
 export function toDraft(settings: AdminSettings): Draft {
   return {
-    signupBonusCredits: String(settings.signupBonusCredits),
+    planMonthlyCredits: Object.fromEntries(settings.planMonthlyCredits.map((plan) => [plan.slug, String(plan.monthlyCredits)])),
     dailyRenderLimit: settings.dailyRenderLimit === null ? "" : String(settings.dailyRenderLimit),
     dailySegmentLimit: settings.dailySegmentLimit === null ? "" : String(settings.dailySegmentLimit),
     monthlyRenderLimit: settings.monthlyRenderLimit === null ? "" : String(settings.monthlyRenderLimit),
@@ -61,9 +61,13 @@ export function optionalText(raw: string): { value: string | null; error?: strin
 
 export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest; errors: FieldErrors } | { body: null; errors: FieldErrors } {
   const errors: FieldErrors = {};
-  const bonus = Number(draft.signupBonusCredits);
-  if (!Number.isInteger(bonus) || bonus < 0 || bonus > 1000) {
-    errors.signupBonusCredits = "Whole number from 0 to 1,000.";
+  const planMonthlyCredits: Record<string, number> = {};
+  for (const [slug, raw] of Object.entries(draft.planMonthlyCredits)) {
+    const value = Number(raw);
+    if (raw.trim() === "" || !Number.isInteger(value) || value < 0 || value > 100_000) {
+      errors.planMonthlyCredits = "Whole numbers from 0 to 100,000.";
+    }
+    planMonthlyCredits[slug] = value;
   }
   const renderLimit = draft.dailyRenderLimit.trim() === "" ? null : Number(draft.dailyRenderLimit);
   if (renderLimit !== null && (!Number.isInteger(renderLimit) || renderLimit < 1 || renderLimit > 10_000)) {
@@ -141,9 +145,10 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
   ) {
     errors.monthlySegmentLimit = "Monthly limit must be at least the daily limit.";
   }
-  // A signup bonus above the balance cap would be clipped on every new account.
-  if (!maxCreditBalance.error && maxCreditBalance.value !== null && bonus > maxCreditBalance.value) {
-    errors.maxCreditBalance = "Must be at least the signup bonus.";
+  // A cap below a plan's monthly allowance would contradict what that plan promises.
+  const largestAllowance = Math.max(0, ...Object.values(planMonthlyCredits).filter(Number.isFinite));
+  if (!maxCreditBalance.error && maxCreditBalance.value !== null && largestAllowance > maxCreditBalance.value) {
+    errors.maxCreditBalance = "Must be at least the largest monthly plan allowance.";
   }
 
   const messages = {
@@ -160,7 +165,7 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
   if (Object.keys(errors).length > 0) return { body: null, errors };
   return {
     body: {
-      signupBonusCredits: bonus,
+      planMonthlyCredits,
       dailyRenderLimit: renderLimit,
       dailySegmentLimit: segmentLimit,
       monthlyRenderLimit: monthlyRenderLimit.value,

@@ -370,8 +370,7 @@ describe("granted plans", () => {
 
   it("grants a plan on top of the base plan, with the plan's limits, and audits it", async () => {
     const studio = await studioPlan();
-    // The seeded customer has never signed in, so has no plan record until one is granted.
-    expect((await detail()).entitlement).toBeNull();
+    expect((await detail()).entitlement).toMatchObject({ planSlug: "starter", basePlanSlug: "starter", override: null });
 
     const res = await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: inDays(30), reason: "client demo" });
 
@@ -381,7 +380,10 @@ describe("granted plans", () => {
     expect(after.limits.dailyRenders).toBe(50);
     expect(after.plans.map((plan) => plan.slug).sort()).toEqual(["starter", "studio"]);
     const [event] = await events("billing.entitlement");
-    expect(event!.summary).toMatch(/^customer@example\.test: granted Studio until \d{4}-\d{2}-\d{2}$/);
+    // Mid-period on Starter (no allowance in this fixture), so the full Studio allowance is added.
+    expect(event!.summary).toMatch(/^customer@example\.test: granted Studio until \d{4}-\d{2}-\d{2}, \+200 plan credits$/);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row).toMatchObject({ creditBalance: 215, planCredits: 200 });
     expect(event!.detail).toMatchObject({ reason: "client demo", before: { plan: "starter" }, after: { plan: "studio" } });
   });
 
@@ -474,26 +476,41 @@ describe("customer notes, tags and sessions", () => {
 
 describe("PUT /settings", () => {
   it("updates settings, reports them back and audits the change", async () => {
-    const res = await call("admin", "PUT", "/settings", { signupBonusCredits: 30, maxUploadMb: 20 });
+    const res = await call("admin", "PUT", "/settings", { planMonthlyCredits: { starter: 30 }, maxUploadMb: 20 });
 
     expect(res.status).toBe(200);
     const [row] = await db.select().from(schema.appSettings);
-    expect(row).toMatchObject({ signupBonusCredits: 30, maxUploadMb: 20, updatedBy: actors.admin.id });
-    expect((await events("settings.update"))[0]!.summary).toBe("Updated settings: signupBonusCredits, maxUploadMb");
+    expect(row).toMatchObject({ maxUploadMb: 20, updatedBy: actors.admin.id });
+    const [starter] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.slug, "starter"));
+    expect(starter!.monthlyCredits).toBe(30);
+    const [event] = await events("settings.update");
+    expect(event!.summary).toBe("Updated settings: planMonthlyCredits, maxUploadMb");
+    expect(event!.detail).toMatchObject({ before: { planMonthlyCredits: { starter: 0 } }, after: { planMonthlyCredits: { starter: 30 } } });
     const read = await call("admin", "GET", "/settings");
-    expect(((await read.json()) as { signupBonusCredits: number }).signupBonusCredits).toBe(30);
+    expect(((await read.json()) as { planMonthlyCredits: { slug: string; monthlyCredits: number }[] }).planMonthlyCredits).toEqual([
+      { slug: "starter", name: "Starter", monthlyCredits: 30 },
+    ]);
+  });
+
+  it("refuses a plan that doesn't exist and leaves everything unchanged", async () => {
+    const res = await call("admin", "PUT", "/settings", { planMonthlyCredits: { starter: 30, gold: 5 }, maxUploadMb: 20 });
+    expect(res.status).toBe(400);
+    const [starter] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.slug, "starter"));
+    expect(starter!.monthlyCredits).toBe(0);
+    expect(await events("settings.update")).toHaveLength(0);
   });
 
   it("validates input", async () => {
     expect((await call("admin", "PUT", "/settings", { budgetWarningPercent: 90, budgetCriticalPercent: 80 })).status).toBe(400);
-    expect((await call("admin", "PUT", "/settings", { signupBonusCredits: -1 })).status).toBe(400);
+    expect((await call("admin", "PUT", "/settings", { planMonthlyCredits: { starter: -1 } })).status).toBe(400);
+    expect((await call("admin", "PUT", "/settings", { signupBonusCredits: 20 })).status).toBe(400);
     expect((await call("admin", "PUT", "/settings", { notASetting: true })).status).toBe(400);
     expect(await events("settings.update")).toHaveLength(0);
   });
 
   it("is restricted to admins", async () => {
     for (const who of ["support", "billing", "analyst"]) {
-      expect((await call(who, "PUT", "/settings", { signupBonusCredits: 1 })).status).toBe(403);
+      expect((await call(who, "PUT", "/settings", { planMonthlyCredits: { starter: 1 } })).status).toBe(403);
     }
   });
 });

@@ -11,6 +11,10 @@ export const users = pgTable(
   role: text("role", { enum: ["user", "analyst", "support", "billing", "admin"] }).notNull().default("user"),
   /** Spendable credits; standard renders cost 1, while premium actions can cost more. Every change is mirrored in credit_ledger. */
   creditBalance: integer("credit_balance").notNull().default(0),
+  /** The part of creditBalance from the plan's monthly allowance; spent first, expires at renewal. */
+  planCredits: integer("plan_credits").notNull().default(0),
+  /** Scratch: plan credits taken by the charge that last set it, read later in the same transaction. */
+  lastPlanDebit: integer("last_plan_debit").notNull().default(0),
   disabled: boolean("disabled").notNull().default(false),
   /** Per-user override of app_settings.daily_render_limit; null = use the global setting. */
   dailyRenderLimitOverride: integer("daily_render_limit_override"),
@@ -29,6 +33,7 @@ export const users = pgTable(
   },
   (table) => [
     check("users_credit_balance_non_negative", sql`${table.creditBalance} >= 0`),
+    check("users_plan_credits_within_balance", sql`${table.planCredits} >= 0 and ${table.planCredits} <= ${table.creditBalance}`),
     index("users_last_active_idx").on(table.lastActiveAt),
     check(
       "users_daily_render_limit_override_range",
@@ -198,8 +203,12 @@ export const creditLedger = pgTable(
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry"],
+      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry", "plan_grant", "plan_expiry", "promo_expiry"],
     }).notNull(),
+    /** The part of `amount` that moved plan credits; refunds return that part to plan credits. */
+    planAmount: integer("plan_amount").notNull().default(0),
+    /** Set on plan grants and expiries: at most one of each per user per credit period. */
+    periodKey: text("period_key"),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
     segmentationId: uuid("segmentation_id").references(() => segmentations.id, { onDelete: "set null" }),
     /** Ties purchased credits to a provider payment so refunds can be reversed safely. */
@@ -215,6 +224,7 @@ export const creditLedger = pgTable(
     // Same guarantee for automatic selections.
     uniqueIndex("credit_ledger_segmentation_reason_unique").on(table.segmentationId, table.reason),
     uniqueIndex("credit_ledger_payment_reason_unique").on(table.paymentId, table.reason),
+    uniqueIndex("credit_ledger_user_reason_period_unique").on(table.userId, table.reason, table.periodKey).where(sql`${table.periodKey} is not null`),
     index("credit_ledger_user_created_idx").on(table.userId, table.createdAt),
   ],
 );
@@ -284,6 +294,12 @@ export const userEntitlements = pgTable(
     overrideReason: text("override_reason"),
     overrideSetBy: uuid("override_set_by").references(() => users.id),
     overrideSetAt: timestamp("override_set_at", { withTimezone: true }),
+    /** Start of the current monthly credit period (signup anniversary, or a paid renewal). */
+    creditPeriodStart: timestamp("credit_period_start", { withTimezone: true }),
+    /** The highest monthly allowance granted in this period; upgrades top up only the difference. */
+    periodCreditsGranted: integer("period_credits_granted").notNull().default(0),
+    /** Scratch: the top-up computed by the statement that sets it, read later in the same transaction. */
+    lastTopup: integer("last_topup").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

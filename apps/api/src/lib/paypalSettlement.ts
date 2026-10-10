@@ -101,7 +101,7 @@ export async function reversePaypalPurchaseCredits(db: ReturnType<typeof createD
   const [user] = await db.select({ creditBalance: schema.users.creditBalance }).from(schema.users).where(eq(schema.users.id, grant.userId)).limit(1);
   if (!user || user.creditBalance < grant.amount) throw new Error("Refund requires manual review because purchased credits have already been used");
   await db.batch([
-    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} - ${grant.amount}` }).where(eq(schema.users.id, grant.userId)),
+    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} - ${grant.amount}`, planCredits: sql`least(${schema.users.planCredits}, ${schema.users.creditBalance} - ${grant.amount})` }).where(eq(schema.users.id, grant.userId)),
     db.insert(schema.creditLedger).values({ userId: grant.userId, paymentId, amount: -grant.amount, reason: "purchase_refund", note: `PayPal refund ${refundId}` }),
   ]);
 }

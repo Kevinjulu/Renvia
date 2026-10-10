@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { Env } from "../../index.js";
 import { reversePaypalPurchaseCredits, settlePaypalCapture } from "../../lib/paypalSettlement.js";
+import { addMonthsClamped, startPaidPeriod } from "../../lib/planCredits.js";
 
 export const paypalWebhook = new Hono<{ Bindings: Env }>();
 
@@ -110,22 +111,34 @@ async function settleSubscriptionPayment(db: ReturnType<typeof createDb>, event:
   const amountCents = amount && typeof amount === "object" ? cents((amount as Record<string, unknown>).value) : null;
   const currency = amount && typeof amount === "object" ? resourceString(amount as Record<string, unknown>, "currency_code") : null;
   if (!paymentId || !subscriptionId || amountCents === null || !currency) throw new Error("PayPal subscription payment is incomplete");
-  const [existing] = await db.select({ id: schema.billingPayments.id }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, paymentId))).limit(1);
-  if (existing) return;
+  const [existing] = await db.select({ id: schema.billingPayments.id, paidAt: schema.billingPayments.paidAt }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, paymentId))).limit(1);
   const [entitlement] = await db.select().from(schema.userEntitlements).where(and(eq(schema.userEntitlements.provider, "paypal"), eq(schema.userEntitlements.providerSubscriptionId, subscriptionId))).limit(1);
   if (!entitlement) throw new Error("No active Renvia entitlement matches this PayPal subscription");
   const [plan] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, entitlement.planId)).limit(1);
   if (!plan || plan.currency !== currency || plan.priceCents !== amountCents) throw new Error("PayPal subscription payment does not match the Renvia plan");
+  // The payment starts the next credit period: unspent plan credits expire and the allowance is
+  // granted once. Keyed by the payment time, so a replayed event (including one retried after
+  // the payment was recorded but before the credits landed) grants nothing extra.
+  const startPeriod = (paidAt: Date) => startPaidPeriod(db, {
+    userId: entitlement.userId,
+    allowance: plan.monthlyCredits,
+    start: paidAt,
+    next: entitlement.currentPeriodEnd && entitlement.currentPeriodEnd > paidAt ? entitlement.currentPeriodEnd : addMonthsClamped(paidAt, 1),
+  });
+  if (existing) {
+    if (existing.paidAt) await startPeriod(existing.paidAt);
+    return;
+  }
+  const paidAt = new Date();
   const [checkout] = await db.select().from(schema.billingCheckouts).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)).limit(1);
   const recordId = crypto.randomUUID();
   await db.batch([
-    db.insert(schema.billingPayments).values({ id: recordId, checkoutId: checkout?.id ?? null, userId: entitlement.userId, provider: "paypal", providerPaymentId: paymentId, status: "paid", currency, amountCents, paidAt: new Date(), providerMetadata: { subscriptionId, eventId: event.id } }),
+    db.insert(schema.billingPayments).values({ id: recordId, checkoutId: checkout?.id ?? null, userId: entitlement.userId, provider: "paypal", providerPaymentId: paymentId, status: "paid", currency, amountCents, paidAt, providerMetadata: { subscriptionId, eventId: event.id } }),
     db.insert(schema.billingInvoices).values({ userId: entitlement.userId, paymentId: recordId, provider: "paypal", providerInvoiceId: paymentId, number: `PAYPAL-${paymentId}`, status: "paid", currency, amountCents }),
     db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)),
-    db.update(schema.userEntitlements).set({ status: "active", monthlyCreditsRemaining: plan.monthlyCredits, updatedAt: new Date() }).where(eq(schema.userEntitlements.id, entitlement.id)),
-    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${plan.monthlyCredits}` }).where(eq(schema.users.id, entitlement.userId)),
-    db.insert(schema.creditLedger).values({ userId: entitlement.userId, paymentId: recordId, amount: plan.monthlyCredits, reason: "subscription_grant", note: `PayPal subscription payment ${paymentId}` }),
+    db.update(schema.userEntitlements).set({ status: "active", updatedAt: new Date() }).where(eq(schema.userEntitlements.id, entitlement.id)),
   ]);
+  await startPeriod(paidAt);
 }
 
 async function updateSubscriptionStatus(db: ReturnType<typeof createDb>, event: PaypalEvent, status: "past_due" | "canceled" | "expired"): Promise<void> {

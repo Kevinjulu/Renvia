@@ -126,9 +126,20 @@ variable matching the prefix into the public bundle.
 ## Credits
 
 1 credit = 1 image (the per-image and per-selection prices are admin settings,
-default 1). New users get a one-time signup bonus (default 25). The Starter plan
-and the default limits (5 renders a day, 2 projects) keep a free account from
-spending the whole grant in one burst.
+default 1). Each plan grants monthly credits: Starter 20, Studio 200, Team 600
+(admin Settings). A user's monthly period runs from one signup anniversary to the
+next, or from one paid renewal to the next for a PayPal subscription.
+
+- `users.credit_balance` is the one spendable total. `users.plan_credits` is the
+  part of it from the monthly allowance: spent first, and expired when the next
+  period starts. Purchased and admin-granted credits never expire.
+- A period starts once: its `plan_grant` ledger row is keyed by user and period,
+  and the rest of the batch only applies if that row was new. The first request
+  after the renewal date starts it, and the daily cron catches everyone else.
+- The first period replaces leftover signup credits with the allowance
+  (`promo_expiry`) and keeps purchases and admin grants.
+- Upgrading mid-period (an admin-granted plan) adds only the difference from the
+  highest allowance already granted that period.
 
 - `POST /renders` debits the balance in the same transaction that creates the
   render. A database check keeps the balance from going negative, so concurrent
@@ -203,14 +214,14 @@ instance, calling the role-gated `/api/admin/*` routes.
 | Page | What it does |
 |---|---|
 | Overview | Users, renders, failure rate, spend against budget, daily renders, top users |
-| Users, User detail | Search; grant or remove credits, disable (which also signs the user out), change role, limit overrides, notes, tags, revoke sessions |
+| Users, User detail | Search; grant or remove credits, grant a plan (until a date or removed), disable (which also signs the user out), change role, limit overrides, notes, tags, revoke sessions |
 | Projects, Renders, Segmentations | Browse; refresh, cancel or recover stuck and failed work |
 | Credits | The full credit ledger |
 | Billing, Financials, Operations | Payments, refunds, webhook replay, revenue and margin, work queue |
 | Incidents | Open, acknowledge, assign and resolve operational incidents |
 | Approvals | Approve or reject held role changes and bulk grants, then execute them |
 | Audit | Every staff action, with immutable CSV exports |
-| Settings | Signup bonus, limits, prices, messages, maintenance mode, engine mode and budget |
+| Settings | Monthly plan credits, limits, prices, messages, maintenance mode, engine mode and budget |
 
 **Roles** live in `users.role` (not Clerk metadata): `user`, `analyst`, `support`,
 `billing`, `admin`. Each role has an explicit permission list in

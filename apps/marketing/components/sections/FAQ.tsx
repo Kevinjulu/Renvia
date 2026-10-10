@@ -17,7 +17,7 @@ const FAQS = [
   {
     question: "How do rendering credits work?",
     answer:
-      "New accounts receive 25 one-time welcome credits. Standard renders and edits use 1 credit; Strict source-fidelity renders use 2. Failed renders are refunded. Paid credit packs and subscriptions will be available once checkout is connected.",
+      "Starter accounts get 20 free credits every month, renewed on the day you signed up. Unused monthly credits don't carry over. Standard renders and edits use 1 credit; Strict source-fidelity renders use 2. Failed renders are refunded. Paid credit packs and subscriptions will be available once checkout is connected.",
   },
   {
     question: "Can I generate multiple variations?",

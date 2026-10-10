@@ -204,6 +204,13 @@
       "when": 1791936000000,
       "tag": "0028_plan_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792022400000,
+      "tag": "0029_plan_credits",
+      "breakpoints": true
     }
   ]
 }

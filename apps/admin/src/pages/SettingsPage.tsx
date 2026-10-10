@@ -119,7 +119,7 @@ export function SettingsPage() {
         <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} meterTone={meterTone} maintenanceOn={maintenanceOn} />
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <CreditsLimitsSection draft={draft} fieldErrors={fieldErrors} update={update} />
+          <CreditsLimitsSection draft={draft} plans={data.planMonthlyCredits} fieldErrors={fieldErrors} update={update} />
 
           <EngineBudgetSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
 

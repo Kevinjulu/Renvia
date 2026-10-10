@@ -1,9 +1,9 @@
 import { createClerkClient } from "@clerk/backend";
-import { and, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
-import { getSettings } from "./settings.js";
 import { ensureEntitlement } from "./billing.js";
+import { ensureCreditPeriod } from "./planCredits.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 
@@ -15,29 +15,31 @@ async function fetchClerkEmail(env: Env, clerkId: string): Promise<string> {
 }
 
 /**
+ * Starts the user's monthly credit period when one is due (the first at signup, then each
+ * signup anniversary) and returns the row with the resulting balance.
+ */
+async function withCurrentCredits(db: Database, user: UserRow): Promise<UserRow> {
+  const billing = await ensureEntitlement(db, user.id);
+  if (!(await ensureCreditPeriod(db, user.id, user.createdAt, billing))) return user;
+  const [fresh] = await db.select().from(schema.users).where(eq(schema.users.id, user.id));
+  return fresh ? { ...fresh, lastActiveAt: user.lastActiveAt } : user;
+}
+
+/**
  * Creates or refreshes the user's row from Clerk. An upsert, so concurrent first requests
  * can't race into a unique-key violation, and email changes made in Clerk are picked up.
- * A brand-new row starts with the signup bonus, recorded in the ledger.
+ * A new account starts at 0 and receives its plan's monthly allowance as its first credit
+ * period; if that step fails, the next request (or the daily renewal) starts it.
  */
 export async function syncUser(env: Env, db: Database, clerkId: string): Promise<UserRow> {
-  // Read the bonus before inserting so a brand-new row is created *with* its credits —
-  // granting afterwards could leave a user at 0 forever if that second step failed,
-  // since on retry they're no longer "new".
-  const [email, { signupBonusCredits }] = await Promise.all([fetchClerkEmail(env, clerkId), getSettings(db)]);
-  const [result] = await db
+  const email = await fetchClerkEmail(env, clerkId);
+  const [user] = await db
     .insert(schema.users)
-    .values({ clerkId, email, creditBalance: signupBonusCredits })
+    .values({ clerkId, email })
     .onConflictDoUpdate({ target: schema.users.clerkId, set: { email, updatedAt: sql`now()` } })
-    // xmax is 0 only for a freshly inserted row, not one the conflict clause updated.
-    .returning({ ...getTableColumns(schema.users), inserted: sql<boolean>`(xmax = 0)` });
-  if (!result) throw new Error("Failed to sync user");
-
-  const { inserted, ...user } = result;
-  if (inserted && signupBonusCredits > 0) {
-    await db.insert(schema.creditLedger).values({ userId: user.id, amount: signupBonusCredits, reason: "signup_bonus" });
-  }
-  await ensureEntitlement(db, user.id);
-  return user;
+    .returning();
+  if (!user) throw new Error("Failed to sync user");
+  return withCurrentCredits(db, user);
 }
 
 /** The user's row; only calls Clerk the first time a user is seen. */
@@ -50,8 +52,7 @@ export async function getOrCreateUser(env: Env, db: Database, clerkId: string): 
     .update(schema.users)
     .set({ lastActiveAt: sql`now()` })
     .where(and(eq(schema.users.id, existing.id), sql`(${schema.users.lastActiveAt} is null or ${schema.users.lastActiveAt} < now() - interval '5 minutes')`));
-  await ensureEntitlement(db, existing.id);
-  return { ...existing, lastActiveAt: new Date() };
+  return withCurrentCredits(db, { ...existing, lastActiveAt: new Date() });
 }
 
 export async function getOrCreateUserId(env: Env, db: Database, clerkId: string): Promise<string> {

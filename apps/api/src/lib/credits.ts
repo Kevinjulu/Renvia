@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 
 type RenderRow = typeof schema.renders.$inferSelect;
@@ -22,6 +22,33 @@ function hasPgCode(error: unknown, code: string): boolean {
 
 function isCheckViolation(error: unknown): boolean {
   return hasPgCode(error, CHECK_VIOLATION);
+}
+
+/**
+ * Takes `credits` from the balance, plan credits first. Records how many came from plan
+ * credits in last_plan_debit, which the ledger row written next in the batch copies.
+ */
+function debitUser(db: Database, userId: string, credits: number) {
+  return db
+    .update(schema.users)
+    .set({
+      creditBalance: sql`${schema.users.creditBalance} - ${credits}`,
+      // SET expressions read the row as it was, so both see the plan credits before this charge.
+      planCredits: sql`${schema.users.planCredits} - least(${schema.users.planCredits}, ${credits})`,
+      lastPlanDebit: sql`least(${schema.users.planCredits}, ${credits})`,
+    })
+    .where(eq(schema.users.id, userId));
+}
+
+/** The plan-credit part of the charge just made by debitUser in this transaction. */
+function chargedPlanAmount(userId: string) {
+  return sql<number>`-(select ${schema.users.lastPlanDebit} from ${schema.users} where ${schema.users.id} = ${userId})`;
+}
+
+/** The plan-credit part of an earlier charge, to return to plan credits on refund. */
+async function planPartOf(db: Database, where: ReturnType<typeof and>): Promise<number> {
+  const [charge] = await db.select({ planAmount: schema.creditLedger.planAmount }).from(schema.creditLedger).where(where);
+  return -(charge?.planAmount ?? 0);
 }
 
 /** A unique index refused the row — for renders, another request already used its idempotency key. */
@@ -49,12 +76,9 @@ export async function createChargedRender(
 
   try {
     const [, [created]] = await db.batch([
-      db
-        .update(schema.users)
-        .set({ creditBalance: sql`${schema.users.creditBalance} - ${credits}` })
-        .where(eq(schema.users.id, userId)),
+      debitUser(db, userId, credits),
       db.insert(schema.renders).values({ ...values, id, creditsCharged: credits }).returning(),
-      db.insert(schema.creditLedger).values({ userId, amount: -credits, reason: "render", renderId: id }),
+      db.insert(schema.creditLedger).values({ userId, amount: -credits, planAmount: chargedPlanAmount(userId), reason: "render", renderId: id }),
     ]);
     return created!;
   } catch (error) {
@@ -83,12 +107,9 @@ export async function createChargedSegmentation(
 
   try {
     const [, [created]] = await db.batch([
-      db
-        .update(schema.users)
-        .set({ creditBalance: sql`${schema.users.creditBalance} - ${credits}` })
-        .where(eq(schema.users.id, userId)),
+      debitUser(db, userId, credits),
       db.insert(schema.segmentations).values({ ...values, id, userId, creditsCharged: credits }).returning(),
-      db.insert(schema.creditLedger).values({ userId, amount: -credits, reason: "segment", segmentationId: id }),
+      db.insert(schema.creditLedger).values({ userId, amount: -credits, planAmount: chargedPlanAmount(userId), reason: "segment", segmentationId: id }),
     ]);
     return created!;
   } catch (error) {
@@ -109,11 +130,13 @@ export async function refundSegmentationIfNeeded(
     return segmentation;
   }
 
+  const planPart = await planPartOf(db, and(eq(schema.creditLedger.segmentationId, segmentation.id), eq(schema.creditLedger.reason, "segment")));
   const [refund] = await db
     .insert(schema.creditLedger)
     .values({
       userId: segmentation.userId,
       amount: segmentation.creditsCharged,
+      planAmount: planPart,
       reason: "segment_refund",
       segmentationId: segmentation.id,
     })
@@ -122,7 +145,7 @@ export async function refundSegmentationIfNeeded(
   if (refund) {
     await db
       .update(schema.users)
-      .set({ creditBalance: sql`${schema.users.creditBalance} + ${segmentation.creditsCharged}` })
+      .set({ creditBalance: sql`${schema.users.creditBalance} + ${segmentation.creditsCharged}`, planCredits: sql`${schema.users.planCredits} + ${planPart}` })
       .where(eq(schema.users.id, segmentation.userId));
   }
   return segmentation;
@@ -142,15 +165,17 @@ export async function refundIfFailed(db: Database, render: RenderRow): Promise<R
     .where(eq(schema.projects.id, render.projectId));
   if (!project) return render;
 
+  // Plan credits spent on it go back to plan credits; they still expire at the next renewal.
+  const planPart = await planPartOf(db, and(eq(schema.creditLedger.renderId, render.id), eq(schema.creditLedger.reason, "render")));
   const [refund] = await db
     .insert(schema.creditLedger)
-    .values({ userId: project.ownerId, amount: render.creditsCharged, reason: "render_refund", renderId: render.id })
+    .values({ userId: project.ownerId, amount: render.creditsCharged, planAmount: planPart, reason: "render_refund", renderId: render.id })
     .onConflictDoNothing()
     .returning({ id: schema.creditLedger.id });
   if (refund) {
     await db
       .update(schema.users)
-      .set({ creditBalance: sql`${schema.users.creditBalance} + ${render.creditsCharged}` })
+      .set({ creditBalance: sql`${schema.users.creditBalance} + ${render.creditsCharged}`, planCredits: sql`${schema.users.planCredits} + ${planPart}` })
       .where(eq(schema.users.id, project.ownerId));
   }
   return render;

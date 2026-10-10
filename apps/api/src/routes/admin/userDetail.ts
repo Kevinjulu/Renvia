@@ -7,6 +7,7 @@ import { schema, type Database } from "@renvia/db";
 import type { AdminLedgerEntry, AdminPlanOption, AdminUserEntitlement } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
 import { ensureEntitlement, getBillingEntitlement, overrideIsActive } from "../../lib/billing.js";
+import { ensureCreditPeriod, topUpPlanCredits } from "../../lib/planCredits.js";
 import { getUsage, resolveLimits } from "../../lib/limits.js";
 import { denyUnless } from "./permissions.js";
 import { selectAdminRenders, toAdminRender, findAdminUser, recordAdminEvent } from "./shared.js";
@@ -23,6 +24,7 @@ async function adminEntitlementFor(db: Database, userId: string): Promise<{ view
   const billing = await getBillingEntitlement(db, userId);
   if (!billing) return null;
   const { entitlement, basePlan } = billing;
+  const [credits] = await db.select({ planCredits: schema.users.planCredits }).from(schema.users).where(eq(schema.users.id, userId));
   let override: AdminUserEntitlement["override"] = null;
   if (entitlement.overridePlanId) {
     const [[overridePlan], [setBy]] = await Promise.all([
@@ -52,6 +54,9 @@ async function adminEntitlementFor(db: Database, userId: string): Promise<{ view
       basePlanName: basePlan.name,
       basePlanSlug: basePlan.slug,
       provider: entitlement.provider,
+      planCredits: credits?.planCredits ?? 0,
+      monthlyAllowance: billing.plan.monthlyCredits,
+      nextCreditRenewalAt: entitlement.nextCreditGrantAt?.toISOString() ?? null,
       override,
     },
   };
@@ -219,7 +224,9 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
     const [updated] = await db.batch([
       db
         .update(schema.users)
-        .set({ creditBalance: sql`${schema.users.creditBalance} + ${amount}` })
+        // Admin credits never expire. A removal comes out of the balance, and plan credits
+        // shrink with it so they never exceed what is left.
+        .set({ creditBalance: sql`${schema.users.creditBalance} + ${amount}`, planCredits: sql`least(${schema.users.planCredits}, ${schema.users.creditBalance} + ${amount})` })
         .where(eq(schema.users.id, id))
         .returning({ id: schema.users.id }),
       db.insert(schema.creditLedger).values({ userId: id, amount, reason: "admin_grant", note, actorId: adminUser.id }),
@@ -433,10 +440,18 @@ userDetailRoutes.put("/users/:id/plan", async (c) => {
     return c.json({ error: `They already hold ${plan.name}. Remove the granted plan instead to return them to it.`, code: "same_as_base" }, 400);
   }
   await db.update(schema.userEntitlements).set({ overridePlanId: plan.id, overrideEndsAt: endsAt, overrideReason: body.reason, overrideSetBy: actor.id, overrideSetAt: new Date(), updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id));
+
+  // Credits for the new plan this period: a first period starts on it directly; otherwise only
+  // the difference from the highest allowance already granted this period is added.
+  const [userRow] = await db.select({ createdAt: schema.users.createdAt }).from(schema.users).where(eq(schema.users.id, id));
+  const billing = await getBillingEntitlement(db, id);
+  const startedPeriod = billing && userRow ? await ensureCreditPeriod(db, id, userRow.createdAt, billing) : false;
+  const toppedUp = startedPeriod ? 0 : await topUpPlanCredits(db, id, plan.monthlyCredits);
+
   await recordAdminEvent(db, {
     actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
-    summary: `${target.email}: granted ${planLabel(plan.name, endsAt)}`,
-    detail: { reason: body.reason, before: { plan: before.view.planSlug, override: before.view.override }, after: { plan: plan.slug, endsAt: endsAt?.toISOString() ?? null } },
+    summary: `${target.email}: granted ${planLabel(plan.name, endsAt)}${toppedUp > 0 ? `, +${toppedUp} plan credits` : ""}`,
+    detail: { reason: body.reason, before: { plan: before.view.planSlug, override: before.view.override }, after: { plan: plan.slug, endsAt: endsAt?.toISOString() ?? null }, planCreditsAdded: toppedUp, startedPeriod },
   });
   return c.json({ entitlement: (await adminEntitlementFor(db, id))!.view });
 });

@@ -28,14 +28,17 @@ export function diffChanges(settings: AdminSettings, draft: Draft): ChangeItem[]
   const body = result.body;
   const items: ChangeItem[] = [];
 
-  pushIfChanged(
-    items,
-    "signupBonusCredits",
-    "Signup bonus",
-    formatNumber(settings.signupBonusCredits),
-    formatNumber(body.signupBonusCredits!),
-    body.signupBonusCredits !== undefined && body.signupBonusCredits !== settings.signupBonusCredits,
-  );
+  for (const plan of settings.planMonthlyCredits) {
+    const next = body.planMonthlyCredits?.[plan.slug];
+    pushIfChanged(
+      items,
+      `planMonthlyCredits.${plan.slug}`,
+      `${plan.name} monthly credits`,
+      formatNumber(plan.monthlyCredits),
+      formatNumber(next ?? plan.monthlyCredits),
+      next !== undefined && next !== plan.monthlyCredits,
+    );
+  }
   pushIfChanged(
     items,
     "creditsPerImage",

@@ -429,7 +429,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "name": "Starter",
           "priceCents": 0,
           "slug": "starter",
-          "subscribers": 1,
+          "subscribers": 7,
         },
       ],
       "summary": {
@@ -1363,8 +1363,14 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       ],
       "monthlyRenderLimit": null,
       "monthlySegmentLimit": null,
+      "planMonthlyCredits": [
+        {
+          "monthlyCredits": 0,
+          "name": "Starter",
+          "slug": "starter",
+        },
+      ],
       "recentChanges": [],
-      "signupBonusCredits": 25,
       "spentUsd": 0.095,
       "stuckTimeoutMinutes": 15,
       "updatedAt": "<timestamp>",
@@ -1374,7 +1380,19 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
   },
   "user detail": {
     "body": {
-      "entitlement": null,
+      "entitlement": {
+        "basePlanName": "Starter",
+        "basePlanSlug": "starter",
+        "currentPeriodEnd": null,
+        "monthlyAllowance": 0,
+        "nextCreditRenewalAt": "<timestamp>",
+        "override": null,
+        "planCredits": 0,
+        "planName": "Starter",
+        "planSlug": "starter",
+        "provider": null,
+        "status": "active",
+      },
       "ledger": [
         {
           "actorEmail": null,

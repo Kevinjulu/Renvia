@@ -23,12 +23,27 @@ export async function resetDb(): Promise<void> {
 let counter = 0;
 const next = () => ++counter;
 
-export async function makeUser(overrides: Partial<typeof schema.users.$inferInsert> = {}) {
+/**
+ * A user part-way through a monthly credit period, so their balance is used as given. Pass
+ * `inCreditPeriod: false` for a user whose first period hasn't started (a new or pre-launch
+ * account): their first request then applies the first-period credit policy. Needs the
+ * Starter plan to exist already; without it no plan record is created.
+ */
+export async function makeUser(overrides: Partial<typeof schema.users.$inferInsert> = {}, { inCreditPeriod = true } = {}) {
   const n = next();
   const [user] = await db
     .insert(schema.users)
     .values({ clerkId: `clerk_${n}`, email: `user${n}@example.test`, ...overrides })
     .returning();
+  if (inCreditPeriod) {
+    const [starter] = await db.select({ id: schema.billingPlans.id }).from(schema.billingPlans).where(eq(schema.billingPlans.slug, "starter"));
+    if (starter) {
+      const start = new Date();
+      await db.insert(schema.userEntitlements).values({
+        userId: user!.id, planId: starter.id, status: "active", creditPeriodStart: start, nextCreditGrantAt: new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000),
+      }).onConflictDoNothing();
+    }
+  }
   return user!;
 }
 

@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import { Coins } from "lucide-react";
+import type { AdminPlanCredits } from "@renvia/types";
 import type { Draft, FieldErrors } from "./types";
 import { Field, inputClass } from "./components";
 
-export function CreditsLimitsSection({ draft, fieldErrors, update }: { draft: Draft; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
+export function CreditsLimitsSection({ draft, plans, fieldErrors, update }: { draft: Draft; plans: AdminPlanCredits[]; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
   return (
     <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
       <div className="mb-5 flex items-center gap-2">
@@ -12,23 +13,30 @@ export function CreditsLimitsSection({ draft, fieldErrors, update }: { draft: Dr
         </span>
         <div>
           <h2 className="text-sm font-semibold text-primary">Credits & limits</h2>
-          <p className="text-xs text-muted">Signup grants, per-job costs, and daily caps</p>
+          <p className="text-xs text-muted">Monthly plan credits, per-job costs, and daily caps</p>
         </div>
       </div>
       <div className="space-y-5">
         <Field
-          label="Signup bonus"
-          hint="Credits every new account gets once. Existing users are unchanged."
-          error={fieldErrors.signupBonusCredits}
+          label="Monthly plan credits"
+          hint="Granted at the start of each user's monthly period (their signup anniversary, or a paid renewal). Unused plan credits expire then; purchased and admin credits never do. A change applies from each user's next period."
+          error={fieldErrors.planMonthlyCredits}
         >
-          <input
-            type="number"
-            min={0}
-            max={1000}
-            value={draft.signupBonusCredits}
-            onChange={(event) => update({ signupBonusCredits: event.target.value })}
-            className={inputClass(fieldErrors.signupBonusCredits)}
-          />
+          <div className="grid gap-3 sm:grid-cols-3">
+            {plans.map((plan) => (
+              <label key={plan.slug} className="block text-xs text-muted">
+                {plan.name}
+                <input
+                  type="number"
+                  min={0}
+                  max={100000}
+                  value={draft.planMonthlyCredits[plan.slug] ?? ""}
+                  onChange={(event) => update({ planMonthlyCredits: { ...draft.planMonthlyCredits, [plan.slug]: event.target.value } })}
+                  className={`mt-1 ${inputClass(fieldErrors.planMonthlyCredits)}`}
+                />
+              </label>
+            ))}
+          </div>
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field

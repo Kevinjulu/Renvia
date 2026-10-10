@@ -13,6 +13,9 @@ export const CREDIT_REASON_LABELS: Partial<Record<CreditLedgerReason, string>> =
   purchase_refund: "Purchase refund reversal",
   subscription_grant: "Monthly plan credits",
   subscription_expiry: "Unused monthly credits expired",
+  plan_grant: "Monthly plan credits",
+  plan_expiry: "Unused plan credits expired",
+  promo_expiry: "Signup credits replaced by plan credits",
 };
 
 export function formatCreditReason(reason: CreditLedgerReason): string {
