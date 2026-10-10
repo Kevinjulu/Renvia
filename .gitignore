@@ -39,3 +39,7 @@ playwright/.cache/
 tmp/
 tmp-studio-deploy.json
 apps/studio/*.cjs
+
+# Third-party sample images for local testing; not ours to publish
+/public/Elevetion images/
+/public/Reference images/
