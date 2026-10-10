@@ -108,7 +108,7 @@ incidentsRoutes.post("/incidents/:id/severity", async (c) => {
   const { severity } = z.object({ severity: z.enum(["low", "medium", "high", "critical"]) }).parse(await c.req.json());
   const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
   await c.get("db").update(schema.incidents).set({ severity, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
-  await recordIncidentEvent(c.get("db"), id, "reopened", c.get("admin").id, `Severity set to ${severity}`, { severity });
+  await recordIncidentEvent(c.get("db"), id, "severity_changed", c.get("admin").id, `Severity set to ${severity}`, { severity });
   return c.json({ id, severity });
 });
 

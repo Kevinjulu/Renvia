@@ -227,8 +227,9 @@ userDetailRoutes.patch("/users/:id", async (c) => {
   const body = updateUserSchema.parse(await c.req.json());
   const adminUser = c.get("admin");
 
-  // Guard against an admin locking themselves (and possibly everyone) out.
-  if (id === adminUser.id && (body.disabled === true || body.role === "user")) {
+  // Guard against an admin locking themselves (and possibly everyone) out. Only admins reach
+  // this route, so any other role on their own account is a demotion.
+  if (id === adminUser.id && (body.disabled === true || (body.role !== undefined && body.role !== "admin"))) {
     return c.json({ error: "You can't disable or demote your own account", code: "self_lockout" }, 400);
   }
 
@@ -254,7 +255,7 @@ userDetailRoutes.patch("/users/:id", async (c) => {
         400,
       );
     }
-    if (body.role === "user" && before.role === "admin") {
+    if (before.role === "admin" && body.role !== "admin") {
       const [adminCount] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(schema.users)
@@ -290,7 +291,7 @@ userDetailRoutes.patch("/users/:id", async (c) => {
     parts.push(body.disabled ? "disabled account" : "enabled account");
   }
   if (body.role !== undefined && body.role !== before.role) {
-    parts.push(body.role === "admin" ? "promoted to admin" : "demoted to user");
+    parts.push(body.role === "admin" ? "promoted to admin" : `role changed from ${before.role} to ${body.role}`);
   }
   if (body.limitsExempt !== undefined && body.limitsExempt !== before.limitsExempt) {
     parts.push(body.limitsExempt ? "exempted from limits" : "limits re-applied");

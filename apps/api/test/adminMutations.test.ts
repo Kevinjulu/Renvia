@@ -122,6 +122,27 @@ describe("PATCH /users/:id", () => {
     expect(await res.json()).toMatchObject({ code: "self_lockout" });
   });
 
+  it("stops an admin demoting themselves to a staff role", async () => {
+    await disableApprovals();
+    for (const role of ["support", "billing", "analyst", "user"]) {
+      const res = await call("admin", "PATCH", `/users/${actors.admin.id}`, { role, confirmEmail: "admin@renvia.test", reason: "r" });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: "self_lockout" });
+    }
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.admin.id));
+    expect(row!.role).toBe("admin");
+  });
+
+  it("describes a staff role change accurately in the audit trail", async () => {
+    await disableApprovals();
+    await call("admin", "PATCH", `/users/${actors.customer.id}`, { role: "support", confirmEmail: "customer@example.test", reason: "r" });
+    await call("admin", "PATCH", `/users/${actors.admin2.id}`, { role: "billing", confirmEmail: "admin2@renvia.test", reason: "r" });
+    expect((await events("user.update")).map((e) => e.summary)).toEqual([
+      "customer@example.test: role changed from user to support",
+      "admin2@renvia.test: role changed from admin to billing",
+    ]);
+  });
+
   it("sets and clears per-user limit overrides", async () => {
     await call("admin", "PATCH", `/users/${actors.customer.id}`, { dailyRenderLimitOverride: 5, limitsExempt: true });
     let [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
@@ -255,6 +276,20 @@ describe("bulk credit grants and approvals", () => {
     expect(row!.role).toBe("support");
   });
 
+  it("only lets an admin execute an approved role change", async () => {
+    const held = await call("admin", "PATCH", `/users/${actors.customer.id}`, { role: "support", confirmEmail: "customer@example.test", reason: "r" });
+    const { approvalId } = (await held.json()) as { approvalId: string };
+    await call("admin2", "POST", `/approvals/${approvalId}/approve`, {});
+
+    expect((await call("billing", "POST", `/approvals/${approvalId}/execute`, {})).status).toBe(403);
+    let [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row!.role).toBe("user");
+
+    expect((await call("admin2", "POST", `/approvals/${approvalId}/execute`, {})).status).toBe(200);
+    [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row!.role).toBe("support");
+  });
+
   it("rejects unknown users and the caps", async () => {
     expect((await call("admin", "POST", "/users/bulk-credits", { userIds: [MISSING_ID], amount: 1, note: "x" })).status).toBe(404);
     await db.insert(schema.appSettings).values({ id: 1, maxCreditBalance: 20 });
@@ -372,6 +407,8 @@ describe("incidents", () => {
     const [row] = await db.select().from(schema.incidents).where(eq(schema.incidents.id, incident.id));
     expect(row).toMatchObject({ status: "resolved", severity: "critical", ownerId: actors.support.id, resolutionNote: "restarted worker", resolvedBy: actors.support.id });
     expect((await events("incident.update")).map((e) => e.summary)).toEqual(["Acknowledged incident", "Assigned incident", "Resolved incident"]);
+    const trail = await db.select().from(schema.incidentEvents).where(eq(schema.incidentEvents.incidentId, incident.id));
+    expect(trail.find((event) => event.note === "Severity set to critical")!.action).toBe("severity_changed");
   });
 
   it("only lets incident managers change incidents", async () => {

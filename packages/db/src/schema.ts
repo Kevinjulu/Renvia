@@ -663,7 +663,7 @@ export const incidentEvents = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     incidentId: uuid("incident_id").notNull().references(() => incidents.id, { onDelete: "cascade" }),
     actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
-    action: text("action", { enum: ["opened", "assigned", "acknowledged", "recovered", "resolved", "reopened", "notification"] }).notNull(),
+    action: text("action", { enum: ["opened", "assigned", "acknowledged", "recovered", "resolved", "reopened", "severity_changed", "notification"] }).notNull(),
     note: text("note"),
     detail: jsonb("detail").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

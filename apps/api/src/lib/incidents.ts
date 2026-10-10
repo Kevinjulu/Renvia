@@ -44,7 +44,7 @@ export async function openOperationalIncident(
 export async function recordIncidentEvent(
   db: Database,
   incidentId: string,
-  action: "assigned" | "acknowledged" | "recovered" | "resolved" | "reopened" | "notification",
+  action: "assigned" | "acknowledged" | "recovered" | "resolved" | "reopened" | "severity_changed" | "notification",
   actorId?: string | null,
   note?: string | null,
   detail?: Record<string, unknown>,

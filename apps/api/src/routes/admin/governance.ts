@@ -129,11 +129,31 @@ governanceRoutes.post("/approvals/:id/reject", async (c) => {
   return c.json({ id, status: "rejected" });
 });
 
+/** Who may execute an approved request: the same capability the action needs when it runs directly. */
+const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage" } as const;
+
+/**
+ * Moves an approved request to executed atomically, so two concurrent executes cannot both run
+ * it. The row lock makes the second update wait, re-check the status and match nothing.
+ */
+async function claimApproval(db: Database, id: string): Promise<boolean> {
+  const claimed = await db.update(schema.approvalRequests).set({ status: "executed", executedAt: new Date() }).where(and(eq(schema.approvalRequests.id, id), eq(schema.approvalRequests.status, "approved"))).returning({ id: schema.approvalRequests.id });
+  return claimed.length > 0;
+}
+
+/** Hands a claimed request back when its writes failed, so it can be executed again. */
+async function releaseApproval(db: Database, id: string) {
+  await db.update(schema.approvalRequests).set({ status: "approved", executedAt: null }).where(and(eq(schema.approvalRequests.id, id), eq(schema.approvalRequests.status, "executed")));
+}
+
 governanceRoutes.post("/approvals/:id/execute", async (c) => {
-  const denied = denyUnless(c, "credits.manage"); if (denied) return c.json(denied, 403);
+  // Coarse gate before any lookup; the action-specific permission is checked once the request is loaded.
+  if (denyUnless(c, "credits.manage") && denyUnless(c, "users.manage")) return c.json({ error: "Forbidden" }, 403);
   const db = c.get("db"); const actor = c.get("admin"); const id = z.string().uuid().parse(c.req.param("id"));
   const [request] = await db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.id, id));
   if (!request) return c.json({ error: "Approval request not found" }, 404);
+  const permission = EXECUTE_PERMISSION[request.action as keyof typeof EXECUTE_PERMISSION];
+  if (permission && denyUnless(c, permission)) return c.json({ error: "Forbidden" }, 403);
   if (request.status !== "approved") return c.json({ error: "Approval request must be approved before execution" }, 409);
   if (request.action === "role_change") {
     const payload = z.object({ id: z.string().uuid(), role: z.enum(["user", "analyst", "support", "billing", "admin"]), confirmEmail: z.string().email() }).parse(request.payload);
@@ -141,19 +161,31 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
     if (!target) return c.json({ error: "Target user no longer exists" }, 409);
     if (target.id === actor.id || payload.confirmEmail.toLowerCase() !== target.email.toLowerCase()) return c.json({ error: "Role change confirmation is no longer valid" }, 409);
     if (payload.role === "admin" && target.disabled) return c.json({ error: "Enable the account before promoting them to admin" }, 409);
-    if (payload.role === "user" && target.role === "admin") {
+    if (target.role === "admin" && payload.role !== "admin") {
       const [count] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.users).where(and(eq(schema.users.role, "admin"), eq(schema.users.disabled, false)));
       if ((count?.count ?? 0) <= 1) return c.json({ error: "Can't demote the last active admin" }, 409);
     }
-    await db.batch([db.update(schema.users).set({ role: payload.role, updatedAt: new Date() }).where(eq(schema.users.id, target.id)), db.update(schema.approvalRequests).set({ status: "executed", executedAt: new Date() }).where(eq(schema.approvalRequests.id, id)), db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "user", targetId: target.id, summary: `Executed approved role change for ${target.email}`, detail: { approvalId: id, role: payload.role } })]);
+    if (!(await claimApproval(db, id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+    try {
+      await db.batch([db.update(schema.users).set({ role: payload.role, updatedAt: new Date() }).where(eq(schema.users.id, target.id)), db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "user", targetId: target.id, summary: `Executed approved role change for ${target.email}`, detail: { approvalId: id, role: payload.role } })]);
+    } catch (error) {
+      await releaseApproval(db, id);
+      throw error;
+    }
     return c.json({ id, status: "executed" });
   }
   if (request.action !== "bulk_credits") return c.json({ error: "This approved action is executed from its protected operation" }, 409);
   const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
   const users = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
   if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);
+  if (!(await claimApproval(db, id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
   const writes = users.flatMap((user) => [db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${payload.amount}` }).where(eq(schema.users.id, user.id)), db.insert(schema.creditLedger).values({ userId: user.id, amount: payload.amount, reason: "admin_grant", note: payload.note, actorId: actor.id })]);
   const [firstWrite, ...remainingWrites] = writes;
-  await db.batch([firstWrite!, ...remainingWrites, db.update(schema.approvalRequests).set({ status: "executed", executedAt: new Date() }).where(eq(schema.approvalRequests.id, id)), db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "users", summary: `Executed approved bulk credit grant to ${users.length} users`, detail: { approvalId: id, amount: payload.amount } })]);
+  try {
+    await db.batch([firstWrite!, ...remainingWrites, db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "users", summary: `Executed approved bulk credit grant to ${users.length} users`, detail: { approvalId: id, amount: payload.amount } })]);
+  } catch (error) {
+    await releaseApproval(db, id);
+    throw error;
+  }
   return c.json({ id, status: "executed", updated: users.length });
 });

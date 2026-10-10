@@ -1106,7 +1106,7 @@ export interface AdminOperationsQueueResponse {
 export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 export type IncidentStatus = "open" | "acknowledged" | "resolved";
 export type IncidentSourceType = "render" | "segmentation" | "webhook" | "system";
-export type IncidentEventAction = "opened" | "assigned" | "acknowledged" | "recovered" | "resolved" | "reopened" | "notification";
+export type IncidentEventAction = "opened" | "assigned" | "acknowledged" | "recovered" | "resolved" | "reopened" | "severity_changed" | "notification";
 
 export interface AdminIncident {
   id: string;
