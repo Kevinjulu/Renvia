@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
-import type { AdminBulkGrantCreditsResponse } from "@renvia/types";
+import type { AdminApproval, AdminApprovalsResponse, AdminBulkGrantCreditsResponse, ApprovalAction, ApprovalStatus, UserRole } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
-import { denyUnless } from "./permissions.js";
+import { denyUnless, hasPermission } from "./permissions.js";
 import { findAdminUser, recordAdminEvent } from "./shared.js";
-import type { AdminContext } from "./context.js";
+import type { AdminContext, UserRow } from "./context.js";
 
 export const governanceRoutes = new Hono<AdminContext>();
 
@@ -188,4 +188,61 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
     throw error;
   }
   return c.json({ id, status: "executed", updated: users.length });
+});
+
+type ApprovalRow = typeof schema.approvalRequests.$inferSelect;
+
+/** Plain-language description of what executing a request does. */
+function describeApproval(row: ApprovalRow, emails: Map<string, string>): string {
+  const payload = row.payload as Record<string, unknown>;
+  if (row.action === "role_change") return `Change ${emails.get(String(payload.id)) ?? "a deleted user"} to ${String(payload.role)}`;
+  if (row.action === "bulk_credits") {
+    const count = Array.isArray(payload.userIds) ? payload.userIds.length : 0;
+    return `Grant ${String(payload.amount)} credits to ${count} user${count === 1 ? "" : "s"}: ${String(payload.note)}`;
+  }
+  return row.action.replaceAll("_", " ");
+}
+
+/** Mirrors the approve, reject and execute rules above, so the page only offers what the API will accept. */
+function toAdminApproval(row: ApprovalRow, viewer: UserRow, emails: Map<string, string>): AdminApproval {
+  const role = viewer.role as UserRole;
+  const pending = row.status === "pending";
+  const ownRequest = row.requestedBy === viewer.id;
+  const executePermission = EXECUTE_PERMISSION[row.action as keyof typeof EXECUTE_PERMISSION];
+  const payload = row.payload as Record<string, unknown>;
+  const targetsViewer = row.action === "role_change" && payload.id === viewer.id;
+  return {
+    id: row.id,
+    action: row.action as ApprovalAction,
+    status: row.status as ApprovalStatus,
+    summary: describeApproval(row, emails),
+    reason: row.reason,
+    riskValue: row.riskValue,
+    threshold: row.threshold,
+    requestedByEmail: emails.get(row.requestedBy) ?? null,
+    decidedByEmail: row.approvedBy ? emails.get(row.approvedBy) ?? null : null,
+    decisionNote: row.decisionNote,
+    createdAt: row.createdAt.toISOString(),
+    decidedAt: row.approvedAt?.toISOString() ?? null,
+    executedAt: row.executedAt?.toISOString() ?? null,
+    canApprove: pending && !ownRequest && role === "admin" && hasPermission(role, "settings.manage"),
+    canReject: pending && !ownRequest && hasPermission(role, "settings.manage"),
+    canExecute: row.status === "approved" && Boolean(executePermission) && hasPermission(role, executePermission!) && !targetsViewer,
+  };
+}
+
+governanceRoutes.get("/approvals", async (c) => {
+  // The same staff who can execute approvals can see them.
+  if (denyUnless(c, "credits.manage") && denyUnless(c, "users.manage")) return c.json({ error: "Forbidden" }, 403);
+  const db = c.get("db"); const viewer = c.get("admin");
+  const [open, recent] = await Promise.all([
+    db.select().from(schema.approvalRequests).where(inArray(schema.approvalRequests.status, ["pending", "approved"])).orderBy(desc(schema.approvalRequests.createdAt)).limit(100),
+    db.select().from(schema.approvalRequests).where(inArray(schema.approvalRequests.status, ["rejected", "executed", "cancelled"])).orderBy(desc(schema.approvalRequests.createdAt)).limit(20),
+  ]);
+  const rows = [...open, ...recent];
+  const userIds = [...new Set(rows.flatMap((row) => [row.requestedBy, row.approvedBy, row.action === "role_change" ? String((row.payload as Record<string, unknown>).id) : null]).filter((id): id is string => Boolean(id && z.string().uuid().safeParse(id).success)))];
+  const users = userIds.length ? await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
+  const emails = new Map(users.map((user) => [user.id, user.email]));
+  const response: AdminApprovalsResponse = { open: open.map((row) => toAdminApproval(row, viewer, emails)), recent: recent.map((row) => toAdminApproval(row, viewer, emails)) };
+  return c.json(response);
 });

@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminApprovalsResponse,
   AdminAuditAction,
   AdminAuditRange,
   AdminAuditResponse,
@@ -166,6 +167,10 @@ export function useAdminApi() {
       }) => request<AdminCreditsResponse>(getToken, `/admin/credits${query(params)}`),
       getBilling: () => request<AdminBillingResponse>(getToken, "/admin/billing"),
       getFinancials: () => request<AdminFinancialsResponse>(getToken, "/admin/financials"),
+      listApprovals: () => request<AdminApprovalsResponse>(getToken, "/admin/approvals"),
+      approveApproval: (id: string, note?: string) => request<{ id: string; status: "approved" }>(getToken, `/admin/approvals/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }),
+      rejectApproval: (id: string, note: string) => request<{ id: string; status: "rejected" }>(getToken, `/admin/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
+      executeApproval: (id: string) => request<{ id: string; status: "executed" }>(getToken, `/admin/approvals/${id}/execute`, { method: "POST", body: JSON.stringify({}) }),
       getOperationsQueue: () => request<AdminOperationsQueueResponse>(getToken, "/admin/operations/queue"),
       getIncidents: (status?: "open" | "acknowledged" | "resolved") => request<AdminIncidentsResponse>(getToken, `/admin/incidents${status ? `?status=${status}` : ""}`),
       syncIncidents: () => request<{ opened: number }>(getToken, "/admin/incidents/sync", { method: "POST" }),

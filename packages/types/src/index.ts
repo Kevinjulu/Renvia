@@ -1099,6 +1099,37 @@ export interface AdminFinancialsResponse {
   daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
 }
 
+export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "cancelled";
+
+/** A high-risk action held for a second administrator. The can* flags are this viewer's options. */
+export interface AdminApproval {
+  id: string;
+  action: ApprovalAction;
+  status: ApprovalStatus;
+  /** What executing it does, in plain language. */
+  summary: string;
+  reason: string;
+  riskValue: number;
+  threshold: number;
+  requestedByEmail: string | null;
+  decidedByEmail: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  executedAt: string | null;
+  canApprove: boolean;
+  canReject: boolean;
+  canExecute: boolean;
+}
+
+export interface AdminApprovalsResponse {
+  /** Pending a decision, or approved and waiting to be executed. */
+  open: AdminApproval[];
+  /** The 20 most recently created requests that are rejected, executed or cancelled. */
+  recent: AdminApproval[];
+}
+
 export interface AdminOperationsQueueResponse {
   assignedIncidents: { id: string; title: string; severity: IncidentSeverity; status: IncidentStatus; updatedAt: string }[];
   pendingApprovals: { id: string; action: string; reason: string; requestedBy: string; createdAt: string }[];

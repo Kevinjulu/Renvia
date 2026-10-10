@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { schema } from "@renvia/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createClerkClient } from "@clerk/backend";
 import { ago, callAdmin as call, DAY, MISSING_ID } from "./support/admin.js";
 import { balanceOf, db, ledgerFor, makeProject, makeRender, makeUser } from "./support/db.js";
 
@@ -107,8 +108,23 @@ describe("PATCH /users/:id", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { user: { disabled: boolean } }).user.disabled).toBe(true);
     const [event] = await events("user.update");
+    expect(event!.summary).toBe("customer@example.test: disabled account, signed out 2 session(s)");
+    expect(event!.detail).toMatchObject({ reason: "abuse", before: { disabled: false }, sessionsRevoked: 2 });
+  });
+
+  it("still disables the account when Clerk cannot revoke its sessions", async () => {
+    vi.mocked(createClerkClient).mockReturnValueOnce({
+      sessions: { getSessionList: vi.fn(async () => { throw new Error("Clerk is down"); }) },
+    } as never);
+
+    const res = await call("admin", "PATCH", `/users/${actors.customer.id}`, { disabled: true, reason: "abuse" });
+
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row!.disabled).toBe(true);
+    const [event] = await events("user.update");
     expect(event!.summary).toBe("customer@example.test: disabled account");
-    expect(event!.detail).toMatchObject({ reason: "abuse", before: { disabled: false } });
+    expect(event!.detail).toMatchObject({ sessionRevokeError: "Clerk is down" });
   });
 
   it("requires a reason for account changes and something to change", async () => {
@@ -288,6 +304,40 @@ describe("bulk credit grants and approvals", () => {
     expect((await call("admin2", "POST", `/approvals/${approvalId}/execute`, {})).status).toBe(200);
     [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
     expect(row!.role).toBe("support");
+  });
+
+  type Approvals = { open: { summary: string; status: string; canApprove: boolean; canReject: boolean; canExecute: boolean }[]; recent: { status: string }[] };
+  const approvals = async (who: string) => (await (await call(who, "GET", "/approvals")).json()) as Approvals;
+
+  it("lists open approvals with what each viewer may do", async () => {
+    const held = await call("admin", "POST", "/users/bulk-credits", { userIds: ids(), amount: 300, note: "big promo" });
+    const { approvalId } = (await held.json()) as { approvalId: string };
+
+    const expected = { summary: "Grant 300 credits to 2 users: big promo", status: "pending" };
+    expect((await approvals("admin")).open).toEqual([expect.objectContaining({ ...expected, canApprove: false, canReject: false, canExecute: false })]);
+    expect((await approvals("admin2")).open).toEqual([expect.objectContaining({ ...expected, canApprove: true, canReject: true, canExecute: false })]);
+    expect((await approvals("billing")).open).toEqual([expect.objectContaining({ ...expected, canApprove: false, canReject: false, canExecute: false })]);
+
+    await call("admin2", "POST", `/approvals/${approvalId}/approve`, {});
+    expect((await approvals("billing")).open).toEqual([expect.objectContaining({ status: "approved", canApprove: false, canExecute: true })]);
+
+    await call("billing", "POST", `/approvals/${approvalId}/execute`, {});
+    const after = await approvals("admin");
+    expect(after.open).toEqual([]);
+    expect(after.recent).toEqual([expect.objectContaining({ status: "executed" })]);
+  });
+
+  it("only offers an approved role change to admins", async () => {
+    const held = await call("admin", "PATCH", `/users/${actors.customer.id}`, { role: "support", confirmEmail: "customer@example.test", reason: "r" });
+    const { approvalId } = (await held.json()) as { approvalId: string };
+    await call("admin2", "POST", `/approvals/${approvalId}/approve`, {});
+
+    expect((await approvals("billing")).open).toEqual([expect.objectContaining({ summary: "Change customer@example.test to support", canExecute: false })]);
+    expect((await approvals("admin2")).open).toEqual([expect.objectContaining({ canExecute: true })]);
+  });
+
+  it("hides approvals from staff who cannot execute them", async () => {
+    for (const who of ["support", "analyst"]) expect((await call(who, "GET", "/approvals")).status).toBe(403);
   });
 
   it("rejects unknown users and the caps", async () => {

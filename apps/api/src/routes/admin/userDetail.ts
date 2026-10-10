@@ -94,6 +94,14 @@ userDetailRoutes.post("/users/:id/tags", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Signs a user out everywhere by revoking every active Clerk session. Returns how many were revoked. */
+async function revokeActiveSessions(secretKey: string, clerkId: string): Promise<number> {
+  const clerk = createClerkClient({ secretKey });
+  const sessions = await clerk.sessions.getSessionList({ userId: clerkId, status: "active", limit: 100 });
+  await Promise.all(sessions.data.map((session) => clerk.sessions.revokeSession(session.id)));
+  return sessions.data.length;
+}
+
 userDetailRoutes.post("/users/:id/revoke-sessions", async (c) => {
   const denied = denyUnless(c, "users.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db"); const userId = z.string().uuid().parse(c.req.param("id"));
@@ -102,11 +110,9 @@ userDetailRoutes.post("/users/:id/revoke-sessions", async (c) => {
   if (!target) return c.json({ error: "Not found" }, 404);
   if (target.id === actor.id) return c.json({ error: "You cannot revoke your own sessions here", code: "self_revoke" }, 400);
   if (body.confirmEmail.toLowerCase() !== target.email.toLowerCase()) return c.json({ error: "Type the user's email exactly to confirm", code: "confirm_email_mismatch" }, 400);
-  const clerk = createClerkClient({ secretKey: c.env.CLERK_SECRET_KEY });
-  const sessions = await clerk.sessions.getSessionList({ userId: target.clerkId, status: "active", limit: 100 });
-  await Promise.all(sessions.data.map((session) => clerk.sessions.revokeSession(session.id)));
-  await recordAdminEvent(db, { actorId: actor.id, action: "user.session_revoke", targetType: "user", targetId: target.id, summary: `Revoked ${sessions.data.length} session(s) for ${target.email}`, detail: { reason: body.reason, sessionCount: sessions.data.length } });
-  return c.json({ revoked: sessions.data.length });
+  const revoked = await revokeActiveSessions(c.env.CLERK_SECRET_KEY, target.clerkId);
+  await recordAdminEvent(db, { actorId: actor.id, action: "user.session_revoke", targetType: "user", targetId: target.id, summary: `Revoked ${revoked} session(s) for ${target.email}`, detail: { reason: body.reason, sessionCount: revoked } });
+  return c.json({ revoked });
 });
 
 const grantSchema = z.object({
@@ -285,10 +291,19 @@ userDetailRoutes.patch("/users/:id", async (c) => {
     .returning({ id: schema.users.id });
   if (!updated) return c.json({ error: "Not found" }, 404);
 
+  // A disabled account is refused by the API already; revoking its sessions also signs it out of
+  // the apps. Best effort: the disable has been saved, so a Clerk failure is recorded, not thrown.
+  let sessionsRevoked: number | null = null;
+  let sessionRevokeError: string | null = null;
+  if (body.disabled === true && !before.disabled) {
+    try { sessionsRevoked = await revokeActiveSessions(c.env.CLERK_SECRET_KEY, before.clerkId); }
+    catch (error) { sessionRevokeError = error instanceof Error ? error.message : "Session revocation failed"; }
+  }
+
   const user = await findAdminUser(db, id);
   const parts: string[] = [];
   if (body.disabled !== undefined && body.disabled !== before.disabled) {
-    parts.push(body.disabled ? "disabled account" : "enabled account");
+    parts.push(body.disabled ? (sessionsRevoked !== null ? `disabled account, signed out ${sessionsRevoked} session(s)` : "disabled account") : "enabled account");
   }
   if (body.role !== undefined && body.role !== before.role) {
     parts.push(body.role === "admin" ? "promoted to admin" : `role changed from ${before.role} to ${body.role}`);
@@ -326,6 +341,8 @@ userDetailRoutes.patch("/users/:id", async (c) => {
       },
       confirmEmail: body.confirmEmail ?? null,
       reason: body.reason ?? null,
+      ...(sessionsRevoked !== null ? { sessionsRevoked } : {}),
+      ...(sessionRevokeError ? { sessionRevokeError } : {}),
     },
   });
 

@@ -22,6 +22,7 @@ import { BillingPage } from "./pages/BillingPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { FinancialsPage } from "./pages/FinancialsPage";
 import { OperationsPage } from "./pages/OperationsPage";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
@@ -95,6 +96,7 @@ function AdminGate() {
           <Route path="/financials" element={<FinancialsPage />} />
           <Route path="/operations" element={<OperationsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -163,7 +165,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
     { label: "Operations", paths: ["/renders", "/segmentations", "/incidents"] },
     { label: "Customers", paths: ["/users", "/projects", "/credits"] },
     { label: "Commerce", paths: ["/billing", "/financials"] },
-    { label: "Control", paths: ["/audit", "/settings"] },
+    { label: "Control", paths: ["/approvals", "/audit", "/settings"] },
   ].map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) })).filter((group) => group.items.length > 0);
   return (
     <aside

@@ -2,6 +2,13 @@
 
 exports[`admin permission matrix > grants each role the same read access as before 1`] = `
 {
+  "approvals": {
+    "admin": 200,
+    "analyst": 403,
+    "billing": 200,
+    "support": 403,
+    "user": 403,
+  },
   "audit": {
     "admin": 200,
     "analyst": 200,
@@ -306,6 +313,13 @@ exports[`admin permission matrix > grants each role the same write access as bef
 
 exports[`admin read responses > returns the same data for every read endpoint 1`] = `
 {
+  "approvals": {
+    "body": {
+      "open": [],
+      "recent": [],
+    },
+    "status": 200,
+  },
   "audit": {
     "body": {
       "events": [
@@ -1739,6 +1753,7 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "POST /approvals/:id/approve",
   "POST /approvals/:id/reject",
   "POST /approvals/:id/execute",
+  "GET /approvals",
   "GET /users/:id",
   "POST /users/:id/notes",
   "POST /users/:id/tags",

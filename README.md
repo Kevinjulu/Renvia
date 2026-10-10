@@ -12,7 +12,7 @@ role-gated operator console.
 | Area | State |
 |---|---|
 | Studio (rendering, edits, selections, dashboard, billing page) | Shipping |
-| Admin console (13 routes, 5 staff roles, audit, incidents) | Shipping. Approval requests and their thresholds are API-only (no UI yet) |
+| Admin console (14 routes, 5 staff roles, audit, incidents, approvals) | Shipping. Approval thresholds are API-only (no UI yet) |
 | API (renders, credits, budget cap, uploads, billing, admin, cron) | Shipping |
 | Marketing site (landing, pricing, blog, legal) | Shipping |
 | PayPal checkout and webhooks | **Built and tested; disabled until credentials are set** (see [PayPal](#paypal)) |
@@ -167,10 +167,9 @@ Only PayPal is wired up.
   Otherwise the refund needs manual review.
 - Large bulk credit grants and role changes are held for a second administrator's
   approval. The refund and maintenance thresholds can be saved but are **not
-  enforced yet**. The approval endpoints and thresholds are API-only for now
-  (`GET`/`PUT /api/admin/governance` and
-  `POST /api/admin/approvals/:id/{approve,reject,execute}`); there is no admin
-  screen for them yet.
+  enforced yet**. Requests are approved, rejected and executed on the admin
+  Approvals page. The thresholds themselves are API-only for now
+  (`GET`/`PUT /api/admin/governance`).
 
 ### PayPal
 
@@ -204,11 +203,12 @@ instance, calling the role-gated `/api/admin/*` routes.
 | Page | What it does |
 |---|---|
 | Overview | Users, renders, failure rate, spend against budget, daily renders, top users |
-| Users, User detail | Search; grant or remove credits, disable, change role, limit overrides, notes, tags, revoke sessions |
+| Users, User detail | Search; grant or remove credits, disable (which also signs the user out), change role, limit overrides, notes, tags, revoke sessions |
 | Projects, Renders, Segmentations | Browse; refresh, cancel or recover stuck and failed work |
 | Credits | The full credit ledger |
 | Billing, Financials, Operations | Payments, refunds, webhook replay, revenue and margin, work queue |
 | Incidents | Open, acknowledge, assign and resolve operational incidents |
+| Approvals | Approve or reject held role changes and bulk grants, then execute them |
 | Audit | Every staff action, with immutable CSV exports |
 | Settings | Signup bonus, limits, prices, messages, maintenance mode, engine mode and budget |
 

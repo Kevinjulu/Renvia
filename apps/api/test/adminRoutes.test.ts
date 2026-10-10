@@ -128,6 +128,7 @@ function readEndpoints(s: Seeded): [string, string][] {
     ["users search", "/users?search=customer"],
     ["user detail", `/users/${s.customer.id}`],
     ["governance", "/governance"],
+    ["approvals", "/approvals"],
     ["renders", "/renders"],
     ["renders failed", "/renders?status=failed"],
     ["render detail", `/renders/${s.succeeded.id}`],
@@ -293,5 +294,18 @@ describe("admin financial figures", () => {
     const body = (await (await call("admin", "GET", "/billing")).json()) as { summary: { failedWebhooks: number }; webhooks: object[] };
     expect(body.webhooks).toHaveLength(30);
     expect(body.summary.failedWebhooks).toBe(36);
+  });
+});
+
+describe("operator queue", () => {
+  it("lists failed jobs from the last 7 days only", async () => {
+    const owner = await makeUser();
+    const project = await makeProject(owner.id);
+    const old = await makeRender(project.id, { status: "failed", createdAt: ago(10 * DAY), updatedAt: ago(10 * DAY) });
+    const body = (await (await call("admin", "GET", "/operations/queue")).json()) as { failedJobs: { id: string }[] };
+
+    // The seeded failure is 3 days old.
+    expect(body.failedJobs).toHaveLength(1);
+    expect(body.failedJobs.map((job) => job.id)).not.toContain(old.id);
   });
 });

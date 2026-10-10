@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo } from "lucide-react";
+import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -18,7 +18,7 @@ export interface AdminNavItem {
   roles: readonly Exclude<UserRole, "user">[];
 }
 
-/** Single source of truth for sidebar + page heroes across the eight tabs. */
+/** Single source of truth for sidebar + page heroes across every tab. */
 export const ADMIN_NAV: AdminNavItem[] = [
   {
     to: "/",
@@ -113,6 +113,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Failures and recovery",
     banner: "/banners/exterior-3.jpg",
     roles: ["support", "billing", "admin"],
+  },
+  {
+    to: "/approvals",
+    label: "Approvals",
+    icon: ClipboardCheck,
+    end: false,
+    title: "Approvals",
+    description: "High-risk actions held for a second administrator — approve, reject, then execute.",
+    hint: "Second-admin sign-off",
+    banner: "/banners/exterior-1.jpg",
+    roles: ["billing", "admin"],
   },
   {
     to: "/audit",
