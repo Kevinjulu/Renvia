@@ -23,7 +23,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     thumb: "/style-thumbs/photorealistic.jpg",
     category: "Photorealistic",
     aspectRatio: "4:3",
-    styleInfluence: 3,
+    styleInfluence: 4,
     prompt: "Bright midday sunlight with a clear blue sky, crisp cast shadows, and a landscaped garden in the foreground.",
   },
   {
@@ -33,7 +33,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     thumb: "/dashboard/house-dark.jpg",
     category: "Photorealistic",
     aspectRatio: "16:9",
-    styleInfluence: 3,
+    styleInfluence: 4,
     prompt: "Warm dusk lighting with glowing interior windows, a soft ambient sky, and realistic reflections on the glazing.",
   },
   {
@@ -43,7 +43,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     thumb: "/dashboard/lakeside-house.jpg",
     category: "Photorealistic",
     aspectRatio: "16:9",
-    styleInfluence: 3,
+    styleInfluence: 4,
     prompt: "A low horizontal profile facing reflective water, with natural timber cladding and stone accents.",
   },
   {
@@ -73,7 +73,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     thumb: "/style-thumbs/watercolor-sketch.jpg",
     category: "Watercolor sketch",
     aspectRatio: "auto",
-    styleInfluence: 3,
+    styleInfluence: 4,
     prompt: "A soft, hand-painted watercolor wash with loose brush strokes, a pastel palette, and an atmospheric mood.",
   },
   {
@@ -83,7 +83,7 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
     thumb: "/style-thumbs/watercolor-collage.jpg",
     category: "Watercolor collage",
     aspectRatio: "4:3",
-    styleInfluence: 3,
+    styleInfluence: 4,
     prompt: "Layered painted material textures in a mixed-media collage feel, with expressive color blocking.",
   },
 ];
