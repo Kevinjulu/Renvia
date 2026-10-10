@@ -35,24 +35,17 @@ export function StudioShowcase() {
 
         <div className="relative mt-14 sm:mt-20">
           <div className="absolute -inset-x-20 -inset-y-16 -z-0 bg-[radial-gradient(ellipse_at_center,rgba(47,111,237,.12),transparent_62%)]" />
-          <div className="relative z-10 overflow-hidden rounded-[18px] border border-black/10 bg-[#121313] p-1.5 shadow-[0_55px_110px_-52px_rgba(20,20,18,.68)] sm:rounded-[26px] sm:p-2.5">
-            <div className="flex h-8 items-center border-b border-white/10 px-3 sm:h-10 sm:px-4">
-              <div className="flex gap-1.5"><span className="h-2 w-2 rounded-full bg-white/20"/><span className="h-2 w-2 rounded-full bg-white/20"/><span className="h-2 w-2 rounded-full bg-white/20"/></div>
-              <span className="mx-auto -translate-x-5 text-[8px] font-medium uppercase tracking-[.18em] text-white/40 sm:text-[9px]">Renvia Studio · Live workspace</span>
-            </div>
-            <div className="relative aspect-[1920/900] overflow-hidden rounded-b-[12px] bg-white sm:rounded-b-[17px]">
-              <Image
-                src="/studio/renvia-studio-real.png"
-                alt="The real Renvia Studio workspace showing an architectural elevation, four building views, render controls, and prompt settings"
-                fill
-                sizes="(min-width: 1440px) 1400px, 100vw"
-                className="object-cover"
-                priority={false}
-              />
-            </div>
+          {/* The image carries its own device frame and scene, so it sits unframed here. */}
+          <div className="relative z-10 aspect-[1672/941] overflow-hidden rounded-[18px] border border-black/10 bg-[#e9e7e2] shadow-[0_55px_110px_-52px_rgba(20,20,18,.68)] sm:rounded-[26px]">
+            <Image
+              src="/studio/renvia-studio-showcase.webp"
+              alt="Renvia Studio comparing a front elevation before and after a photorealistic render, with style, prompt and reference image controls on the left and render history on the right"
+              fill
+              sizes="(min-width: 1440px) 1400px, 100vw"
+              className="object-cover"
+              priority={false}
+            />
           </div>
-
-          <div className="relative z-20 mx-auto -mt-2 h-4 w-[84%] rounded-b-[50%] bg-gradient-to-b from-[#d7d6d2] to-[#aaa9a5] shadow-[0_12px_22px_-15px_rgba(0,0,0,.8)] sm:h-6" />
         </div>
 
         <div className="mt-12 grid border-y border-black/10 sm:mt-16 lg:grid-cols-3">
