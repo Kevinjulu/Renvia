@@ -13,11 +13,20 @@ export class InsufficientCreditsError extends Error {
   }
 }
 
-function isCheckViolation(error: unknown): boolean {
+function hasPgCode(error: unknown, code: string): boolean {
   for (let current: unknown = error; current; current = (current as { cause?: unknown }).cause) {
-    if ((current as { code?: string }).code === CHECK_VIOLATION) return true;
+    if ((current as { code?: string }).code === code) return true;
   }
   return false;
+}
+
+function isCheckViolation(error: unknown): boolean {
+  return hasPgCode(error, CHECK_VIOLATION);
+}
+
+/** A unique index refused the row — for renders, another request already used its idempotency key. */
+export function isUniqueViolation(error: unknown): boolean {
+  return hasPgCode(error, "23505");
 }
 
 /**

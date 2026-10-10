@@ -39,7 +39,8 @@ export const useRenderJobsStore = create<RenderJobsState>((set) => ({
   previewImage: null,
   previewMode: "render",
   setJobs: (jobs) => set({ jobs, previewJobId: null, previewImage: null }),
-  addJob: (job) => set((state) => ({ jobs: [job, ...state.jobs], activeJobId: job.id })),
+  // A retried request can hand back a render that's already listed; it moves to the top once.
+  addJob: (job) => set((state) => ({ jobs: [job, ...state.jobs.filter((existing) => existing.id !== job.id)], activeJobId: job.id })),
   updateJob: (id, patch) =>
     set((state) => ({
       jobs: state.jobs.map((job) => (job.id === id ? { ...job, ...patch } : job)),

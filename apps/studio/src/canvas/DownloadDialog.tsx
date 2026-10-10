@@ -4,6 +4,7 @@ import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useApiClient } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { reportLimit } from "../lib/useLimitDialog";
+import { queueRender, RenderNotConfirmedError } from "./utils/queueRender";
 
 type Format = "jpeg" | "png" | "webp";
 type Layout = "render" | "compare";
@@ -250,14 +251,20 @@ export function DownloadDialog() {
     setBusy(target);
     setNotice(null);
     try {
-      const { job: upscale } = await apiClient.upscaleRender(job.id, { target });
+      const { job: upscale } = await queueRender((body) => apiClient.upscaleRender(job.id, body), { target }, {
+        slot: `export:${job.id}`,
+        onSlow: () => setNotice("Renvia is responding slowly — checking whether your export started…"),
+      });
       addJob(upscale);
       setActiveJob(upscale.id);
       void refreshAccount(apiClient.getMe);
       close();
     } catch (error) {
-      reportLimit(error);
-      setNotice("Couldn't queue the high-resolution export. Please try again.");
+      if (error instanceof RenderNotConfirmedError) {
+        setNotice("Renvia didn't confirm the export in time. Check the results panel before trying again — trying again won't charge twice.");
+        return;
+      }
+      if (!reportLimit(error)) setNotice("Couldn't queue the high-resolution export. Please try again.");
     } finally {
       setBusy(null);
     }

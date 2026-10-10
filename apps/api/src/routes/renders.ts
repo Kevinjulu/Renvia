@@ -6,7 +6,7 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
-import { createChargedRender, InsufficientCreditsError } from "../lib/credits.js";
+import { createChargedRender, InsufficientCreditsError, isUniqueViolation } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import {
   baseCreditCostForRender,
@@ -44,6 +44,7 @@ const createRenderSchema = z.object({
   style: z.string().trim().min(1).max(50),
   viewKey: z.string().trim().min(1).max(80).optional(),
   viewLabel: z.string().trim().min(1).max(80).optional(),
+  idempotencyKey: z.string().uuid().optional(),
   generationSettings: z
     .object({
       sourceType: z.enum(["drawing", "photo"]).optional(),
@@ -99,7 +100,7 @@ renders.post("/repair-prompt", async (c) => {
   return c.json(repairReferencePrompt(body.prompt));
 });
 
-const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]) });
+const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]), idempotencyKey: z.string().uuid().optional() });
 const UPSCALE_COST_MICROS = { "4k": 40_000, "8k": 80_000 } as const;
 
 async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
@@ -127,6 +128,29 @@ async function presentRender(c: Context<AppContext>, job: typeof schema.renders.
   };
 }
 
+/** The render an earlier attempt of this request created, if any. */
+async function findRenderByIdempotencyKey(db: ReturnType<typeof createDb>, projectId: string, key: string) {
+  const [render] = await db
+    .select()
+    .from(schema.renders)
+    .where(and(eq(schema.renders.projectId, projectId), eq(schema.renders.idempotencyKey, key)))
+    .limit(1);
+  return render ?? null;
+}
+
+/**
+ * The response for a render this idempotency key already created, or null. A retry of a request
+ * gets that render back instead of a second charge. Callers check it first, before any limit or
+ * credit check (the first attempt already passed and paid), and again before any refusal: a
+ * slower first attempt can create its render in between, and its own render then counts against
+ * the very limits the retry would be refused for.
+ */
+async function replayResponse(c: Context<AppContext>, db: ReturnType<typeof createDb>, projectId: string, key: string | undefined) {
+  if (!key) return null;
+  const existing = await findRenderByIdempotencyKey(db, projectId, key);
+  return existing ? c.json({ job: await presentRender(c, existing), replayed: true }, 200) : null;
+}
+
 renders.post("/", async (c) => {
   const { clerkId } = c.get("auth");
   const body = createRenderSchema.parse(await c.req.json());
@@ -143,6 +167,10 @@ renders.post("/", async (c) => {
   if (!project) {
     return c.json({ error: "Not found" }, 404);
   }
+
+  const replay = () => replayResponse(c, db, body.projectId, body.idempotencyKey);
+  const earlier = await replay();
+  if (earlier) return earlier;
 
   const settings = body.generationSettings ?? {};
   const suggestedEditPart = !settings.edit ? suggestedEditPartForPrompt(body.prompt) : null;
@@ -182,7 +210,7 @@ renders.post("/", async (c) => {
   }
 
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
-  if (allowance) return c.json(allowance, allowance.status);
+  if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
   // Nobody has to say whether the source is a photo or a line drawing: work it out from the image
   // itself (unless the caller already did, or this is an edit, which doesn't use it).
@@ -202,7 +230,7 @@ renders.post("/", async (c) => {
   const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);
-    return c.json(refusal, refusal.status);
+    return (await replay()) ?? c.json(refusal, refusal.status);
   }
 
   // Admins aren't charged; their renders still count toward the global fal budget.
@@ -224,11 +252,18 @@ renders.post("/", async (c) => {
         model: model.id,
         costMicros,
         settings: generationSettings,
+        idempotencyKey: body.idempotencyKey,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         const refusal = refuseCredits(appSettings, user.creditBalance, credits);
-        return c.json(refusal, refusal.status);
+        return (await replay()) ?? c.json(refusal, refusal.status);
+      }
+      // Two attempts of the same request raced and the other one won: its charge stands and
+      // this one's rolled back with the failed insert, so hand back the render it created.
+      if (isUniqueViolation(error)) {
+        const raced = await replay();
+        if (raced) return raced;
       }
       throw error;
     }
@@ -242,7 +277,7 @@ renders.post("/", async (c) => {
 /** Queues a faithful high-resolution export from a finished render. */
 renders.post("/:id/upscale", async (c) => {
   const { clerkId } = c.get("auth");
-  const { target } = createUpscaleSchema.parse(await c.req.json());
+  const { target, idempotencyKey } = createUpscaleSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, clerkId);
   const billing = await ensureEntitlement(db, user.id);
@@ -260,15 +295,18 @@ renders.post("/:id/upscale", async (c) => {
   if (!ownUploadKey(parent.resultImageUrl, origin)) {
     return c.json({ error: "This render is not available for high-resolution export" }, 400);
   }
+  const replay = () => replayResponse(c, db, parent.projectId, idempotencyKey);
+  const earlier = await replay();
+  if (earlier) return earlier;
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
-  if (allowance) return c.json(allowance, allowance.status);
+  if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
   const model = modelFor(effectiveEngineMode(c.env, appSettings), "upscale");
   const costMicros = model.id === "mock" ? 0 : UPSCALE_COST_MICROS[target];
   const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);
-    return c.json(refusal, refusal.status);
+    return (await replay()) ?? c.json(refusal, refusal.status);
   }
 
   const credits = user.role === "admin" ? 0 : baseCreditCostForRender({ upscale: { target, parentRenderId: parent.id } }) * appSettings.creditsPerImage;
@@ -285,13 +323,19 @@ renders.post("/:id/upscale", async (c) => {
       model: model.id,
       costMicros,
       settings: { upscale: { target, parentRenderId: parent.id } },
+      idempotencyKey,
     });
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
       const refusal = refuseCredits(appSettings, user.creditBalance, credits);
-      return c.json(refusal, refusal.status);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
+    // Two attempts raced and the other won; this one's charge rolled back with its insert.
+    if (isUniqueViolation(error)) {
+      const raced = await replay();
+      if (raced) return raced;
     }
     throw error;
   } finally {

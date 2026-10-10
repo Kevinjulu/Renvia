@@ -16,6 +16,7 @@ import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { buildStrokeMask, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { useEditDraft } from "../../canvas/hooks/useEditDraft";
+import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 
@@ -54,6 +55,10 @@ function localRefusal(
 ): LimitRefusal {
   return { code, message: messages?.[code] ?? null, limit, used };
 }
+
+const SLOW_STATUS = "Renvia is responding slowly — checking whether your render started…";
+const NOT_CONFIRMED_STATUS =
+  "Renvia didn't confirm it in time. Check the results panel before trying again — clicking again with the same settings won't charge twice.";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -199,17 +204,21 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       const requests = filled.flatMap((view) => {
         const node = nodeForView(nodes, view.id);
         if (!node) return [];
-        return Array.from({ length: count }, () =>
-          apiClient.createRender({
-            projectId,
-            sourceImageUrl: node.imageUrl,
-            prompt: prompt.trim(),
-            aspectRatio,
-            style,
-            viewKey: view.id,
-            viewLabel: view.label,
-            generationSettings: { ...generationSettings, seed: seedUses++ === 0 ? generationSettings.seed : undefined },
-          }),
+        return Array.from({ length: count }, (_, variation) =>
+          queueRender(
+            apiClient.createRender,
+            {
+              projectId,
+              sourceImageUrl: node.imageUrl,
+              prompt: prompt.trim(),
+              aspectRatio,
+              style,
+              viewKey: view.id,
+              viewLabel: view.label,
+              generationSettings: { ...generationSettings, seed: seedUses++ === 0 ? generationSettings.seed : undefined },
+            },
+            { slot: `${view.id}#${variation}`, onSlow: () => setStatus(SLOW_STATUS) },
+          ),
         );
       });
       const results = await Promise.allSettled(requests);
@@ -219,6 +228,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       queued.forEach(({ value }) => addJob(value.job));
 
       const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      const unconfirmed = rejected.filter(({ reason }) => reason instanceof RenderNotConfirmedError).length;
       const blocking = rejected.map(({ reason }) => limitRefusal(reason)).find(Boolean);
       if (blocking) showLimit(blocking);
       const refusal = rejected
@@ -226,10 +236,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         .find(Boolean);
       if (refusal) {
         setStatus(`${refusal} ${queued.length} of ${results.length} renders queued.`);
+      } else if (unconfirmed > 0) {
+        setStatus(results.length > 1 ? `${queued.length} of ${results.length} renders queued. ${NOT_CONFIRMED_STATUS}` : NOT_CONFIRMED_STATUS);
       } else if (rejected.length > 0) {
         setStatus(`Couldn't queue ${rejected.length} of ${results.length} renders. Try again in a moment.`);
       } else if (seed !== null && results.length > 1) {
         setStatus("Look kept for the first image; the rest are fresh takes.");
+      } else {
+        // Clears the "responding slowly" note once everything got through.
+        setStatus(null);
       }
     } finally {
       setIsSubmitting(false);
@@ -254,26 +269,41 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       }
 
       // "style" tells the model what look to preserve: the style this render was made in.
-      const { job } = await apiClient.createRender({
-        projectId,
-        sourceImageUrl,
-        prompt: draft.prompt,
-        aspectRatio,
-        style: editRender.style,
-        viewKey: editRender.viewKey ?? undefined,
-        viewLabel: editRender.viewLabel ?? undefined,
-        generationSettings: {
-          // The Edit tab's own strength control — the Render tab's styleInfluence and
-          // preserveStructure never reach an edit (see engine.ts).
-          editInfluence,
-          referenceImageUrls: draft.references.length > 0 ? draft.references : undefined,
-          seed: seed ?? undefined,
-          edit,
+      const generationSettings = {
+        // The Edit tab's own strength control — the Render tab's styleInfluence and
+        // preserveStructure never reach an edit (see engine.ts).
+        editInfluence,
+        referenceImageUrls: draft.references.length > 0 ? draft.references : undefined,
+        seed: seed ?? undefined,
+        edit,
+      };
+      const { job } = await queueRender(
+        apiClient.createRender,
+        {
+          projectId,
+          sourceImageUrl,
+          prompt: draft.prompt,
+          aspectRatio,
+          style: editRender.style,
+          viewKey: editRender.viewKey ?? undefined,
+          viewLabel: editRender.viewLabel ?? undefined,
+          generationSettings,
         },
-      });
+        {
+          slot: `edit:${editRender.id}`,
+          // The mask is re-uploaded each click, so it can't tell a repeat apart; the painted area can.
+          signature: JSON.stringify({ prompt: draft.prompt, ...generationSettings, edit: draft.edit, area: draft.hasArea ? renderStrokes.length : 0 }),
+          onSlow: () => setStatus(SLOW_STATUS),
+        },
+      );
+      setStatus(null);
       addJob(job);
       useRenderEditStore.getState().setAwaitingJob(job.id);
     } catch (error) {
+      if (error instanceof RenderNotConfirmedError) {
+        setStatus(NOT_CONFIRMED_STATUS);
+        return;
+      }
       reportLimit(error);
       const code = errorCode(error);
       const refusal = code === "invalid_edit" && error instanceof ApiError ? error.detail : refusalMessage(code, me?.maintenanceMessage);

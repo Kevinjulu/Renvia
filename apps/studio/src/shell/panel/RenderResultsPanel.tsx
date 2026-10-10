@@ -8,6 +8,7 @@ import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
 import { viewImage } from "../../canvas/utils/viewImage";
 import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
 import { buildRetryRequest } from "../../canvas/utils/retryRender";
+import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
 import { useApiClient } from "../../lib/apiClient";
 import { refreshAccount } from "../../lib/useAccountStore";
 import { reportLimit } from "../../lib/useLimitDialog";
@@ -152,12 +153,18 @@ export function RenderResultsPanel() {
     setIsRetrying(true);
     try {
       const { job } = activeJob.settings?.upscale
-        ? await apiClient.upscaleRender(activeJob.settings.upscale.parentRenderId, { target: activeJob.settings.upscale.target })
-        : await apiClient.createRender(buildRetryRequest(activeJob, projectId));
+        ? await queueRender(
+            (body) => apiClient.upscaleRender(activeJob.settings!.upscale!.parentRenderId, body),
+            { target: activeJob.settings.upscale.target },
+            { slot: `retry:${activeJob.id}` },
+          )
+        : await queueRender(apiClient.createRender, buildRetryRequest(activeJob, projectId), { slot: `retry:${activeJob.id}` });
       addJob(job);
       void refreshAccount(apiClient.getMe);
     } catch (error) {
-      if (!reportLimit(error)) setActionError("Couldn't start the retry. Try again.");
+      if (error instanceof RenderNotConfirmedError) {
+        setActionError("Renvia didn't confirm the retry in time. Check the list before trying again — retrying won't charge twice.");
+      } else if (!reportLimit(error)) setActionError("Couldn't start the retry. Try again.");
     } finally {
       setIsRetrying(false);
     }

@@ -113,6 +113,11 @@ export const renders = pgTable("renders", {
    * credit history and the admin render log still count it.
    */
   hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+  /**
+   * Client-generated, one per Generate/Apply click. A request retried after a timeout returns
+   * the render this key already created instead of charging for a second one.
+   */
+  idempotencyKey: text("idempotency_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -121,6 +126,8 @@ export const renders = pgTable("renders", {
       "renders_aspect_ratio_values",
       sql`${table.aspectRatio} IN ('auto', '1:1', '16:9', '4:3', '3:4', '9:16')`,
     ),
+    // Partial in the migration (WHERE idempotency_key IS NOT NULL), like billing checkouts'.
+    uniqueIndex("renders_project_idempotency_unique").on(table.projectId, table.idempotencyKey),
   ],
 );
 

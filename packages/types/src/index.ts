@@ -291,14 +291,23 @@ export interface CreateRenderRequest {
   viewKey?: string;
   viewLabel?: string;
   generationSettings?: RenderGenerationSettings;
+  /**
+   * One per Generate/Apply click, reused when that same request is retried. A repeat returns
+   * the render the first attempt created instead of charging again.
+   */
+  idempotencyKey?: string;
 }
 
 export interface CreateRenderResponse {
   job: RenderJob;
+  /** True when this key had already created the render, so nothing new was queued or charged. */
+  replayed?: boolean;
 }
 
 export interface CreateUpscaleRequest {
   target: UpscaleTarget;
+  /** One per export click, reused on retry — see CreateRenderRequest.idempotencyKey. */
+  idempotencyKey?: string;
 }
 
 export interface CreateUpscaleResponse {
