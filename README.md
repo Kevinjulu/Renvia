@@ -1,5 +1,7 @@
 # RΞNVIA
 
+![Renvia Studio: rendering a front elevation with a before/after compare, reference images and render history](docs/images/studio-hero.png)
+
 AI-powered architectural visualization SaaS. Customers upload an elevation or
 sketch, work on an infinite canvas, and generate photoreal renders and masked
 edits. Usage is metered in credits, paid for through PayPal, and controlled by a
