@@ -20,6 +20,7 @@ import { GuideProvider } from "../guide/GuideProvider";
 import { useElevationUpload } from "../canvas/hooks/useElevationUpload";
 import { nodeForView, tabLabel, type BuildingView } from "../canvas/buildingViews";
 import { reportClientError } from "../components/AppErrorHandling";
+import { RegionBoundary } from "../components/RegionBoundary";
 
 export function StudioShell({ projectId }: { projectId: string }) {
   const apiClient = useApiClient();
@@ -106,7 +107,9 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </div>
         ) : (
         <div className="studio-workbench">
-          <ControlPanel projectId={projectId} />
+          <RegionBoundary name="The control panel">
+            <ControlPanel projectId={projectId} />
+          </RegionBoundary>
           <section className="studio-canvas-column">
             <div className="elevation-tabs" data-guide="canvas.tabs">
               {views.map((view) => (
@@ -125,9 +128,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
               <AddViewMenu />
             </div>
             <div className="studio-stage-wrap" data-guide="canvas.stage" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front Elevation"}`}>
-              <CanvasStage />
-              <RenderPreview />
-              <ImagePreview />
+              <RegionBoundary name="The canvas">
+                <CanvasStage />
+                <RenderPreview />
+                <ImagePreview />
+              </RegionBoundary>
               <StudioNotice />
             </div>
             <div className="elevation-filmstrip" data-guide="canvas.filmstrip">
@@ -180,11 +185,15 @@ export function StudioShell({ projectId }: { projectId: string }) {
               }}
             />
           </section>
-          <RenderResultsPanel />
+          <RegionBoundary name="The results panel">
+            <RenderResultsPanel />
+          </RegionBoundary>
         </div>
         )}
       </main>
-      <DownloadDialog />
+      <RegionBoundary name="The download dialog" silent>
+        <DownloadDialog />
+      </RegionBoundary>
       </div>
     </GuideProvider>
   );

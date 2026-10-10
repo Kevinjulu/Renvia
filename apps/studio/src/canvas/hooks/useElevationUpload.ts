@@ -110,7 +110,10 @@ export function useElevationUpload() {
       try {
         await apiClient.deleteCanvasNode(node.id);
       } catch (error) {
+        // Still saved, so it would come back on reload: put it back now and say so.
         reportClientError(error);
+        useCanvasStore.getState().addNode(node);
+        showStudioNotice("Couldn't remove that image. It's back on the canvas — try again.");
       }
     },
     [apiClient],
@@ -118,10 +121,26 @@ export function useElevationUpload() {
 
   const removeView = useCallback(
     async (viewId: string) => {
-      const nodeIds = useCanvasStore.getState().removeBuildingView(viewId);
-      await Promise.all(
-        nodeIds.map((id) => apiClient.deleteCanvasNode(id).catch((error) => reportClientError(error))),
-      );
+      const removed = useCanvasStore.getState().nodes.filter((node) => node.elevationId === viewId);
+      useCanvasStore.getState().removeBuildingView(viewId);
+      const failed = (
+        await Promise.all(
+          removed.map((node) =>
+            apiClient.deleteCanvasNode(node.id).then(
+              () => null,
+              (error) => {
+                reportClientError(error);
+                return node;
+              },
+            ),
+          ),
+        )
+      ).filter((node) => node !== null);
+      // Restoring a node also restores its elevation, so the canvas matches what's saved.
+      if (failed.length > 0) {
+        failed.forEach((node) => useCanvasStore.getState().addNode(node));
+        showStudioNotice("Couldn't remove that elevation. It's back on the canvas — try again.");
+      }
     },
     [apiClient],
   );

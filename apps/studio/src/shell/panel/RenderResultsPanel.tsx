@@ -10,7 +10,8 @@ import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
 import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
 import { useApiClient } from "../../lib/apiClient";
-import { refreshAccount } from "../../lib/useAccountStore";
+import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
+import { friendlyRenderError } from "../../canvas/utils/renderErrors";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
@@ -177,8 +178,10 @@ export function RenderResultsPanel() {
       const { job } = await apiClient.cancelRender(activeJob.id);
       updateJob(job.id, job);
       void refreshAccount(apiClient.getMe);
-    } catch {
-      // Left processing — the button stays up so the user can try again.
+    } catch (error) {
+      // Left processing, so the button stays up for another try.
+      reportLimit(error);
+      setActionError("Couldn't cancel this render. Try again.");
     } finally {
       setIsCancelling(false);
     }
@@ -363,7 +366,7 @@ export function RenderResultsPanel() {
           {job.status === "failed" && (
             <figcaption className="rp-failed">
               <strong>{job.settings?.upscale ? "High-resolution export failed" : "Render failed"}</strong>
-              <span>{job.errorMessage ?? "Something went wrong. Try again."}</span>
+              <FailureReason message={job.errorMessage} />
             </figcaption>
           )}
         </figure>
@@ -525,4 +528,10 @@ export function RenderResultsPanel() {
       </div>
     </aside>
   );
+}
+
+/** Why a render failed, in plain words; admins can hover for the engine's own message. */
+function FailureReason({ message }: { message: string | null }) {
+  const isAdmin = useAccountStore((state) => state.me?.role === "admin");
+  return <span title={isAdmin && message ? message : undefined}>{friendlyRenderError(message)}</span>;
 }

@@ -29,10 +29,14 @@ export const useAccountStore = create<AccountState>((set) => ({
   setGranted: (granted) => set({ granted }),
 }));
 
-export function refreshAccount(getMe: () => Promise<MeResponse>) {
+/** Reloads the account; resolves true when it loaded. Failures are left to the caller (or ignored). */
+export function refreshAccount(getMe: () => Promise<MeResponse>): Promise<boolean> {
   return getMe()
-    .then((me) => useAccountStore.getState().setMe(me))
-    .catch(() => undefined);
+    .then((me) => {
+      useAccountStore.getState().setMe(me);
+      return true;
+    })
+    .catch(() => false);
 }
 
 /** Loads the credit ledger, updates the balance and granted total, and returns the entries. */

@@ -5,6 +5,7 @@ import { useFittedBox, type Size } from "./hooks/useFittedBox";
 import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
 import { useApiClient } from "../lib/apiClient";
 import { reportLimit } from "../lib/useLimitDialog";
+import { showStudioNotice } from "../shell/StudioNotice";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
@@ -286,8 +287,9 @@ export function RenderPreview() {
       updateJob(cancelled.id, cancelled);
       void refreshAccount(apiClient.getMe);
       setAwaitingJob(null);
-    } catch {
-      // Left processing — the button stays up so the user can try again.
+    } catch (error) {
+      // Left processing, so the button stays up for another try.
+      if (!reportLimit(error)) showStudioNotice("Couldn't cancel the edit. Try again.");
     } finally {
       setIsCancelling(false);
     }

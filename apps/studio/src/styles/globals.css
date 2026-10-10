@@ -525,3 +525,20 @@ button { color: inherit; }
 .asset-tile:focus-within .asset-tile-delete,.asset-tile-delete:focus-visible{opacity:1}
 .asset-tile-delete:focus-visible,.project-card-reveal:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 @media (hover:none){.asset-tile-delete,.project-card-reveal{opacity:1!important}}
+
+/* A crash contained to one region of the Studio (RegionBoundary). */
+.region-error{display:flex;min-height:180px;flex:1;flex-direction:column;align-items:flex-start;justify-content:center;gap:8px;margin:12px;border:1px solid var(--line);border-radius:14px;padding:20px;background:#fbfaf8;color:var(--ink)}
+.region-error strong{font-size:14px;font-weight:600}
+.region-error p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.45}
+.region-error div{display:flex;gap:8px;margin-top:6px}
+.region-error button{min-height:36px;border:0;border-radius:9px;padding:8px 14px;background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer}
+.region-error button.is-secondary{border:1px solid var(--line);background:#fff;color:var(--ink)}
+/* The whole app's fallback (AppErrorHandling). */
+.app-error{display:grid;min-height:100vh;place-items:center;padding:24px;background:#fbfaf8;color:#171717}
+.app-error section{width:min(100%,440px);border:1px solid #e2dfda;border-radius:16px;padding:32px;background:#fff;box-shadow:0 16px 50px rgba(0,0,0,.08)}
+.app-error-brand{margin:0;color:#77736e;font-size:12px;font-weight:600;letter-spacing:.29em;text-transform:uppercase}
+.app-error h1{margin:12px 0 8px;font-family:var(--font-general-sans),system-ui,sans-serif;font-size:24px;font-weight:600;letter-spacing:-.02em}
+.app-error p{margin:0;color:#55524d;line-height:1.55}
+.app-error div{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:22px}
+.app-error button{min-height:44px;border:0;border-radius:10px;padding:11px 18px;background:#171717;color:#fff;font-weight:600;cursor:pointer}
+.app-error a{color:#171717;font-weight:600;text-underline-offset:3px}

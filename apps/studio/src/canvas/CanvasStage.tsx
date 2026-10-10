@@ -8,6 +8,7 @@ import { CanvasEmptyState } from "./CanvasEmptyState";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useApiClient } from "../lib/apiClient";
 import { reportClientError } from "../components/AppErrorHandling";
+import { showStudioNotice } from "../shell/StudioNotice";
 
 export function CanvasStage() {
   const apiClient = useApiClient();
@@ -27,9 +28,14 @@ export function CanvasStage() {
   );
 
   const handleNodeDragEnd = (id: string, x: number, y: number) => {
+    const before = useCanvasStore.getState().nodes.find((node) => node.id === id);
     updateNode(id, { x, y });
     apiClient.updateCanvasNode(id, { data: { x, y } }).catch((error) => {
       reportClientError(error);
+      // It would jump back on reload, so move it back now — unless it has been moved again since.
+      const current = useCanvasStore.getState().nodes.find((node) => node.id === id);
+      if (before && current?.x === x && current.y === y) updateNode(id, { x: before.x, y: before.y });
+      showStudioNotice("Couldn't save that move. The image is back where it was.");
     });
   };
 

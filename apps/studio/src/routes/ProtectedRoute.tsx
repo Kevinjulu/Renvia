@@ -25,14 +25,23 @@ export function ProtectedRoute() {
     }
     setSynced(false);
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     // Credit history only fills the granted total for the meters, so it runs alongside
     // /me instead of after it and never holds up the first render.
     loadCreditHistory(apiClient.getMyCredits).catch(() => undefined);
-    refreshAccount(apiClient.getMe).finally(() => {
-      if (!cancelled) setSynced(true);
-    });
+    // Without the account, credits, limits and costs stay blank, so keep trying until it loads.
+    // The app opens after the first attempt either way; the connection banner covers an outage.
+    const load = (attempt: number) => {
+      void refreshAccount(apiClient.getMe).then((loaded) => {
+        if (cancelled) return;
+        setSynced(true);
+        if (!loaded) retry = setTimeout(() => load(attempt + 1), Math.min(30_000, 2_000 * 2 ** attempt));
+      });
+    };
+    load(0);
     return () => {
       cancelled = true;
+      clearTimeout(retry);
     };
   }, [apiClient, isSignedIn]);
 

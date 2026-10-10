@@ -2,6 +2,7 @@ import { useAuth } from "@clerk/react";
 import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { isConnectionError } from "../lib/connection";
+import { isChunkLoadError, reloadForNewVersion } from "../lib/chunkErrors";
 
 type AppName = "studio" | "admin";
 type ReportContext = { componentStack?: string; requestId?: string | null };
@@ -31,8 +32,9 @@ function fingerprint(value: string) {
 
 /** Use for caught non-expected failures as well as the global browser handlers. */
 export function reportClientError(error: unknown, context?: ReportContext) {
-  // A dropped connection isn't a bug; the connection banner already tells the user.
-  if (isConnectionError(error)) return;
+  // A dropped connection isn't a bug; the connection banner already tells the user. Nor is code
+  // missing after a deploy: the page is just older than the server and reloads onto the new one.
+  if (isConnectionError(error) || isChunkLoadError(error)) return;
   reporter?.(error, context);
 }
 
@@ -48,6 +50,10 @@ class Boundary extends Component<{ children: ReactNode; resetKey: string }, { er
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
+    if (isChunkLoadError(error)) {
+      reloadForNewVersion();
+      return;
+    }
     reportClientError(error, { componentStack: info.componentStack ?? undefined });
   }
 
@@ -56,14 +62,23 @@ class Boundary extends Component<{ children: ReactNode; resetKey: string }, { er
   }
 
   override render() {
-    if (!this.state.error) return this.props.children;
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    const outdated = isChunkLoadError(error);
     return (
-      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "24px", background: "#f7f6f2", color: "#182018" }}>
-        <section style={{ width: "min(100%, 440px)", border: "1px solid #d9d8d1", borderRadius: "16px", background: "#fff", padding: "32px", boxShadow: "0 16px 50px rgba(24,32,24,.12)" }}>
-          <p style={{ margin: 0, color: "#6a756a", fontSize: "13px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>Renvia</p>
-          <h1 style={{ margin: "12px 0 8px", fontSize: "24px" }}>This screen hit a problem</h1>
-          <p style={{ margin: 0, color: "#586258", lineHeight: 1.55 }}>We’ve recorded the technical details. Your work is not intentionally discarded; reload to continue.</p>
-          <button type="button" onClick={() => window.location.reload()} style={{ marginTop: "22px", border: 0, borderRadius: "10px", background: "#243326", color: "#fff", padding: "11px 16px", fontWeight: 700, cursor: "pointer" }}>Reload Renvia</button>
+      <main className="app-error">
+        <section>
+          <p className="app-error-brand">Renvia</p>
+          <h1>{outdated ? "Renvia has been updated" : "This screen hit a problem"}</h1>
+          <p>
+            {outdated
+              ? "A new version is available. Reload to continue — your projects are saved."
+              : "We've recorded what happened. Your projects are saved — reload to carry on, or go back to your projects."}
+          </p>
+          <div>
+            <button type="button" onClick={() => window.location.reload()}>Reload Renvia</button>
+            {!outdated && <a href="/dashboard">Back to projects</a>}
+          </div>
         </section>
       </main>
     );
@@ -100,11 +115,19 @@ export function AppErrorHandling({ app, children }: { app: AppName; children: Re
   useEffect(() => {
     const onError = (event: ErrorEvent) => reportClientError(event.error ?? new Error(event.message));
     const onRejection = (event: PromiseRejectionEvent) => reportClientError(event.reason);
+    // Vite's signal that a code file it preloads is gone, i.e. a deploy happened since this page
+    // loaded. Reloading picks up the new version; if that was just tried, the error surfaces
+    // through a boundary and explains itself instead.
+    const onPreloadError = (event: Event) => {
+      if (reloadForNewVersion()) event.preventDefault();
+    };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
+    window.addEventListener("vite:preloadError", onPreloadError);
     return () => {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
+      window.removeEventListener("vite:preloadError", onPreloadError);
     };
   }, []);
 
