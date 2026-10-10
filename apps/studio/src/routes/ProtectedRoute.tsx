@@ -7,6 +7,7 @@ import { loadCreditHistory, refreshAccount, useAccountStore } from "../lib/useAc
 import { useLimitDialogStore } from "../lib/useLimitDialog";
 import { LimitDialog } from "../components/LimitDialog";
 import { AccountDialog } from "../components/account/AccountDialog";
+import { ConnectionBanner } from "../components/ConnectionBanner";
 
 export function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -46,6 +47,7 @@ export function ProtectedRoute() {
   return (
     <>
       <Outlet />
+      <ConnectionBanner />
       {refusal && (
         <LimitDialog
           refusal={refusal}

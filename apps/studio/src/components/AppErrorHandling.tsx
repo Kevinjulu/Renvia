@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
+import { isConnectionError } from "../lib/connection";
 
 type AppName = "studio" | "admin";
 type ReportContext = { componentStack?: string; requestId?: string | null };
@@ -30,6 +31,8 @@ function fingerprint(value: string) {
 
 /** Use for caught non-expected failures as well as the global browser handlers. */
 export function reportClientError(error: unknown, context?: ReportContext) {
+  // A dropped connection isn't a bug; the connection banner already tells the user.
+  if (isConnectionError(error)) return;
   reporter?.(error, context);
 }
 

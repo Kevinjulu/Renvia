@@ -512,6 +512,14 @@ button { color: inherit; }
 .studio-load-error button{border:0;border-radius:9px;padding:10px 16px;background:var(--ink);color:#fff;font-size:12px;font-weight:600;cursor:pointer}
 .studio-load-error a{border:1px solid #dcd9d4;border-radius:9px;padding:9px 15px;color:var(--ink);font-size:12px;font-weight:600;text-decoration:none}
 .studio-notice{position:absolute;z-index:30;bottom:18px;left:50%;display:flex;max-width:min(520px,calc(100% - 32px));align-items:center;gap:12px;transform:translateX(-50%);border:1px solid var(--error-line);border-radius:10px;padding:10px 12px 10px 14px;background:var(--error-bg);color:var(--error);font-size:12.5px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+/* Shown on every signed-in page while the network or the API is unreachable. */
+.connection-banner{position:fixed;z-index:60;top:12px;left:50%;display:flex;max-width:min(560px,calc(100% - 32px));align-items:center;gap:10px;transform:translateX(-50%);border:1px solid #ecd9b4;border-radius:999px;padding:8px 10px 8px 14px;background:#fdf8ee;color:#7a4f12;font-size:12.5px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.connection-banner-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#c98a1f;animation:connection-pulse 1.6s ease-in-out infinite}
+.connection-banner button{flex:none;min-height:30px;border:1px solid #ecd9b4;border-radius:999px;padding:4px 12px;background:#fff;color:#7a4f12;font-size:12px;font-weight:600;cursor:pointer}
+.connection-banner button:disabled{opacity:.6;cursor:default}
+@keyframes connection-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.connection-banner-dot{animation:none}}
+@media (max-width:600px){.connection-banner{border-radius:12px;align-items:flex-start}}
 
 /* Hover-only controls must also appear for keyboard focus and on touch screens */
 .asset-tile:focus-within .asset-tile-delete,.asset-tile-delete:focus-visible{opacity:1}

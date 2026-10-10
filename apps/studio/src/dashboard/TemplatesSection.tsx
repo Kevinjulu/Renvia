@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApiClient } from "../lib/apiClient";
+import { reportLimit } from "../lib/useLimitDialog";
 import { useGenerationSettingsStore } from "../canvas/hooks/useGenerationSettingsStore";
 import { PROJECT_TEMPLATES, TEMPLATE_CATEGORIES, type TemplateCategory } from "./projectTemplates";
 
@@ -41,8 +42,8 @@ export function TemplatesSection({ query = "", onNotice }: TemplatesSectionProps
       setStyleInfluence(template.styleInfluence);
       setPrompt(template.prompt);
       navigate(`/project/${project.id}`);
-    } catch {
-      onNotice("Couldn't start a project from that template. Try again.");
+    } catch (error) {
+      if (!reportLimit(error)) onNotice("Couldn't start a project from that template. Try again.");
       setCreatingId(null);
     }
   };

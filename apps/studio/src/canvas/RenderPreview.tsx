@@ -4,6 +4,7 @@ import { useCanvasStore } from "./hooks/useCanvasStore";
 import { useFittedBox, type Size } from "./hooks/useFittedBox";
 import { hasSelection, maskStrokeFrom, startRenderEdit, useRenderEditStore, type RenderEditTool } from "./hooks/useRenderEditStore";
 import { useApiClient } from "../lib/apiClient";
+import { reportLimit } from "../lib/useLimitDialog";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { RenderEditSurface } from "./RenderEditSurface";
@@ -268,8 +269,10 @@ export function RenderPreview() {
       setSelectNotice(
         result.objectCount === 1 ? "Selected 1 area — erase or paint to adjust." : `Selected ${result.objectCount} areas — erase or paint to adjust.`,
       );
-    } catch {
-      setSelectNotice("Automatic selection failed. Try again, or paint the area by hand.");
+    } catch (error) {
+      // Out of credits, a selection limit or maintenance is a refusal, not a broken tool.
+      if (reportLimit(error)) setSelectNotice("Automatic selection isn't available right now — you can still paint the area by hand.");
+      else setSelectNotice("Automatic selection failed. Try again, or paint the area by hand.");
     } finally {
       setIsSelecting(false);
     }

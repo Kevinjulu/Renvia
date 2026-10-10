@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useUser } from "@clerk/react";
 import type { Project } from "@renvia/types";
 import { useApiClient } from "../lib/apiClient";
+import { reportLimit } from "../lib/useLimitDialog";
 import {
   getFavoriteIds,
   getRecentlyViewed,
@@ -138,8 +139,9 @@ export function DashboardRoute() {
     try {
       const project = await apiClient.createProject({ name: `Project (${projects.length + 1})` });
       navigate(`/project/${project.id}`);
-    } catch {
-      setActionError("Couldn't create a new project. Check your connection and try again.");
+    } catch (error) {
+      // The project cap explains itself in the limit dialog; anything else is a real failure.
+      if (!reportLimit(error)) setActionError("Couldn't create a new project. Check your connection and try again.");
     } finally {
       setIsCreating(false);
     }

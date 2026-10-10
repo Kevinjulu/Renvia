@@ -34,8 +34,17 @@ import type {
   UploadImageResponse,
 } from "@renvia/types";
 import { reportClientError } from "../components/AppErrorHandling";
+import { ConnectionError, connectionErrorFrom, markApiReachable, markApiUnreachable } from "./connection";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
+
+/**
+ * Longest a request may go unanswered before it's treated as a lost connection. Generous,
+ * because queuing a render uploads its inputs to the model provider before it returns.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
+/** Uploads carry the file itself, so they get longer on a slow connection. */
+const UPLOAD_TIMEOUT_MS = 5 * 60_000;
 
 type GetToken = () => Promise<string | null>;
 
@@ -57,13 +66,34 @@ export class ApiError extends Error {
 
 const numberOrNull = (value: unknown) => (typeof value === "number" ? value : null);
 
+/** fetch, failing with a ConnectionError when the request goes unanswered or times out. */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    // Any answer, even a refusal or a server error, means the API is reachable.
+    markApiReachable();
+    return response;
+  } catch (error) {
+    markApiUnreachable();
+    throw connectionErrorFrom(error, timedOut);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function request<T>(getToken: GetToken, path: string, init?: RequestInit): Promise<T> {
   try {
     const token = await getToken();
     const headers = new Headers(init?.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
     headers.set("X-Request-Id", crypto.randomUUID());
-    const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api${path}`, { ...init, headers });
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
         | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown }
@@ -79,6 +109,9 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
     }
     return response.json() as Promise<T>;
   } catch (error) {
+    // An unanswered request is the network's doing, not a bug: the connection banner shows it,
+    // and reporting it would flood incidents whenever someone's wifi drops.
+    if (error instanceof ConnectionError) throw error;
     if (!(error instanceof ApiError) || error.status >= 500) {
       reportClientError(error, { requestId: error instanceof ApiError ? error.requestId : null });
     }
@@ -116,10 +149,12 @@ async function uploadWithProgress(
     xhr.setRequestHeader("Content-Type", file.type);
     xhr.setRequestHeader("X-Request-Id", crypto.randomUUID());
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded / event.total);
     };
     xhr.onload = () => {
+      markApiReachable();
       if (xhr.status < 200 || xhr.status >= 300) {
         const error = apiErrorFromBody(xhr.status, xhr.responseText, xhr.getResponseHeader("X-Request-Id"));
         if (error.status >= 500) reportClientError(error, { requestId: error.requestId });
@@ -133,9 +168,12 @@ async function uploadWithProgress(
       }
     };
     xhr.onerror = () => {
-      const error = new TypeError("Upload failed: network error");
-      reportClientError(error);
-      reject(error);
+      markApiUnreachable();
+      reject(connectionErrorFrom(null, false));
+    };
+    xhr.ontimeout = () => {
+      markApiUnreachable();
+      reject(connectionErrorFrom(null, true));
     };
     xhr.send(file);
   });
