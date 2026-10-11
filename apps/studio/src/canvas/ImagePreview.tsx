@@ -1,17 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useCanvasStore } from "./hooks/useCanvasStore";
+import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 import { useFocusTrap } from "../lib/useFocusTrap";
+import { showStudioNotice } from "../shell/StudioNotice";
 
-function downloadImage(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+/**
+ * Saves the image in place. Images are served from the API's origin, where a plain link's
+ * download attribute is ignored and the browser opens a new tab instead, so fetch it first.
+ */
+async function downloadImage(url: string, title: string) {
+  try {
+    const response = await fetch(url, { mode: "cors" });
+    if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const extension = blob.type.split("/")[1]?.replace("jpeg", "jpg") ?? "png";
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "renvia-image"}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    showStudioNotice("Download failed. Try again.");
+  }
+}
+
+/** The render whose result this image is, matched by path since links are re-signed. */
+function renderJobFor(url: string) {
+  const path = (link: string) => {
+    try {
+      return new URL(link, window.location.href).pathname.replace("/watermarked/", "/");
+    } catch {
+      return link;
+    }
+  };
+  const target = path(url);
+  return useRenderJobsStore.getState().jobs.find((job) => job.resultImageUrl && path(job.resultImageUrl) === target) ?? null;
 }
 
 /**
@@ -69,18 +96,14 @@ export function ImagePreview() {
             className="render-preview-icon"
             title="Download"
             aria-label="Download image"
-            onClick={() => downloadImage(image.url)}
+            onClick={() => {
+              // A render shown here (e.g. one set as the base elevation) gets the full download options.
+              const job = renderJobFor(image.url);
+              if (job) useDownloadDialogStore.getState().open(job.id);
+              else void downloadImage(image.url, image.title);
+            }}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" /></svg>
-          </button>
-          <button
-            type="button"
-            className="render-preview-icon"
-            title="Open original in a new tab"
-            aria-label="Open original in a new tab"
-            onClick={() => window.open(image.url, "_blank", "noopener,noreferrer")}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" /></svg>
           </button>
           <button
             type="button"

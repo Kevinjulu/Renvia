@@ -12,17 +12,7 @@ import { RenderEditSurface } from "./RenderEditSurface";
 import { formatAspectRatio } from "./utils/aspectRatio";
 import { WaitingProgress } from "../shell/panel/WaitingProgress";
 import { useWheelZoom } from "./hooks/useWheelZoom";
-
-function downloadImage(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
+import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 
 /** Before/after slider — always presented in a wide 16:9 frame so differences are easy to inspect. */
 function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: string }) {
@@ -247,6 +237,8 @@ export function RenderPreview() {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable=true]")) return;
+      // Keys pressed in the download dialog belong to it, even after its Escape has closed it.
+      if (target?.closest(".dl-backdrop") || useDownloadDialogStore.getState().jobId) return;
       if (event.key === "Escape") setPreviewJob(null);
       else if (event.key === "ArrowLeft" && index > 0) setPreviewJob(viewable[index - 1]!.id);
       else if (event.key === "ArrowRight" && index < viewable.length - 1) setPreviewJob(viewable[index + 1]!.id);
@@ -344,11 +336,8 @@ export function RenderPreview() {
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" /></svg>
               Edit
             </button>
-            <button type="button" className="render-preview-icon" title="Download" aria-label="Download render" onClick={() => downloadImage(job.resultImageUrl!)}>
+            <button type="button" className="render-preview-icon" title="Download" aria-label="Download render" onClick={() => useDownloadDialogStore.getState().open(job.id)}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" /></svg>
-            </button>
-            <button type="button" className="render-preview-icon" title="Open original in a new tab" aria-label="Open original in a new tab" onClick={() => window.open(shownUrl, "_blank", "noopener,noreferrer")}>
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" /></svg>
             </button>
             <button type="button" className="render-preview-icon" title="Close (Esc)" aria-label="Close preview" onClick={() => setPreviewJob(null)}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
