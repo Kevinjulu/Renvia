@@ -188,6 +188,20 @@ button { color: inherit; }
 .dashboard-search svg,.dashboard-icon-button svg{width:19px;height:19px;fill:none;stroke:#181818;stroke-width:1.6;stroke-linecap:round}.dashboard-search input{min-width:0;flex:1;border:0;outline:0;background:transparent;font-size:12px;color:#555}.dashboard-search kbd{border-radius:6px;padding:4px 7px;background:#f6f6f5;color:#777;font-size:11px}.dashboard-icon-button{display:grid;width:34px;height:34px;place-items:center;border:0;background:transparent;cursor:pointer}
 .dashboard-layout { display:grid; min-height:100vh; grid-template-columns:minmax(0,1fr) 302px; gap:30px; padding:90px 29px 16px 43px; }
 .dashboard-main { min-width:0; }
+/* Shown to accounts from before the 11 October 2026 database move until their data is restored. */
+.restore-notice{display:flex;align-items:flex-start;gap:14px;margin:0 0 24px;border:1px solid #e7d6b3;border-radius:16px;padding:18px 18px 18px 20px;background:linear-gradient(180deg,#fffaf0,#fdf5e6);color:#5b4314;box-shadow:0 6px 20px rgba(122,79,18,.06)}
+.restore-notice-icon{display:grid;flex:none;place-items:center;width:38px;height:38px;border-radius:12px;background:#f6e6c4;color:#8a5a17}
+.restore-notice-body{min-width:0;flex:1}
+.restore-notice-body h2{margin:0;color:#3d2c0c;font-family:var(--font-general-sans);font-size:16px;font-weight:600;letter-spacing:-.01em}
+.restore-notice-body p{margin:6px 0 0;font-size:13.5px;line-height:1.55}
+.restore-notice-body ul{margin:10px 0 0;padding:0 0 0 18px;font-size:13.5px;line-height:1.55}
+.restore-notice-body li+li{margin-top:3px}
+.restore-notice-body strong{color:#3d2c0c;font-weight:600}
+.restore-notice-thanks{color:#7a5a20}
+.restore-notice-dismiss{flex:none;min-height:34px;border:1px solid #e7d6b3;border-radius:999px;padding:6px 14px;background:#fff;color:#5b4314;font-size:13px;font-weight:600;cursor:pointer}
+.restore-notice-dismiss:hover{background:#fffaf0}
+.restore-notice-dismiss:focus-visible{outline:2px solid #c98a1f;outline-offset:2px}
+@media(max-width:700px){.restore-notice{flex-wrap:wrap;padding:16px}.restore-notice-dismiss{margin-left:52px}}
 .dashboard-greeting { margin-bottom:17px; }.dashboard-greeting p{margin:0 0 20px 2px;color:#a7a4a1;font-size:12px;letter-spacing:.06em}.dashboard-greeting h1{margin:0;font-family:var(--font-general-sans);font-size:34px;line-height:1.08;letter-spacing:-.035em;font-weight:600}.dashboard-greeting small{display:block;margin-top:4px;color:#92908d;font-size:15px}
 .dashboard-hero { display:grid; height:273px; grid-template-columns:46% 54%; overflow:hidden; border:1px solid #e6e2dc; border-radius:14px; background:#f8f5f0; box-shadow:0 1px 0 rgba(255,255,255,.7) inset; }
 .dashboard-hero-copy { position:relative; z-index:2; padding:35px 18px 25px 40px; background:linear-gradient(90deg,#f9f7f3 83%,rgba(249,247,243,.86) 100%); }.dashboard-hero-copy>p{margin:0;color:#777674;font-size:10px;letter-spacing:.15em}.dashboard-hero-copy h2{margin:13px 0 9px;font-family:var(--font-general-sans);font-size:30px;line-height:1.08;letter-spacing:-.035em;font-weight:600}.dashboard-hero-copy>span{display:block;max-width:460px;color:#807f7c;font-size:15px;line-height:1.42}.dashboard-hero-copy>div{display:flex;gap:12px;margin-top:24px}.dashboard-hero-copy button{height:44px;border-radius:10px;padding:0 19px;font-size:13px;font-weight:500;cursor:pointer}.dashboard-primary-button{border:1px solid #111;background:#171717;color:white;box-shadow:0 5px 10px rgba(0,0,0,.13)}.dashboard-primary-button b{margin-right:8px;font-size:19px;font-weight:400}.dashboard-secondary-button{border:1px solid #e4e0da;background:#fff;color:#111;box-shadow:0 3px 8px rgba(0,0,0,.06)}.dashboard-secondary-button b{margin-right:8px;font-size:19px;font-weight:400}
