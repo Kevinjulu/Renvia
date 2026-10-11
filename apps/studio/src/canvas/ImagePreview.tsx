@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useCanvasStore } from "./hooks/useCanvasStore";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
+import { isSameImage } from "./utils/sameImage";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import { showStudioNotice } from "../shell/StudioNotice";
 
@@ -28,17 +29,9 @@ async function downloadImage(url: string, title: string) {
   }
 }
 
-/** The render whose result this image is, matched by path since links are re-signed. */
+/** The render whose result this image is, if any. */
 function renderJobFor(url: string) {
-  const path = (link: string) => {
-    try {
-      return new URL(link, window.location.href).pathname.replace("/watermarked/", "/");
-    } catch {
-      return link;
-    }
-  };
-  const target = path(url);
-  return useRenderJobsStore.getState().jobs.find((job) => job.resultImageUrl && path(job.resultImageUrl) === target) ?? null;
+  return useRenderJobsStore.getState().jobs.find((job) => isSameImage(job.resultImageUrl, url)) ?? null;
 }
 
 /**

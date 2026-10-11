@@ -83,6 +83,8 @@ export function useAutoShowFinishedRender() {
       const { targetJobId, awaitingJobId } = useRenderEditStore.getState();
       // An edit in progress owns the viewer: it swaps itself into Compare when it lands.
       if (targetJobId || awaitingJobId === job.id) continue;
+      // Already on screen (a finished edit opens itself in Compare): leave its view mode alone.
+      if (useRenderJobsStore.getState().previewJobId === job.id) continue;
       useRenderJobsStore.getState().setPreviewJob(job.id);
     }
   }, [jobs]);

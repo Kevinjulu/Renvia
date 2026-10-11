@@ -13,6 +13,7 @@ import { formatAspectRatio } from "./utils/aspectRatio";
 import { WaitingProgress } from "../shell/panel/WaitingProgress";
 import { useWheelZoom } from "./hooks/useWheelZoom";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
+import { isSameImage } from "./utils/sameImage";
 
 /** Before/after slider — always presented in a wide 16:9 frame so differences are easy to inspect. */
 function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: string }) {
@@ -218,18 +219,17 @@ export function RenderPreview() {
     if (targetJobId && (previewJobId !== targetJobId || activeTab !== "edit")) stopEditing();
   }, [targetJobId, previewJobId, activeTab, stopEditing]);
 
-  // When an edit queued from here finishes, show it against the render it came from.
+  // When an edit queued from here finishes, show it: against the render it came from when that
+  // render is still on screen, on its own otherwise.
   const awaited = jobs.find((item) => item.id === awaitingJobId);
   const awaiting = awaited && (awaited.status === "pending" || awaited.status === "processing") ? awaited : null;
   useEffect(() => {
     if (!awaited || (awaited.status !== "succeeded" && awaited.status !== "failed")) return;
     useRenderEditStore.getState().setAwaitingJob(null);
-    if (awaited.status !== "succeeded" || !awaited.resultImageUrl || !previewJobId) return;
+    if (awaited.status !== "succeeded" || !awaited.resultImageUrl) return;
     const shown = jobs.find((item) => item.id === previewJobId);
-    if (shown?.resultImageUrl === awaited.sourceImageUrl) {
-      stopEditing();
-      setPreviewJob(awaited.id, "compare");
-    }
+    stopEditing();
+    setPreviewJob(awaited.id, isSameImage(shown?.resultImageUrl, awaited.sourceImageUrl) ? "compare" : "render");
   }, [awaited, jobs, previewJobId, setPreviewJob, stopEditing]);
 
   useEffect(() => {
@@ -291,7 +291,7 @@ export function RenderPreview() {
 
   const title = [job.settings?.upscale ? `${job.settings.upscale.target.toUpperCase()} export` : job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
   const shownUrl = mode === "source" ? job.sourceImageUrl : job.resultImageUrl;
-  const parent = job.settings?.edit ? jobs.find((item) => item.resultImageUrl === job.sourceImageUrl) : undefined;
+  const parent = job.settings?.edit ? jobs.find((item) => isSameImage(item.resultImageUrl, job.sourceImageUrl)) : undefined;
   const selected = hasSelection(strokes);
   const isAdmin = me?.role === "admin";
   const autoDisabled = (() => {

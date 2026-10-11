@@ -6,6 +6,7 @@ import { nodeToPersistedData, setImageAsBaseNode } from "../../canvas/utils/plac
 import { useAutoShowFinishedRender, useRenderJobsPolling } from "../../canvas/hooks/useRenderJobsPolling";
 import { startRenderEdit } from "../../canvas/hooks/useRenderEditStore";
 import { viewImage } from "../../canvas/utils/viewImage";
+import { isSameImage } from "../../canvas/utils/sameImage";
 import { formatAspectRatio } from "../../canvas/utils/aspectRatio";
 import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
@@ -278,7 +279,7 @@ export function RenderResultsPanel() {
   const succeeded = job.status === "succeeded" && Boolean(job.resultImageUrl);
   const starred = job.isFavorite;
   const parent = job.settings?.edit
-    ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
+    ? jobs.find((item) => item.status === "succeeded" && isSameImage(item.resultImageUrl, job.sourceImageUrl))
     : undefined;
   const references = job.settings?.referenceImageUrls ?? [];
   const highRes = job.settings?.highRes;
