@@ -1,11 +1,12 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminApproval, AdminApprovalsResponse, AdminBulkGrantCreditsResponse, ApprovalAction, ApprovalStatus, UserRole } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
 import { denyUnless, hasPermission } from "./permissions.js";
-import { findAdminUser, recordAdminEvent } from "./shared.js";
+import { adminEventInsert, balanceCapGuard, findAdminUser, isBalanceCapViolation } from "./shared.js";
+import { checkRefundable, refundPaypalPayment } from "./refunds.js";
 import type { AdminContext, UserRow } from "./context.js";
 
 export const governanceRoutes = new Hono<AdminContext>();
@@ -35,8 +36,20 @@ governanceRoutes.get("/governance", async (c) => {
 governanceRoutes.put("/governance", async (c) => {
   const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
   const body = z.object({ bulkCreditApprovalThreshold: z.number().int().min(0).max(1_000_000), refundApprovalThresholdCents: z.number().int().min(0).max(10_000_000), roleChangeApprovalThreshold: z.number().int().min(0).max(100), maintenanceApprovalThreshold: z.number().int().min(0).max(100), reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
-  const [updated] = await c.get("db").insert(schema.governanceSettings).values({ id: 1, ...body, updatedBy: c.get("admin").id, updatedAt: new Date() }).onConflictDoUpdate({ target: schema.governanceSettings.id, set: { ...body, updatedBy: c.get("admin").id, updatedAt: new Date() } }).returning();
-  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "settings.update", targetType: "governance_settings", targetId: "1", summary: "Updated high-risk action thresholds", detail: { ...body } });
+  const db = c.get("db");
+  const { reason, ...thresholds } = body;
+  const before = await governance(db);
+  const [[updated]] = await db.batch([
+    db.insert(schema.governanceSettings).values({ id: 1, ...thresholds, updatedBy: c.get("admin").id, updatedAt: new Date() }).onConflictDoUpdate({ target: schema.governanceSettings.id, set: { ...thresholds, updatedBy: c.get("admin").id, updatedAt: new Date() } }).returning(),
+    adminEventInsert(db, {
+      actorId: c.get("admin").id, action: "settings.update", targetType: "governance_settings", targetId: "1", summary: "Updated high-risk action thresholds",
+      detail: {
+        reason,
+        before: { bulkCreditApprovalThreshold: before.bulkCreditApprovalThreshold, refundApprovalThresholdCents: before.refundApprovalThresholdCents, roleChangeApprovalThreshold: before.roleChangeApprovalThreshold, maintenanceApprovalThreshold: before.maintenanceApprovalThreshold },
+        after: thresholds,
+      },
+    }),
+  ]);
   return c.json(updated);
 });
 
@@ -78,18 +91,25 @@ governanceRoutes.post("/users/bulk-credits", async (c) => {
   ]);
   const [firstWrite, ...remainingWrites] = writes;
   if (!firstWrite) return c.json({ error: "No users selected" }, 400);
-  await db.batch([
-    firstWrite,
-    ...remainingWrites,
-    db.insert(schema.adminEvents).values({
-      actorId: adminUser.id,
-      action: "credits.adjust",
-      targetType: "users",
-      targetId: null,
-      summary: `Granted ${body.amount} credits to ${existing.length} users`,
-      detail: { amount: body.amount, note: body.note, userIds: existing.map((user) => user.id), emails: existing.map((user) => user.email) },
-    }),
-  ]);
+  try {
+    await db.batch([
+      firstWrite,
+      ...remainingWrites,
+      db.insert(schema.adminEvents).values({
+        actorId: adminUser.id,
+        action: "credits.adjust",
+        targetType: "users",
+        targetId: null,
+        summary: `Granted ${body.amount} credits to ${existing.length} users`,
+        detail: { amount: body.amount, note: body.note, userIds: existing.map((user) => user.id), emails: existing.map((user) => user.email) },
+      }),
+      // The check above read balances before this transaction; this one can't be raced.
+      ...(settings.maxCreditBalance !== null ? [balanceCapGuard(db, uniqueIds, settings.maxCreditBalance)] : []),
+    ]);
+  } catch (error) {
+    if (isBalanceCapViolation(error)) return c.json({ error: `A selected balance would exceed the ${settings.maxCreditBalance}-credit cap`, code: "balance_cap" }, 400);
+    throw error;
+  }
 
   const response: AdminBulkGrantCreditsResponse = { updated: existing.length };
   return c.json(response);
@@ -130,7 +150,12 @@ governanceRoutes.post("/approvals/:id/reject", async (c) => {
 });
 
 /** Who may execute an approved request: the same capability the action needs when it runs directly. */
-const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage" } as const;
+const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage" } as const;
+
+/** Staff who can execute some kind of approval can see the queue. */
+function canSeeApprovals(c: { get: (key: "admin") => UserRow }) {
+  return Object.values(EXECUTE_PERMISSION).some((permission) => !denyUnless(c, permission));
+}
 
 /**
  * Moves an approved request to executed atomically, so two concurrent executes cannot both run
@@ -146,9 +171,59 @@ async function releaseApproval(db: Database, id: string) {
   await db.update(schema.approvalRequests).set({ status: "approved", executedAt: null }).where(and(eq(schema.approvalRequests.id, id), eq(schema.approvalRequests.status, "executed")));
 }
 
+/**
+ * Refunds re-run every refund check first: the payment may have been refunded or its credits
+ * spent since approval. A failure after PayPal accepted the refund hands the request back; the
+ * retry reuses the same PayPal-Request-Id, so it can't pay out twice.
+ */
+async function executeRefund(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const { paymentId } = z.object({ paymentId: z.string().uuid() }).parse(request.payload);
+  const check = await checkRefundable(c.env, db, paymentId);
+  if (!check.ok) return c.json({ error: check.error, ...(check.code ? { code: check.code } : {}) }, check.status);
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  try {
+    await refundPaypalPayment(c.env, db, check.payment, actor.id, { approvalId: request.id });
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    return c.json({ error: error instanceof Error ? error.message : "Could not refund payment" }, 502);
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: "billing_payment", targetId: paymentId, summary: `Executed approved refund of PayPal payment ${check.payment.providerPaymentId}`, detail: { approvalId: request.id, amountCents: check.payment.amountCents } }),
+  ]);
+  return c.json({ id: request.id, status: "executed" });
+}
+
+const maintenancePayload = z.object({ maintenanceRenders: z.boolean().optional(), maintenanceSegments: z.boolean().optional() });
+
+/** Applies an approved maintenance switch, recorded as a settings change like any other. */
+async function executeMaintenance(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const payload = maintenancePayload.parse(request.payload);
+  const before = await getSettings(db);
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  try {
+    await db.batch([
+      db.update(schema.appSettings).set({ ...payload, updatedAt: new Date(), updatedBy: actor.id }).where(eq(schema.appSettings.id, 1)),
+      db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+      adminEventInsert(db, {
+        actorId: actor.id, action: "settings.update", targetType: "settings", targetId: "1",
+        summary: `Updated settings: ${Object.keys(payload).join(", ")} (approved request)`,
+        detail: { approvalId: request.id, before: { maintenanceRenders: before.maintenanceRenders, maintenanceSegments: before.maintenanceSegments }, after: payload },
+      }),
+      adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: "settings", targetId: "1", summary: "Executed approved maintenance change", detail: { approvalId: request.id, ...payload } }),
+    ]);
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  return c.json({ id: request.id, status: "executed" });
+}
+
 governanceRoutes.post("/approvals/:id/execute", async (c) => {
   // Coarse gate before any lookup; the action-specific permission is checked once the request is loaded.
-  if (denyUnless(c, "credits.manage") && denyUnless(c, "users.manage")) return c.json({ error: "Forbidden" }, 403);
+  if (!canSeeApprovals(c)) return c.json({ error: "Forbidden" }, 403);
   const db = c.get("db"); const actor = c.get("admin"); const id = z.string().uuid().parse(c.req.param("id"));
   const [request] = await db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.id, id));
   if (!request) return c.json({ error: "Approval request not found" }, 404);
@@ -174,17 +249,28 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
     }
     return c.json({ id, status: "executed" });
   }
-  if (request.action !== "bulk_credits") return c.json({ error: "This approved action is executed from its protected operation" }, 409);
+  if (request.action === "refund") return executeRefund(c, request);
+  if (request.action === "maintenance") return executeMaintenance(c, request);
   const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
-  const users = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
+  const users = await db.select({ id: schema.users.id, email: schema.users.email, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
   if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);
+  // The cap in force now applies, not the one when the grant was requested.
+  const cap = (await getSettings(db)).maxCreditBalance;
+  const capError = () => c.json({ error: `A selected balance would exceed the ${cap}-credit cap; create a smaller request`, code: "balance_cap" }, 409);
+  if (cap !== null && users.some((user) => user.creditBalance + payload.amount > cap)) return capError();
   if (!(await claimApproval(db, id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
   const writes = users.flatMap((user) => [db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${payload.amount}` }).where(eq(schema.users.id, user.id)), db.insert(schema.creditLedger).values({ userId: user.id, amount: payload.amount, reason: "admin_grant", note: payload.note, actorId: actor.id })]);
   const [firstWrite, ...remainingWrites] = writes;
   try {
-    await db.batch([firstWrite!, ...remainingWrites, db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }), db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "users", summary: `Executed approved bulk credit grant to ${users.length} users`, detail: { approvalId: id, amount: payload.amount } })]);
+    await db.batch([
+      firstWrite!, ...remainingWrites,
+      db.insert(schema.approvalEvents).values({ approvalId: id, actorId: actor.id, action: "executed" }),
+      db.insert(schema.adminEvents).values({ actorId: actor.id, action: "approval.execute", targetType: "users", summary: `Executed approved bulk credit grant to ${users.length} users`, detail: { approvalId: id, amount: payload.amount } }),
+      ...(cap !== null ? [balanceCapGuard(db, payload.userIds, cap)] : []),
+    ]);
   } catch (error) {
     await releaseApproval(db, id);
+    if (isBalanceCapViolation(error)) return capError();
     throw error;
   }
   return c.json({ id, status: "executed", updated: users.length });
@@ -200,7 +286,15 @@ function describeApproval(row: ApprovalRow, emails: Map<string, string>): string
     const count = Array.isArray(payload.userIds) ? payload.userIds.length : 0;
     return `Grant ${String(payload.amount)} credits to ${count} user${count === 1 ? "" : "s"}: ${String(payload.note)}`;
   }
-  return row.action.replaceAll("_", " ");
+  if (row.action === "refund") return `Refund ${String(payload.currency)} ${(Number(payload.amountCents) / 100).toFixed(2)} for PayPal payment ${String(payload.providerPaymentId)}`;
+  if (row.action === "maintenance") {
+    const parts = [
+      payload.maintenanceRenders !== undefined ? `${payload.maintenanceRenders ? "pause" : "resume"} renders` : null,
+      payload.maintenanceSegments !== undefined ? `${payload.maintenanceSegments ? "pause" : "resume"} selections` : null,
+    ].filter(Boolean);
+    return `Maintenance: ${parts.join(" and ")}`;
+  }
+  return String(row.action).replaceAll("_", " ");
 }
 
 /** Mirrors the approve, reject and execute rules above, so the page only offers what the API will accept. */
@@ -233,7 +327,7 @@ function toAdminApproval(row: ApprovalRow, viewer: UserRow, emails: Map<string, 
 
 governanceRoutes.get("/approvals", async (c) => {
   // The same staff who can execute approvals can see them.
-  if (denyUnless(c, "credits.manage") && denyUnless(c, "users.manage")) return c.json({ error: "Forbidden" }, 403);
+  if (!canSeeApprovals(c)) return c.json({ error: "Forbidden" }, 403);
   const db = c.get("db"); const viewer = c.get("admin");
   const [open, recent] = await Promise.all([
     db.select().from(schema.approvalRequests).where(inArray(schema.approvalRequests.status, ["pending", "approved"])).orderBy(desc(schema.approvalRequests.createdAt)).limit(100),

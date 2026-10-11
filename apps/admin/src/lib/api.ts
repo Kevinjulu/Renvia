@@ -1,6 +1,10 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminAuditExportResponse,
+  AdminGovernanceResponse,
+  AdminRefundResponse,
+  AdminUpdateGovernanceRequest,
   AdminApprovalsResponse,
   AdminAuditAction,
   AdminAuditRange,
@@ -185,7 +189,7 @@ export function useAdminApi() {
       updateIncidentSeverity: (id: string, severity: "low" | "medium" | "high" | "critical") => request<{ id: string; severity: string }>(getToken, `/admin/incidents/${id}/severity`, { method: "POST", body: JSON.stringify({ severity }) }),
       resolveIncident: (id: string, note: string) => request<{ id: string; status: "resolved" }>(getToken, `/admin/incidents/${id}/resolve`, { method: "POST", body: JSON.stringify({ note }) }),
       notifyIncident: (id: string) => request<{ id: string; notification: string }>(getToken, `/admin/incidents/${id}/notify`, { method: "POST" }),
-      refundPayment: (id: string) => request<{ id: string; status: "refunded" }>(getToken, `/admin/billing/payments/${id}/refund`, { method: "POST" }),
+      refundPayment: (id: string, reason?: string) => request<AdminRefundResponse>(getToken, `/admin/billing/payments/${id}/refund`, { method: "POST", body: JSON.stringify(reason ? { reason } : {}) }),
       replayBillingWebhook: (id: string) => request<{ id: string; status: "processed" }>(getToken, `/admin/billing/webhooks/${id}/replay`, { method: "POST" }),
       listSegmentations: (params: {
         status?: SegmentationStatus;
@@ -216,6 +220,17 @@ export function useAdminApi() {
         limit?: number;
         offset?: number;
       }) => request<AdminAuditResponse>(getToken, `/admin/audit${query(params)}`),
+      createAuditExport: (reason: string) => request<AdminAuditExportResponse>(getToken, "/admin/audit/exports", { method: "POST", body: JSON.stringify({ reason }) }),
+      /** The stored CSV exactly as exported, with the digest the server recorded for it. */
+      downloadAuditExport: async (id: string) => {
+        const token = await getToken();
+        const response = await fetch(`${API_BASE_URL}/api/admin/audit/exports/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!response.ok) throw new ApiError(response.status, null, `Download failed (${response.status})`, response.headers.get("X-Request-Id"));
+        return { blob: await response.blob(), sha256: response.headers.get("X-Content-SHA256") };
+      },
+      getGovernance: () => request<AdminGovernanceResponse>(getToken, "/admin/governance"),
+      updateGovernance: (body: AdminUpdateGovernanceRequest) =>
+        request<AdminGovernanceResponse["settings"]>(getToken, "/admin/governance", { method: "PUT", body: JSON.stringify(body) }),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

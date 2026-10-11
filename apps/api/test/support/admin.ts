@@ -16,7 +16,7 @@ export const DAY = 24 * 60 * 60 * 1000;
 export const ago = (ms: number) => new Date(Date.now() - ms);
 
 /** Calls the real app at /api/admin<path>, signed in as the user with this Clerk id. */
-export function callAdmin(clerkId: string | null, method: string, path: string, body?: unknown) {
+export function callAdmin(clerkId: string | null, method: string, path: string, body?: unknown, env = adminEnv) {
   return root.request(
     `http://localhost/api/admin${path}`,
     {
@@ -27,7 +27,7 @@ export function callAdmin(clerkId: string | null, method: string, path: string, 
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     },
-    adminEnv,
+    env,
   );
 }
 

@@ -10,7 +10,7 @@ import { ensureEntitlement, getBillingEntitlement, overrideIsActive } from "../.
 import { ensureCreditPeriod, topUpPlanCredits } from "../../lib/planCredits.js";
 import { getUsage, resolveLimits } from "../../lib/limits.js";
 import { denyUnless } from "./permissions.js";
-import { selectAdminRenders, toAdminRender, findAdminUser, recordAdminEvent } from "./shared.js";
+import { selectAdminRenders, toAdminRender, findAdminUser, recordAdminEvent, adminEventInsert, balanceCapGuard, isBalanceCapViolation } from "./shared.js";
 import { governance, requestApproval } from "./governance.js";
 import type { AdminContext } from "./context.js";
 
@@ -139,9 +139,12 @@ userDetailRoutes.post("/users/:id/notes", async (c) => {
   const db = c.get("db"); const userId = z.string().uuid().parse(c.req.param("id"));
   const { body } = customerNoteSchema.parse(await c.req.json());
   if (!(await findAdminUser(db, userId))) return c.json({ error: "Not found" }, 404);
-  const [note] = await db.insert(schema.customerNotes).values({ userId, authorId: c.get("admin").id, body }).returning();
-  await recordAdminEvent(db, { actorId: c.get("admin").id, action: "customer.note", targetType: "user", targetId: userId, summary: "Added internal customer note", detail: { noteId: note!.id } });
-  return c.json({ id: note!.id });
+  const noteId = crypto.randomUUID();
+  await db.batch([
+    db.insert(schema.customerNotes).values({ id: noteId, userId, authorId: c.get("admin").id, body }),
+    adminEventInsert(db, { actorId: c.get("admin").id, action: "customer.note", targetType: "user", targetId: userId, summary: "Added internal customer note", detail: { noteId } }),
+  ]);
+  return c.json({ id: noteId });
 });
 
 const customerTagSchema = z.object({ label: z.string().trim().min(1).max(50) });
@@ -151,8 +154,10 @@ userDetailRoutes.post("/users/:id/tags", async (c) => {
   const { label } = customerTagSchema.parse(await c.req.json());
   if (!(await findAdminUser(db, userId))) return c.json({ error: "Not found" }, 404);
   const normalizedLabel = label.toLocaleLowerCase();
-  await db.insert(schema.customerTags).values({ userId, label, normalizedLabel, createdBy: c.get("admin").id }).onConflictDoNothing();
-  await recordAdminEvent(db, { actorId: c.get("admin").id, action: "customer.tag", targetType: "user", targetId: userId, summary: `Tagged customer: ${label}`, detail: { label } });
+  await db.batch([
+    db.insert(schema.customerTags).values({ userId, label, normalizedLabel, createdBy: c.get("admin").id }).onConflictDoNothing(),
+    adminEventInsert(db, { actorId: c.get("admin").id, action: "customer.tag", targetType: "user", targetId: userId, summary: `Tagged customer: ${label}`, detail: { label } }),
+  ]);
   return c.json({ ok: true });
 });
 
@@ -204,20 +209,17 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
   if (!target) return c.json({ error: "Not found" }, 404);
 
   // The balance ceiling applies to grants only — a removal is always allowed.
-  if (amount > 0) {
-    const settings = await getSettings(db);
-    if (settings.maxCreditBalance !== null && target.creditBalance + amount > settings.maxCreditBalance) {
-      return c.json(
-        {
-          error: `That would take the balance past the ${settings.maxCreditBalance}-credit cap`,
-          code: "balance_cap",
-          limit: settings.maxCreditBalance,
-          used: target.creditBalance,
-        },
-        400,
-      );
-    }
-  }
+  const cap = amount > 0 ? (await getSettings(db)).maxCreditBalance : null;
+  const capError = () => c.json(
+    {
+      error: `That would take the balance past the ${cap}-credit cap`,
+      code: "balance_cap",
+      limit: cap,
+      used: target.creditBalance,
+    },
+    400,
+  );
+  if (cap !== null && target.creditBalance + amount > cap) return capError();
 
   try {
     // Balance and ledger entry commit together; a removal past zero rolls both back.
@@ -238,9 +240,12 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
         summary: `${amount > 0 ? "Granted" : "Removed"} ${Math.abs(amount)} credits for ${target.email}`,
         detail: { amount, note, email: target.email },
       }),
+      // The check above read the balance before this transaction; this one can't be raced.
+      ...(cap !== null ? [balanceCapGuard(db, [id], cap)] : []),
     ]);
     if (updated.length === 0) return c.json({ error: "Not found" }, 404);
   } catch (error) {
+    if (isBalanceCapViolation(error)) return capError();
     if (isCheckViolation(error)) {
       return c.json({ error: "That would take the balance below zero", code: "balance_negative" }, 400);
     }
@@ -339,24 +344,9 @@ userDetailRoutes.patch("/users/:id", async (c) => {
     }
   }
 
-  const [updated] = await db
-    .update(schema.users)
-    .set({
-      ...(body.disabled !== undefined ? { disabled: body.disabled } : {}),
-      ...(body.role !== undefined ? { role: body.role } : {}),
-      ...(body.limitsExempt !== undefined ? { limitsExempt: body.limitsExempt } : {}),
-      ...(body.dailyRenderLimitOverride !== undefined ? { dailyRenderLimitOverride: body.dailyRenderLimitOverride } : {}),
-      ...(body.dailySegmentLimitOverride !== undefined ? { dailySegmentLimitOverride: body.dailySegmentLimitOverride } : {}),
-      ...(body.monthlyRenderLimitOverride !== undefined ? { monthlyRenderLimitOverride: body.monthlyRenderLimitOverride } : {}),
-      ...(body.monthlySegmentLimitOverride !== undefined ? { monthlySegmentLimitOverride: body.monthlySegmentLimitOverride } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.users.id, id))
-    .returning({ id: schema.users.id });
-  if (!updated) return c.json({ error: "Not found" }, 404);
-
   // A disabled account is refused by the API already; revoking its sessions also signs it out of
-  // the apps. Best effort: the disable has been saved, so a Clerk failure is recorded, not thrown.
+  // the apps. Done before the write so the audit row can say how it went. Best effort: a Clerk
+  // failure is recorded, not thrown, and the disable still goes ahead.
   let sessionsRevoked: number | null = null;
   let sessionRevokeError: string | null = null;
   if (body.disabled === true && !before.disabled) {
@@ -364,7 +354,6 @@ userDetailRoutes.patch("/users/:id", async (c) => {
     catch (error) { sessionRevokeError = error instanceof Error ? error.message : "Session revocation failed"; }
   }
 
-  const user = await findAdminUser(db, id);
   const parts: string[] = [];
   if (body.disabled !== undefined && body.disabled !== before.disabled) {
     parts.push(body.disabled ? (sessionsRevoked !== null ? `disabled account, signed out ${sessionsRevoked} session(s)` : "disabled account") : "enabled account");
@@ -381,35 +370,54 @@ userDetailRoutes.patch("/users/:id", async (c) => {
       parts.push(next === null ? `${label} override cleared` : `${label} override set to ${next}`);
     }
   }
-  await recordAdminEvent(db, {
-    actorId: adminUser.id,
-    action: "user.update",
-    targetType: "user",
-    targetId: id,
-    summary: `${before.email}: ${parts.join(", ") || "updated"}`,
-    detail: {
-      before: {
-        role: before.role,
-        disabled: before.disabled,
-        limitsExempt: before.limitsExempt,
-        dailyRenderLimitOverride: before.dailyRenderLimitOverride,
-        dailySegmentLimitOverride: before.dailySegmentLimitOverride,
-        monthlyRenderLimitOverride: before.monthlyRenderLimitOverride,
-        monthlySegmentLimitOverride: before.monthlySegmentLimitOverride,
-      },
-      after: { role: body.role, disabled: body.disabled, limitsExempt: body.limitsExempt,
-        dailyRenderLimitOverride: body.dailyRenderLimitOverride,
-        dailySegmentLimitOverride: body.dailySegmentLimitOverride,
-        monthlyRenderLimitOverride: body.monthlyRenderLimitOverride,
-        monthlySegmentLimitOverride: body.monthlySegmentLimitOverride,
-      },
-      confirmEmail: body.confirmEmail ?? null,
-      reason: body.reason ?? null,
-      ...(sessionsRevoked !== null ? { sessionsRevoked } : {}),
-      ...(sessionRevokeError ? { sessionRevokeError } : {}),
-    },
-  });
 
+  const [updated] = await db.batch([
+    db
+      .update(schema.users)
+      .set({
+        ...(body.disabled !== undefined ? { disabled: body.disabled } : {}),
+        ...(body.role !== undefined ? { role: body.role } : {}),
+        ...(body.limitsExempt !== undefined ? { limitsExempt: body.limitsExempt } : {}),
+        ...(body.dailyRenderLimitOverride !== undefined ? { dailyRenderLimitOverride: body.dailyRenderLimitOverride } : {}),
+        ...(body.dailySegmentLimitOverride !== undefined ? { dailySegmentLimitOverride: body.dailySegmentLimitOverride } : {}),
+        ...(body.monthlyRenderLimitOverride !== undefined ? { monthlyRenderLimitOverride: body.monthlyRenderLimitOverride } : {}),
+        ...(body.monthlySegmentLimitOverride !== undefined ? { monthlySegmentLimitOverride: body.monthlySegmentLimitOverride } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.users.id, id))
+      .returning({ id: schema.users.id }),
+    adminEventInsert(db, {
+      actorId: adminUser.id,
+      action: "user.update",
+      targetType: "user",
+      targetId: id,
+      summary: `${before.email}: ${parts.join(", ") || "updated"}`,
+      detail: {
+        before: {
+          role: before.role,
+          disabled: before.disabled,
+          limitsExempt: before.limitsExempt,
+          dailyRenderLimitOverride: before.dailyRenderLimitOverride,
+          dailySegmentLimitOverride: before.dailySegmentLimitOverride,
+          monthlyRenderLimitOverride: before.monthlyRenderLimitOverride,
+          monthlySegmentLimitOverride: before.monthlySegmentLimitOverride,
+        },
+        after: { role: body.role, disabled: body.disabled, limitsExempt: body.limitsExempt,
+          dailyRenderLimitOverride: body.dailyRenderLimitOverride,
+          dailySegmentLimitOverride: body.dailySegmentLimitOverride,
+          monthlyRenderLimitOverride: body.monthlyRenderLimitOverride,
+          monthlySegmentLimitOverride: body.monthlySegmentLimitOverride,
+        },
+        confirmEmail: body.confirmEmail ?? null,
+        reason: body.reason ?? null,
+        ...(sessionsRevoked !== null ? { sessionsRevoked } : {}),
+        ...(sessionRevokeError ? { sessionRevokeError } : {}),
+      },
+    }),
+  ]);
+  if (updated.length === 0) return c.json({ error: "Not found" }, 404);
+
+  const user = await findAdminUser(db, id);
   return c.json({ user });
 });
 
@@ -468,11 +476,13 @@ userDetailRoutes.post("/users/:id/plan/clear", async (c) => {
 
   const before = await adminEntitlementFor(db, id);
   if (!before?.view.override) return c.json({ error: "They have no granted plan to remove", code: "no_override" }, 409);
-  await db.update(schema.userEntitlements).set({ overridePlanId: null, overrideEndsAt: null, overrideReason: null, overrideSetBy: null, overrideSetAt: null, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id));
-  await recordAdminEvent(db, {
-    actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
-    summary: `${target.email}: removed granted ${before.view.override.planName}, back on ${before.view.basePlanName}`,
-    detail: { reason, before: { override: before.view.override }, after: { plan: before.view.basePlanSlug } },
-  });
+  await db.batch([
+    db.update(schema.userEntitlements).set({ overridePlanId: null, overrideEndsAt: null, overrideReason: null, overrideSetBy: null, overrideSetAt: null, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id)),
+    adminEventInsert(db, {
+      actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
+      summary: `${target.email}: removed granted ${before.view.override.planName}, back on ${before.view.basePlanName}`,
+      detail: { reason, before: { override: before.view.override }, after: { plan: before.view.basePlanSlug } },
+    }),
+  ]);
   return c.json({ entitlement: (await adminEntitlementFor(db, id))!.view });
 });

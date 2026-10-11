@@ -7,7 +7,8 @@ import type { Env } from "../../index.js";
 import { modelsFor } from "../../lib/models.js";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsRow } from "../../lib/settings.js";
 import { denyUnless } from "./permissions.js";
-import { MICROS_PER_USD, recordAdminEvent } from "./shared.js";
+import { MICROS_PER_USD, adminEventInsert } from "./shared.js";
+import { governance, requestApproval } from "./governance.js";
 import type { AdminContext } from "./context.js";
 
 export const settingsRoutes = new Hono<AdminContext>();
@@ -145,6 +146,8 @@ const updateSettingsSchema = z
     stuckTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
     falMode: z.enum(["mock", "dev", "prod"]).nullable().optional(),
     falBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
+    /** Why; kept in the audit row, and required context for a change that needs approval. */
+    reason: z.string().trim().max(300).optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -172,66 +175,92 @@ settingsRoutes.put("/settings", async (c) => {
     return c.json({ error: "Critical percent must be greater than warning percent" }, 400);
   }
 
-  const { planMonthlyCredits: planCredits, ...appBody } = body;
+  const { planMonthlyCredits: planCredits, reason, maintenanceRenders, maintenanceSegments, ...rest } = body;
   const plansBefore = await planMonthlyCredits(db);
   const unknownPlan = Object.keys(planCredits ?? {}).find((slug) => !plansBefore.some((plan) => plan.slug === slug));
   if (unknownPlan) return c.json({ error: `No active plan "${unknownPlan}"` }, 400);
-  // Plan allowances apply from each user's next credit period; nothing already granted changes.
-  for (const [slug, monthlyCredits] of Object.entries(planCredits ?? {})) {
-    await db.update(schema.billingPlans).set({ monthlyCredits, updatedAt: new Date() }).where(eq(schema.billingPlans.slug, slug));
+
+  // Pausing or resuming the studio is a governed action: a switch that actually changes waits
+  // for a second admin when the maintenance rule is on. Everything else saves now.
+  const maintenanceChange = {
+    ...(maintenanceRenders !== undefined && maintenanceRenders !== before.maintenanceRenders ? { maintenanceRenders } : {}),
+    ...(maintenanceSegments !== undefined && maintenanceSegments !== before.maintenanceSegments ? { maintenanceSegments } : {}),
+  };
+  const rules = await governance(db);
+  const holdMaintenance = Object.keys(maintenanceChange).length > 0 && rules.maintenanceApprovalThreshold > 0 && 1 >= rules.maintenanceApprovalThreshold;
+  const appBody = holdMaintenance ? rest : { ...rest, maintenanceRenders, maintenanceSegments };
+
+  const applied = { planMonthlyCredits: planCredits, ...appBody };
+  const changed = Object.keys(applied).filter((key) => applied[key as keyof typeof applied] !== undefined);
+  let updated = before;
+  if (changed.length > 0) {
+    // Plan allowances apply from each user's next credit period; nothing already granted changes.
+    // Settings, plan allowances and the audit row commit together or not at all.
+    const [rows] = await db.batch([
+      db
+        .update(schema.appSettings)
+        .set({
+          ...appBody,
+          falBudgetUsd: appBody.falBudgetUsd === undefined ? undefined : appBody.falBudgetUsd === null ? null : appBody.falBudgetUsd.toFixed(2),
+          updatedAt: new Date(),
+          updatedBy: adminUser.id,
+        })
+        .where(eq(schema.appSettings.id, 1))
+        .returning(),
+      adminEventInsert(db, {
+        actorId: adminUser.id,
+        action: "settings.update",
+        targetType: "settings",
+        targetId: "1",
+        summary: `Updated settings: ${changed.join(", ")}`,
+        detail: {
+          before: {
+            planMonthlyCredits: Object.fromEntries(plansBefore.map((plan) => [plan.slug, plan.monthlyCredits])),
+            dailyRenderLimit: before.dailyRenderLimit,
+            dailySegmentLimit: before.dailySegmentLimit,
+            monthlyRenderLimit: before.monthlyRenderLimit,
+            monthlySegmentLimit: before.monthlySegmentLimit,
+            maxCreditBalance: before.maxCreditBalance,
+            maxProjectsPerUser: before.maxProjectsPerUser,
+            maxUploadMb: before.maxUploadMb,
+            maxReferenceImages: before.maxReferenceImages,
+            maxPromptChars: before.maxPromptChars,
+            maxSelectionPromptChars: before.maxSelectionPromptChars,
+            lowCreditThreshold: before.lowCreditThreshold,
+            messageInsufficientCredits: before.messageInsufficientCredits,
+            messageDailyLimit: before.messageDailyLimit,
+            messageMonthlyLimit: before.messageMonthlyLimit,
+            messageBudgetExhausted: before.messageBudgetExhausted,
+            messageAccountDisabled: before.messageAccountDisabled,
+            creditsPerImage: before.creditsPerImage,
+            creditsPerSelection: before.creditsPerSelection,
+            maintenanceRenders: before.maintenanceRenders,
+            maintenanceSegments: before.maintenanceSegments,
+            maintenanceMessage: before.maintenanceMessage,
+            budgetWarningPercent: before.budgetWarningPercent,
+            budgetCriticalPercent: before.budgetCriticalPercent,
+            stuckTimeoutMinutes: before.stuckTimeoutMinutes,
+            falMode: before.falMode,
+            falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
+          },
+          after: applied,
+          ...(reason ? { reason } : {}),
+        },
+      }),
+      ...Object.entries(planCredits ?? {}).map(([slug, monthlyCredits]) =>
+        db.update(schema.billingPlans).set({ monthlyCredits, updatedAt: new Date() }).where(eq(schema.billingPlans.slug, slug)),
+      ),
+    ]);
+    updated = rows[0]!;
   }
 
-  const [updated] = await db
-    .update(schema.appSettings)
-    .set({
-      ...appBody,
-      falBudgetUsd: appBody.falBudgetUsd === undefined ? undefined : appBody.falBudgetUsd === null ? null : appBody.falBudgetUsd.toFixed(2),
-      updatedAt: new Date(),
-      updatedBy: adminUser.id,
-    })
-    .where(eq(schema.appSettings.id, 1))
-    .returning();
-
-  const changed = Object.keys(body).filter((key) => body[key as keyof typeof body] !== undefined);
-  await recordAdminEvent(db, {
-    actorId: adminUser.id,
-    action: "settings.update",
-    targetType: "settings",
-    targetId: "1",
-    summary: `Updated settings: ${changed.join(", ") || "no fields"}`,
-    detail: {
-      before: {
-        planMonthlyCredits: Object.fromEntries(plansBefore.map((plan) => [plan.slug, plan.monthlyCredits])),
-        dailyRenderLimit: before.dailyRenderLimit,
-        dailySegmentLimit: before.dailySegmentLimit,
-        monthlyRenderLimit: before.monthlyRenderLimit,
-        monthlySegmentLimit: before.monthlySegmentLimit,
-        maxCreditBalance: before.maxCreditBalance,
-        maxProjectsPerUser: before.maxProjectsPerUser,
-        maxUploadMb: before.maxUploadMb,
-        maxReferenceImages: before.maxReferenceImages,
-        maxPromptChars: before.maxPromptChars,
-        maxSelectionPromptChars: before.maxSelectionPromptChars,
-        lowCreditThreshold: before.lowCreditThreshold,
-        messageInsufficientCredits: before.messageInsufficientCredits,
-        messageDailyLimit: before.messageDailyLimit,
-        messageMonthlyLimit: before.messageMonthlyLimit,
-        messageBudgetExhausted: before.messageBudgetExhausted,
-        messageAccountDisabled: before.messageAccountDisabled,
-        creditsPerImage: before.creditsPerImage,
-        creditsPerSelection: before.creditsPerSelection,
-        maintenanceRenders: before.maintenanceRenders,
-        maintenanceSegments: before.maintenanceSegments,
-        maintenanceMessage: before.maintenanceMessage,
-        budgetWarningPercent: before.budgetWarningPercent,
-        budgetCriticalPercent: before.budgetCriticalPercent,
-        stuckTimeoutMinutes: before.stuckTimeoutMinutes,
-        falMode: before.falMode,
-        falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
-      },
-      after: body,
-    },
+  if (!holdMaintenance) return c.json(await toAdminSettings(c.env, db, updated));
+  const approval = await requestApproval(db, {
+    action: "maintenance", actorId: adminUser.id, targetType: "settings", targetId: "1",
+    riskValue: 1, threshold: rules.maintenanceApprovalThreshold,
+    reason: reason || "Maintenance change requested from Settings",
+    payload: maintenanceChange,
   });
-
-  return c.json(await toAdminSettings(c.env, db, updated!));
+  const response: AdminSettings = { ...(await toAdminSettings(c.env, db, updated)), pendingApproval: { approvalId: approval.id, fields: Object.keys(maintenanceChange) } };
+  return c.json(response, 202);
 });

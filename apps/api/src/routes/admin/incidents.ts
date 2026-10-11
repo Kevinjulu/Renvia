@@ -3,9 +3,9 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminIncidentsResponse } from "@renvia/types";
-import { deliverIncidentNotification, recordIncidentEvent, syncOperationalIncidents } from "../../lib/incidents.js";
+import { deliverIncidentNotification, syncOperationalIncidents } from "../../lib/incidents.js";
 import { denyUnless } from "./permissions.js";
-import { recordAdminEvent } from "./shared.js";
+import { adminEventInsert } from "./shared.js";
 import type { AdminContext } from "./context.js";
 
 export const incidentsRoutes = new Hono<AdminContext>();
@@ -84,9 +84,12 @@ incidentsRoutes.post("/incidents/:id/assign", async (c) => {
     const [owner] = await c.get("db").select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.id, ownerId), eq(schema.users.disabled, false), inArray(schema.users.role, ["support", "billing", "admin"]))).limit(1);
     if (!owner) return c.json({ error: "Owner must be active operations staff" }, 409);
   }
-  await c.get("db").update(schema.incidents).set({ ownerId, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
-  await recordIncidentEvent(c.get("db"), id, "assigned", c.get("admin").id, ownerId ? "Incident owner changed" : "Incident unassigned", { ownerId });
-  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: ownerId ? "Assigned incident" : "Unassigned incident", detail: { ownerId } });
+  const db = c.get("db"); const actorId = c.get("admin").id;
+  await db.batch([
+    db.update(schema.incidents).set({ ownerId, updatedAt: new Date() }).where(eq(schema.incidents.id, id)),
+    db.insert(schema.incidentEvents).values({ incidentId: id, actorId, action: "assigned", note: ownerId ? "Incident owner changed" : "Incident unassigned", detail: { ownerId } }),
+    adminEventInsert(db, { actorId, action: "incident.update", targetType: "incident", targetId: id, summary: ownerId ? "Assigned incident" : "Unassigned incident", detail: { ownerId } }),
+  ]);
   return c.json({ id, ownerId });
 });
 
@@ -96,9 +99,12 @@ incidentsRoutes.post("/incidents/:id/acknowledge", async (c) => {
   const { note } = z.object({ note: z.string().trim().max(500).optional() }).parse(await c.req.json());
   const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
   if (incident.status === "resolved") return c.json({ error: "Resolved incidents cannot be acknowledged" }, 409);
-  await c.get("db").update(schema.incidents).set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: c.get("admin").id, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
-  await recordIncidentEvent(c.get("db"), id, "acknowledged", c.get("admin").id, note ?? "Incident acknowledged");
-  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: "Acknowledged incident" });
+  const db = c.get("db"); const actorId = c.get("admin").id;
+  await db.batch([
+    db.update(schema.incidents).set({ status: "acknowledged", acknowledgedAt: new Date(), acknowledgedBy: actorId, updatedAt: new Date() }).where(eq(schema.incidents.id, id)),
+    db.insert(schema.incidentEvents).values({ incidentId: id, actorId, action: "acknowledged", note: note ?? "Incident acknowledged" }),
+    adminEventInsert(db, { actorId, action: "incident.update", targetType: "incident", targetId: id, summary: "Acknowledged incident" }),
+  ]);
   return c.json({ id, status: "acknowledged" });
 });
 
@@ -107,8 +113,12 @@ incidentsRoutes.post("/incidents/:id/severity", async (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));
   const { severity } = z.object({ severity: z.enum(["low", "medium", "high", "critical"]) }).parse(await c.req.json());
   const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
-  await c.get("db").update(schema.incidents).set({ severity, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
-  await recordIncidentEvent(c.get("db"), id, "severity_changed", c.get("admin").id, `Severity set to ${severity}`, { severity });
+  const db = c.get("db"); const actorId = c.get("admin").id;
+  await db.batch([
+    db.update(schema.incidents).set({ severity, updatedAt: new Date() }).where(eq(schema.incidents.id, id)),
+    db.insert(schema.incidentEvents).values({ incidentId: id, actorId, action: "severity_changed", note: `Severity set to ${severity}`, detail: { severity } }),
+    adminEventInsert(db, { actorId, action: "incident.update", targetType: "incident", targetId: id, summary: `Changed incident severity to ${severity}`, detail: { before: { severity: incident.severity }, after: { severity } } }),
+  ]);
   return c.json({ id, severity });
 });
 
@@ -117,9 +127,12 @@ incidentsRoutes.post("/incidents/:id/resolve", async (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));
   const { note } = z.object({ note: z.string().trim().min(3).max(1000) }).parse(await c.req.json());
   const incident = await managedIncident(c, id); if (!incident) return c.json({ error: "Incident not found" }, 404);
-  await c.get("db").update(schema.incidents).set({ status: "resolved", resolvedAt: new Date(), resolvedBy: c.get("admin").id, resolutionNote: note, updatedAt: new Date() }).where(eq(schema.incidents.id, id));
-  await recordIncidentEvent(c.get("db"), id, "resolved", c.get("admin").id, note);
-  await recordAdminEvent(c.get("db"), { actorId: c.get("admin").id, action: "incident.update", targetType: "incident", targetId: id, summary: "Resolved incident", detail: { note } });
+  const db = c.get("db"); const actorId = c.get("admin").id;
+  await db.batch([
+    db.update(schema.incidents).set({ status: "resolved", resolvedAt: new Date(), resolvedBy: actorId, resolutionNote: note, updatedAt: new Date() }).where(eq(schema.incidents.id, id)),
+    db.insert(schema.incidentEvents).values({ incidentId: id, actorId, action: "resolved", note }),
+    adminEventInsert(db, { actorId, action: "incident.update", targetType: "incident", targetId: id, summary: "Resolved incident", detail: { note } }),
+  ]);
   return c.json({ id, status: "resolved" });
 });
 

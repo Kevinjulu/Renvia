@@ -1,4 +1,4 @@
-import { eq, ne, sql } from "drizzle-orm";
+import { eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminAuditAction, AdminRender, AdminUser, RenderStatus, SegmentationStatus } from "@renvia/types";
@@ -135,18 +135,21 @@ export const paging = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-export async function recordAdminEvent(
-  db: Database,
-  input: {
-    actorId: string;
-    action: AdminAuditAction;
-    targetType: string;
-    targetId?: string | null;
-    summary: string;
-    detail?: Record<string, unknown>;
-  },
-) {
-  await db.insert(schema.adminEvents).values({
+export interface AdminEventInput {
+  actorId: string;
+  action: AdminAuditAction;
+  targetType: string;
+  targetId?: string | null;
+  summary: string;
+  detail?: Record<string, unknown>;
+}
+
+/**
+ * The audit insert as an unexecuted query, to put in the same `db.batch` as the change it
+ * records: the batch is one transaction, so a change can't commit without its audit row.
+ */
+export function adminEventInsert(db: Database, input: AdminEventInput) {
+  return db.insert(schema.adminEvents).values({
     actorId: input.actorId,
     action: input.action,
     targetType: input.targetType,
@@ -154,4 +157,33 @@ export async function recordAdminEvent(
     summary: input.summary,
     detail: input.detail ?? null,
   });
+}
+
+/**
+ * Records an action on its own. Only for actions whose effect lives outside this database
+ * (fal, PayPal, Clerk) and so can't share a transaction with it; local changes use
+ * adminEventInsert inside their batch.
+ */
+export async function recordAdminEvent(db: Database, input: AdminEventInput) {
+  await adminEventInsert(db, input);
+}
+
+/**
+ * A batch statement that aborts the whole batch when any of these users' balances is above
+ * the cap. Put it after the balance updates: a concurrent grant waits on their row locks and
+ * then sees the committed balance, so two grants can't both slip under the cap. The divisor
+ * depends on the data, so Postgres can't fold the division away at plan time.
+ */
+export function balanceCapGuard(db: Database, userIds: string[], cap: number) {
+  return db.execute(sql`select 1 / (case when exists (
+    select 1 from ${schema.users} where ${inArray(schema.users.id, userIds)} and ${schema.users.creditBalance} > ${cap}
+  ) then 0 else 1 end) as within_cap`);
+}
+
+/** The error balanceCapGuard raises (division_by_zero), wherever the driver nests it. */
+export function isBalanceCapViolation(error: unknown): boolean {
+  for (let current: unknown = error; current; current = (current as { cause?: unknown }).cause) {
+    if ((current as { code?: string }).code === "22012") return true;
+  }
+  return false;
 }

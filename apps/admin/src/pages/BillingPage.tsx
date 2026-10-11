@@ -14,11 +14,16 @@ export function BillingPage() {
   const [refunding, setRefunding] = useState<string | null>(null);
   const [refundError, setRefundError] = useState<string | null>(null);
   const [replaying, setReplaying] = useState<string | null>(null);
+  const [refundNotice, setRefundNotice] = useState<string | null>(null);
   const nav = navForPath("/billing");
   const refund = async (id: string) => {
-    if (!window.confirm("Refund this payment? This automatically removes the unspent purchased credits.")) return;
-    setRefunding(id); setRefundError(null);
-    try { await api.refundPayment(id); await reload(); }
+    if (!window.confirm("Refund this payment? This automatically removes the unspent purchased credits. Large refunds wait for a second admin.")) return;
+    setRefunding(id); setRefundError(null); setRefundNotice(null);
+    try {
+      const result = await api.refundPayment(id);
+      if ("pendingApproval" in result) setRefundNotice("This refund is at or above the approval threshold. It is waiting in Approvals; nothing has been refunded yet.");
+      await reload();
+    }
     catch (reason) { setRefundError(reason instanceof Error ? reason.message : "Could not refund payment."); }
     finally { setRefunding(null); }
   };
@@ -32,6 +37,7 @@ export function BillingPage() {
     <PageHero title={nav.title} description={nav.description} image={nav.banner} />
     {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
     {refundError && <ErrorNote onRetry={() => setRefundError(null)}>{refundError}</ErrorNote>}
+    {refundNotice && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{refundNotice} <Link to="/approvals" className="font-medium underline">Open Approvals</Link></div>}
     {!data ? null : <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Captured revenue" value={formatUsd(data.summary.paidUsd)} icon={CreditCard} accent="emerald" detail="All time" />

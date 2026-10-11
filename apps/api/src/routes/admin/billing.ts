@@ -4,12 +4,12 @@ import { z } from "zod";
 import { schema } from "@renvia/db";
 import type { AdminBillingResponse, AdminFinancialsResponse, AdminOperationsQueueResponse, UserRole } from "@renvia/types";
 import { getSettings, effectiveBudgetUsd } from "../../lib/settings.js";
-import { paypalReady, paypalRequest } from "../../lib/paypal.js";
-import { assertPaypalPurchaseRefundable, reversePaypalPurchaseCredits } from "../../lib/paypalSettlement.js";
 import { resolveIncidentsForSource } from "../../lib/incidents.js";
 import { replayVerifiedPaypalEvent } from "../webhooks/paypal.js";
 import { hasPermission, denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, recordAdminEvent } from "./shared.js";
+import { governance, requestApproval } from "./governance.js";
+import { checkRefundable, refundPaypalPayment } from "./refunds.js";
 import type { AdminContext } from "./context.js";
 
 export const billingRoutes = new Hono<AdminContext>();
@@ -116,23 +116,31 @@ billingRoutes.get("/operations/queue", async (c) => {
  */
 billingRoutes.post("/billing/payments/:id/refund", async (c) => {
   const denied = denyUnless(c, "billing.manage"); if (denied) return c.json(denied, 403);
-  if (!paypalReady(c.env)) return c.json({ error: "PayPal refunds are not configured" }, 503);
   const db = c.get("db");
   const paymentId = z.string().uuid().parse(c.req.param("id"));
-  const [payment] = await db.select().from(schema.billingPayments).where(eq(schema.billingPayments.id, paymentId)).limit(1);
-  if (!payment) return c.json({ error: "Payment not found" }, 404);
-  if (payment.provider !== "paypal" || payment.status !== "paid") return c.json({ error: "Only captured PayPal payments can be refunded" }, 409);
-  try {
-    await assertPaypalPurchaseRefundable(db, payment.id);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Payment is not refundable", code: "refund_manual_review" }, 409);
+  const { reason } = z.object({ reason: z.string().trim().max(300).optional() }).parse(await c.req.json().catch(() => ({})));
+  const check = await checkRefundable(c.env, db, paymentId);
+  if (!check.ok) return c.json({ error: check.error, ...(check.code ? { code: check.code } : {}) }, check.status);
+  const { payment } = check;
+
+  const rules = await governance(db);
+  if (rules.refundApprovalThresholdCents > 0 && payment.amountCents >= rules.refundApprovalThresholdCents) {
+    // One open request per payment: asking again points at the request already waiting.
+    const [open] = await db.select({ id: schema.approvalRequests.id }).from(schema.approvalRequests)
+      .where(and(eq(schema.approvalRequests.action, "refund"), eq(schema.approvalRequests.targetId, payment.id), inArray(schema.approvalRequests.status, ["pending", "approved"])))
+      .limit(1);
+    if (open) return c.json({ pendingApproval: true, approvalId: open.id }, 202);
+    const approval = await requestApproval(db, {
+      action: "refund", actorId: c.get("admin").id, targetType: "billing_payment", targetId: payment.id,
+      riskValue: payment.amountCents, threshold: rules.refundApprovalThresholdCents,
+      reason: reason || `Refund ${payment.currency} ${(payment.amountCents / 100).toFixed(2)} for PayPal payment ${payment.providerPaymentId}`,
+      payload: { paymentId: payment.id, amountCents: payment.amountCents, currency: payment.currency, providerPaymentId: payment.providerPaymentId },
+    });
+    return c.json({ pendingApproval: true, approvalId: approval.id }, 202);
   }
+
   try {
-    const response = await paypalRequest<{ id?: string }>(c.env, `/v2/payments/captures/${payment.providerPaymentId}/refund`, { method: "POST", headers: { "PayPal-Request-Id": `refund-${payment.id}` }, body: JSON.stringify({}) });
-    if (!response.id) throw new Error("PayPal did not return a refund ID");
-    await reversePaypalPurchaseCredits(db, payment.id, response.id);
-    await db.update(schema.billingPayments).set({ status: "refunded", updatedAt: new Date(), providerMetadata: { ...(payment.providerMetadata ?? {}), refundId: response.id } }).where(eq(schema.billingPayments.id, payment.id));
-    await recordAdminEvent(db, { actorId: c.get("admin").id, action: "billing.payment", targetType: "billing_payment", targetId: payment.id, summary: `Refunded PayPal payment ${payment.providerPaymentId}`, detail: { refundId: response.id, amountCents: payment.amountCents, currency: payment.currency } });
+    await refundPaypalPayment(c.env, db, payment, c.get("admin").id, reason ? { reason } : {});
     return c.json({ id: payment.id, status: "refunded" });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Could not refund payment" }, 502);

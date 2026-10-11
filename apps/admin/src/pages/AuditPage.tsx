@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Shield, ScrollText, UserRound, X } from "lucide-react";
+import { Download, Search, Shield, ScrollText, UserRound, X } from "lucide-react";
 import { EmptyState, ErrorNote, Pagination, Skeleton } from "../components/ui";
 import { PageHero } from "../components/PageHero";
+import { NoteDialog } from "../components/NoteDialog";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative } from "../lib/format";
 import { navForPath } from "../lib/nav";
@@ -61,11 +62,60 @@ export function AuditPage() {
   );
 
   const groups = useMemo(() => groupByDay(data?.events ?? []), [data]);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<{ rows: number; sha256: string } | null>(null);
+
+  const exportAudit = async (reason: string) => {
+    const created = await api.createAuditExport(reason);
+    const { blob } = await api.downloadAuditExport(created.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `renvia-audit-${created.id}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setExported({ rows: created.rows, sha256: created.sha256 });
+    reload();
+  };
   const selectedActor = data?.summary.actors.find((actor) => actor.id === actorId);
 
   return (
     <>
-      <PageHero title={navForPath("/audit").title} description={navForPath("/audit").description} image={navForPath("/audit").banner} actions={lastUpdated ? <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span> : undefined} />
+      <PageHero
+        title={navForPath("/audit").title}
+        description={navForPath("/audit").description}
+        image={navForPath("/audit").banner}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {lastUpdated && <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span>}
+            <button
+              type="button"
+              onClick={() => setExporting(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
+            >
+              <Download size={15} />
+              Export CSV
+            </button>
+          </div>
+        }
+      />
+
+      {exported && (
+        <div role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Exported {formatNumber(exported.rows)} events. SHA-256 <code className="break-all font-mono text-xs">{exported.sha256}</code> — the stored copy can be downloaded again with the same digest.
+        </div>
+      )}
+      {exporting && (
+        <NoteDialog
+          title="Export the audit trail"
+          description="Saves an unchangeable CSV of every recorded action (not just this filtered view) and downloads it. The export itself is audited."
+          label="Reason"
+          confirmLabel="Export"
+          required
+          onConfirm={exportAudit}
+          onClose={() => setExporting(false)}
+        />
+      )}
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 

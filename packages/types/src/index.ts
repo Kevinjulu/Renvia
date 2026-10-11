@@ -976,6 +976,11 @@ export interface AdminSettings {
     detail: Record<string, unknown> | null;
     createdAt: string;
   }[];
+  /**
+   * Set on a save whose maintenance switches are waiting for a second admin (answered 202).
+   * Every other field in that save has already been applied.
+   */
+  pendingApproval?: { approvalId: string; fields: string[] };
 }
 
 export type AdminUpdateSettingsRequest = Partial<
@@ -1010,6 +1015,8 @@ export type AdminUpdateSettingsRequest = Partial<
   > & {
     /** Plan slug to monthly credits; plans left out are unchanged. */
     planMonthlyCredits: Record<string, number>;
+    /** Kept in the audit row; the approval reason when a maintenance switch needs approval. */
+    reason: string;
   }
 >;
 
@@ -1191,6 +1198,34 @@ export interface AdminFinancialsResponse {
 }
 
 export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance";
+
+/** When each high-risk action needs a second admin. 0 turns that gate off. */
+export interface AdminGovernanceThresholds {
+  /** Credits per user times users at or above which a bulk grant needs approval. */
+  bulkCreditApprovalThreshold: number;
+  /** Refund amount, in the payment currency's minor unit, at or above which it needs approval. */
+  refundApprovalThresholdCents: number;
+  /** 1 holds every role change for approval. */
+  roleChangeApprovalThreshold: number;
+  /** 1 holds every maintenance pause or resume for approval. */
+  maintenanceApprovalThreshold: number;
+}
+
+export interface AdminGovernanceResponse {
+  settings: AdminGovernanceThresholds & { updatedAt: string; updatedBy: string | null };
+  pending: { id: string; action: ApprovalAction; reason: string; riskValue: number; threshold: number; createdAt: string; requestedBy: string }[];
+}
+
+export type AdminUpdateGovernanceRequest = AdminGovernanceThresholds & { reason: string };
+
+/** A refund either completes now or, at or above the refund threshold, waits for approval (202). */
+export type AdminRefundResponse = { id: string; status: "refunded" } | { pendingApproval: true; approvalId: string };
+
+export interface AdminAuditExportResponse {
+  id: string;
+  sha256: string;
+  rows: number;
+}
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "cancelled";
 
 /** A high-risk action held for a second administrator. The can* flags are this viewer's options. */

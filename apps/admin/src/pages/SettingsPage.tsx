@@ -21,6 +21,7 @@ import { SystemHealthSection } from "./settings/SystemHealthSection";
 import { ModelsSection } from "./settings/ModelsSection";
 import { ExemptionsSection } from "./settings/ExemptionsSection";
 import { RecentChangesSection } from "./settings/RecentChangesSection";
+import { GovernanceSection } from "./settings/GovernanceSection";
 
 export function SettingsPage() {
   const api = useAdminApi();
@@ -77,7 +78,11 @@ export function SettingsPage() {
     try {
       const saved = await api.updateSettings(result.body);
       setDraft(toDraft(saved));
-      setStatus({ tone: "ok", text: "Settings saved. They apply to the next request — no redeploy needed." });
+      setStatus(
+        saved.pendingApproval
+          ? { tone: "ok", text: "Saved. The maintenance change is waiting for a second admin in Approvals; everything else applies to the next request." }
+          : { tone: "ok", text: "Settings saved. They apply to the next request — no redeploy needed." },
+      );
       reload();
     } catch (reason) {
       setStatus({ tone: "error", text: reason instanceof Error ? reason.message : "Couldn't save settings" });
@@ -187,6 +192,10 @@ export function SettingsPage() {
         {/* Recent settings changes */}
         <RecentChangesSection data={data} />
       </form>
+
+      <div className="mt-6">
+        <GovernanceSection />
+      </div>
 
       {confirmOpen && (
         <ConfirmSaveModal

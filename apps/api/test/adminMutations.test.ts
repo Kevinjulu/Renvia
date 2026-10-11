@@ -544,7 +544,7 @@ describe("incidents", () => {
 
     const [row] = await db.select().from(schema.incidents).where(eq(schema.incidents.id, incident.id));
     expect(row).toMatchObject({ status: "resolved", severity: "critical", ownerId: actors.support.id, resolutionNote: "restarted worker", resolvedBy: actors.support.id });
-    expect((await events("incident.update")).map((e) => e.summary)).toEqual(["Acknowledged incident", "Assigned incident", "Resolved incident"]);
+    expect((await events("incident.update")).map((e) => e.summary)).toEqual(["Acknowledged incident", "Changed incident severity to critical", "Assigned incident", "Resolved incident"]);
     const trail = await db.select().from(schema.incidentEvents).where(eq(schema.incidentEvents.incidentId, incident.id));
     expect(trail.find((event) => event.note === "Severity set to critical")!.action).toBe("severity_changed");
   });
