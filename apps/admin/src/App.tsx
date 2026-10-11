@@ -23,6 +23,7 @@ import { IncidentsPage } from "./pages/IncidentsPage";
 import { FinancialsPage } from "./pages/FinancialsPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { PerformancePage } from "./pages/PerformancePage";
 import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
@@ -96,6 +97,7 @@ function AdminGate() {
           <Route path="/financials" element={<FinancialsPage />} />
           <Route path="/operations" element={<OperationsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
+          <Route path="/performance" element={<PerformancePage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
@@ -162,7 +164,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
   const visible = ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">));
   const groups = [
     { label: "Start here", paths: ["/", "/operations"] },
-    { label: "Operations", paths: ["/renders", "/segmentations", "/incidents"] },
+    { label: "Operations", paths: ["/renders", "/segmentations", "/incidents", "/performance"] },
     { label: "Customers", paths: ["/users", "/projects", "/credits"] },
     { label: "Commerce", paths: ["/billing", "/financials"] },
     { label: "Control", paths: ["/approvals", "/audit", "/settings"] },

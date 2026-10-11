@@ -1,29 +1,51 @@
-import { Hono } from "hono";
-import { createDb } from "@renvia/db";
+import { Hono, type Context } from "hono";
+import { createDb, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
 import { sweepStaleRenders } from "../lib/engine.js";
 import { syncOperationalIncidents } from "../lib/incidents.js";
 import { renewDueCreditPeriods } from "../lib/planCredits.js";
+import { OPERATIONS_SYNC_JOB, runScheduledJob } from "../lib/scheduledJobs.js";
 
 export const cron = new Hono<{ Bindings: Env }>();
 
+function authorized(c: Context<{ Bindings: Env }>) {
+  const secret = c.env.CRON_SECRET;
+  return Boolean(secret) && c.req.header("authorization") === `Bearer ${secret}`;
+}
+
 /**
- * Safety net behind the fal webhook: a render whose webhook never fires (a local/non-https
- * origin, a dropped delivery, a cold-start timeout) would otherwise sit at "processing"
- * forever, since nothing else re-checks it once its tab is gone. Vercel calls this on a
- * schedule (see vercel.json) with a bearer token matching CRON_SECRET.
- *
- * The same daily run starts monthly credit periods that are due, for users who haven't signed
- * in since their renewal date (signing in renews them straight away).
+ * Advances renders still in flight and turns failed or stuck work into incidents, under a lease
+ * so overlapping calls skip. The fal webhook is the primary path; this is the safety net for a
+ * webhook that never fires (a local origin, a dropped delivery, a cold-start timeout).
+ */
+function runOperationsSync(env: Env, db: Database, origin: string) {
+  return runScheduledJob(db, OPERATIONS_SYNC_JOB, async () => {
+    const swept = await sweepStaleRenders(env, db, origin);
+    const incidents = await syncOperationalIncidents(env, db);
+    return { swept, incidents };
+  });
+}
+
+/**
+ * Frequent operations sync, meant to be called every 5–15 minutes by a scheduler holding
+ * CRON_SECRET. Vercel Hobby only allows daily crons, so .github/workflows/operations-sync.yml
+ * calls this instead.
+ */
+cron.get("/operations-sync", async (c) => {
+  if (!authorized(c)) return c.json({ error: "Unauthorized" }, 401);
+  const db = createDb(c.env.DATABASE_URL);
+  return c.json(await runOperationsSync(c.env, db, new URL(c.req.url).origin));
+});
+
+/**
+ * Daily run from Vercel Cron (see vercel.json): the operations sync above, then the monthly
+ * credit periods that are due, for users who haven't signed in since their renewal date
+ * (signing in renews them straight away).
  */
 cron.get("/sweep-renders", async (c) => {
-  const secret = c.env.CRON_SECRET;
-  if (!secret || c.req.header("authorization") !== `Bearer ${secret}`) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
+  if (!authorized(c)) return c.json({ error: "Unauthorized" }, 401);
   const db = createDb(c.env.DATABASE_URL);
-  const swept = await sweepStaleRenders(c.env, db, new URL(c.req.url).origin);
-  const incidents = await syncOperationalIncidents(c.env, db);
+  const operations = await runOperationsSync(c.env, db, new URL(c.req.url).origin);
   const credits = await renewDueCreditPeriods(db);
-  return c.json({ swept, incidents, credits });
+  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), credits });
 });

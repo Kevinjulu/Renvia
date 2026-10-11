@@ -1,6 +1,10 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminPerformanceFailuresResponse,
+  AdminPerformanceRange,
+  AdminPerformanceSummaryResponse,
+  AdminPerformanceTimeseriesResponse,
   AdminAuditExportResponse,
   AdminGovernanceResponse,
   AdminRefundResponse,
@@ -231,6 +235,9 @@ export function useAdminApi() {
       getGovernance: () => request<AdminGovernanceResponse>(getToken, "/admin/governance"),
       updateGovernance: (body: AdminUpdateGovernanceRequest) =>
         request<AdminGovernanceResponse["settings"]>(getToken, "/admin/governance", { method: "PUT", body: JSON.stringify(body) }),
+      getPerformanceSummary: (range: AdminPerformanceRange) => request<AdminPerformanceSummaryResponse>(getToken, `/admin/performance/summary${query({ range })}`),
+      getPerformanceTimeseries: (range: AdminPerformanceRange) => request<AdminPerformanceTimeseriesResponse>(getToken, `/admin/performance/timeseries${query({ range })}`),
+      getPerformanceFailures: (range: AdminPerformanceRange) => request<AdminPerformanceFailuresResponse>(getToken, `/admin/performance/failures${query({ range })}`),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

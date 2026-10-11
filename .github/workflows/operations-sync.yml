@@ -1,0 +1,39 @@
+name: Operations sync
+
+# Calls the API's leased operations sync, which advances renders whose fal webhook never arrived
+# and opens incidents for failed or stuck work. Vercel Hobby only allows daily crons, so this
+# runs it every 10 minutes instead. Overlapping or retried calls are harmless: the API skips a
+# run while another holds the lease.
+#
+# Needs two repository secrets; until both are set every run is a no-op:
+#   RENVIA_API_URL     the API's public origin, e.g. https://api.example.com (no trailing /api)
+#   RENVIA_CRON_SECRET the same value as the API's CRON_SECRET
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: operations-sync
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the operations sync
+        env:
+          API_URL: ${{ secrets.RENVIA_API_URL }}
+          CRON_SECRET: ${{ secrets.RENVIA_CRON_SECRET }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "RENVIA_API_URL or RENVIA_CRON_SECRET is not set; skipping."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error --max-time 240 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${API_URL%/}/api/cron/operations-sync"

@@ -14,6 +14,7 @@ import { billingRoutes } from "./billing.js";
 import { segmentationsRoutes } from "./segmentations.js";
 import { incidentsRoutes } from "./incidents.js";
 import { auditRoutes } from "./audit.js";
+import { performanceRoutes } from "./performance.js";
 
 export const admin = new Hono<AdminContext>();
 
@@ -32,3 +33,4 @@ admin.route("/", billingRoutes);
 admin.route("/", segmentationsRoutes);
 admin.route("/", incidentsRoutes);
 admin.route("/", auditRoutes);
+admin.route("/", performanceRoutes);

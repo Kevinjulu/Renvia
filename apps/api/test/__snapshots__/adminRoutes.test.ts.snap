@@ -671,6 +671,13 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         "open": 0,
         "resolved": 0,
       },
+      "sync": {
+        "lastError": null,
+        "lastFailureAt": null,
+        "lastStartedAt": null,
+        "lastSuccessAt": null,
+        "running": false,
+      },
     },
     "status": 200,
   },
@@ -1830,5 +1837,8 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "GET /audit",
   "POST /audit/exports",
   "GET /audit/exports/:id",
+  "GET /performance/summary",
+  "GET /performance/timeseries",
+  "GET /performance/failures",
 ]
 `;

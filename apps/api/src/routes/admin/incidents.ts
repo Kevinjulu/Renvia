@@ -4,6 +4,7 @@ import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminIncidentsResponse } from "@renvia/types";
 import { deliverIncidentNotification, syncOperationalIncidents } from "../../lib/incidents.js";
+import { OPERATIONS_SYNC_JOB, runScheduledJob, scheduledJob } from "../../lib/scheduledJobs.js";
 import { denyUnless } from "./permissions.js";
 import { adminEventInsert } from "./shared.js";
 import type { AdminContext } from "./context.js";
@@ -13,11 +14,12 @@ export const incidentsRoutes = new Hono<AdminContext>();
 async function incidentResponse(db: Database, status?: "open" | "acknowledged" | "resolved"): Promise<AdminIncidentsResponse> {
   const incidents = await db.select().from(schema.incidents).where(status ? eq(schema.incidents.status, status) : undefined).orderBy(desc(schema.incidents.lastSeenAt)).limit(100);
   const ids = incidents.map((incident) => incident.id);
-  const [events, notifications, staff, allIncidents] = await Promise.all([
+  const [events, notifications, staff, allIncidents, syncJob] = await Promise.all([
     ids.length ? db.select().from(schema.incidentEvents).where(inArray(schema.incidentEvents.incidentId, ids)).orderBy(desc(schema.incidentEvents.createdAt)) : Promise.resolve([]),
     ids.length ? db.select().from(schema.incidentNotifications).where(inArray(schema.incidentNotifications.incidentId, ids)).orderBy(desc(schema.incidentNotifications.attemptedAt)) : Promise.resolve([]),
     db.select({ id: schema.users.id, email: schema.users.email, role: schema.users.role }).from(schema.users).where(and(inArray(schema.users.role, ["support", "billing", "admin"]), eq(schema.users.disabled, false))).orderBy(asc(schema.users.email)),
     db.select({ status: schema.incidents.status, severity: schema.incidents.severity, count: sql<number>`count(*)::int` }).from(schema.incidents).groupBy(schema.incidents.status, schema.incidents.severity),
+    scheduledJob(db, OPERATIONS_SYNC_JOB),
   ]);
   const peopleIds = new Set<string>();
   for (const incident of incidents) [incident.ownerId, incident.acknowledgedBy, incident.resolvedBy].forEach((id) => { if (id) peopleIds.add(id); });
@@ -56,6 +58,13 @@ async function incidentResponse(db: Database, status?: "open" | "acknowledged" |
     })),
     staff,
     summary,
+    sync: {
+      lastStartedAt: syncJob?.lastStartedAt?.toISOString() ?? null,
+      lastSuccessAt: syncJob?.lastSuccessAt?.toISOString() ?? null,
+      lastFailureAt: syncJob?.lastFailureAt?.toISOString() ?? null,
+      lastError: syncJob?.lastError ?? null,
+      running: Boolean(syncJob?.leaseUntil && syncJob.leaseUntil.getTime() > Date.now()),
+    },
   };
 }
 
@@ -67,7 +76,9 @@ incidentsRoutes.get("/incidents", async (c) => {
 
 incidentsRoutes.post("/incidents/sync", async (c) => {
   const denied = denyUnless(c, "incidents.manage"); if (denied) return c.json(denied, 403);
-  return c.json(await syncOperationalIncidents(c.env, c.get("db")));
+  // Same lease as the scheduled sync, so a click during a scheduled run doesn't repeat its work.
+  const run = await runScheduledJob(c.get("db"), OPERATIONS_SYNC_JOB, () => syncOperationalIncidents(c.env, c.get("db")));
+  return c.json(run.ran ? run.result : { opened: 0, skipped: run.reason });
 });
 
 async function managedIncident(c: { get: (key: "db") => Database }, id: string) {

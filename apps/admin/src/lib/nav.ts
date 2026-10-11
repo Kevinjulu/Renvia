@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo } from "lucide-react";
+import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -102,6 +102,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
   },
   {
     to: "/financials", label: "Financials", icon: ChartNoAxesCombined, end: false, title: "Financial truth", description: "Confirmed provider revenue alongside estimated FAL cost, margins, burn, and runway.", hint: "Revenue, cost & runway", banner: "/banners/lakeside.jpg", roles: ["billing", "admin"],
+  },
+  {
+    to: "/performance",
+    label: "Performance",
+    icon: Gauge,
+    end: false,
+    title: "Performance",
+    description: "How fast and how reliably jobs finish — latency by job type and model, failure groups, and cost per result.",
+    hint: "Latency, failures, cost",
+    banner: "/banners/elevation.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/incidents",

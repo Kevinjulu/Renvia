@@ -1291,4 +1291,110 @@ export interface AdminIncidentsResponse {
   incidents: AdminIncident[];
   staff: { id: string; email: string; role: UserRole }[];
   summary: Record<IncidentStatus, number> & { criticalOpen: number; failedNotifications: number };
+  /** The scheduled operations sync that opens these incidents. Times are ISO; null = never. */
+  sync: { lastStartedAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; lastError: string | null; running: boolean };
+}
+
+// ── Performance ───────────────────────────────────────────────────────────────────
+
+export type AdminPerformanceRange = "24h" | "7d" | "30d";
+
+/** Percentiles in milliseconds over `samples` jobs; null when there are no samples. */
+export interface AdminLatencyStats {
+  samples: number;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  /** Fewer than 20 samples: the percentiles say little. */
+  weak: boolean;
+}
+
+export interface AdminPerformanceCounts {
+  total: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+  inFlight: number;
+  /** Succeeded ÷ (succeeded + failed); cancelled jobs are left out. Null with nothing finished. */
+  successRate: number | null;
+  /** Succeeded jobs whose high-resolution upscale failed (they kept the standard result). */
+  upscaleFailed: number;
+}
+
+export interface AdminPerformanceCosts {
+  /** Estimated fal cost of the generation passes. */
+  generationUsd: number;
+  /** Estimated fal cost of 4K/8K upscale passes and standalone upscales. */
+  upscaleUsd: number;
+  /** All estimated cost ÷ succeeded jobs. */
+  costPerSuccessUsd: number | null;
+  creditsCharged: number;
+}
+
+export interface AdminPerformanceTimings {
+  /** Created to completed, from lifecycle events. */
+  endToEnd: AdminLatencyStats;
+  /** Created to last update, an estimate for succeeded jobs without a completion event (older renders). */
+  estimatedEndToEnd: AdminLatencyStats;
+  /** Created to handed to the provider. */
+  submission: AdminLatencyStats;
+  /** Provider time for the first pass: submitted to its result. */
+  provider: AdminLatencyStats;
+  /** Upscale pass: started to the high-resolution copy stored. */
+  upscale: AdminLatencyStats;
+}
+
+export interface AdminPerformanceRow extends AdminPerformanceCounts, AdminPerformanceCosts, AdminPerformanceTimings {
+  jobType: string;
+  /** The generation model (the first pass's), not the upscaler a high-res job ends on. */
+  model: string;
+  outputResolution: "4k" | "8k" | null;
+}
+
+export interface AdminPerformanceSummaryResponse {
+  range: AdminPerformanceRange;
+  generatedAt: string;
+  totals: AdminPerformanceCounts & AdminPerformanceCosts & AdminPerformanceTimings;
+  rows: AdminPerformanceRow[];
+  segmentations: { total: number; succeeded: number; failed: number; pending: number; failureRate: number | null; costUsd: number };
+  /** Renders in the range that have lifecycle events; the rest only have estimated timings. */
+  coverage: { withEvents: number; total: number };
+}
+
+export interface AdminPerformanceTimeseriesResponse {
+  range: AdminPerformanceRange;
+  bucket: "hour" | "day";
+  points: { start: string; total: number; succeeded: number; failed: number; costUsd: number; p50Ms: number | null; p95Ms: number | null; samples: number }[];
+}
+
+export type AdminFailureCategory =
+  | "cancelled"
+  | "timeout"
+  | "submission"
+  | "provider_output"
+  | "content_policy"
+  | "storage"
+  | "invalid_input"
+  | "provider"
+  | "internal";
+
+export interface AdminFailureGroup {
+  fingerprint: string;
+  source: "render" | "upscale" | "segmentation";
+  category: AdminFailureCategory;
+  jobType: string;
+  model: string;
+  /** The error with ids and numbers masked, so repeats of one problem group together. */
+  message: string;
+  count: number;
+  affectedUsers: number;
+  firstSeen: string;
+  lastSeen: string;
+  sampleId: string;
+}
+
+export interface AdminPerformanceFailuresResponse {
+  range: AdminPerformanceRange;
+  byCategory: { category: AdminFailureCategory; count: number }[];
+  groups: AdminFailureGroup[];
 }
