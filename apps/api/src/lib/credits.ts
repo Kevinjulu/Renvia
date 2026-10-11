@@ -157,26 +157,37 @@ export async function refundSegmentationIfNeeded(
  * first inserts the refund row and restores the balance.
  */
 export async function refundIfFailed(db: Database, render: RenderRow): Promise<RenderRow> {
-  if (render.status !== "failed" || render.creditsCharged <= 0) return render;
+  if (render.status !== "failed") return render;
+  await refundRender(db, render, render.creditsCharged);
+  return render;
+}
+
+/**
+ * Gives `credits` of a render's charge back, at most once per render (same unique index as
+ * refundIfFailed). Used on its own when only part of a render failed: a render whose upscale
+ * pass failed keeps its standard result and returns the upscale's share.
+ */
+export async function refundRender(db: Database, render: RenderRow, credits: number): Promise<void> {
+  if (credits <= 0) return;
 
   const [project] = await db
     .select({ ownerId: schema.projects.ownerId })
     .from(schema.projects)
     .where(eq(schema.projects.id, render.projectId));
-  if (!project) return render;
+  if (!project) return;
 
   // Plan credits spent on it go back to plan credits; they still expire at the next renewal.
-  const planPart = await planPartOf(db, and(eq(schema.creditLedger.renderId, render.id), eq(schema.creditLedger.reason, "render")));
+  // A partial refund returns plan credits first, never more than the charge took from them.
+  const planPart = Math.min(credits, await planPartOf(db, and(eq(schema.creditLedger.renderId, render.id), eq(schema.creditLedger.reason, "render"))));
   const [refund] = await db
     .insert(schema.creditLedger)
-    .values({ userId: project.ownerId, amount: render.creditsCharged, planAmount: planPart, reason: "render_refund", renderId: render.id })
+    .values({ userId: project.ownerId, amount: credits, planAmount: planPart, reason: "render_refund", renderId: render.id })
     .onConflictDoNothing()
     .returning({ id: schema.creditLedger.id });
   if (refund) {
     await db
       .update(schema.users)
-      .set({ creditBalance: sql`${schema.users.creditBalance} + ${render.creditsCharged}`, planCredits: sql`${schema.users.planCredits} + ${planPart}` })
+      .set({ creditBalance: sql`${schema.users.creditBalance} + ${credits}`, planCredits: sql`${schema.users.planCredits} + ${planPart}` })
       .where(eq(schema.users.id, project.ownerId));
   }
-  return render;
 }

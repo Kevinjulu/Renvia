@@ -24,7 +24,7 @@ import {
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
-import { modelFor } from "../lib/models.js";
+import { modelFor, upscaleCostMicros } from "../lib/models.js";
 import { detectSourceType } from "../lib/sourceKind.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
@@ -85,6 +85,8 @@ const createRenderSchema = z.object({
       // max) — validated loosely here since an out-of-range value just gets rejected by fal
       // itself rather than doing anything unsafe.
       seed: z.number().int().min(0).max(4_294_967_295).optional(),
+      // Only the target comes from the client; the API fills in the rest as the passes finish.
+      highRes: z.object({ target: z.enum(["4k", "8k"]) }).optional(),
     })
     .optional(),
 });
@@ -103,7 +105,6 @@ renders.post("/repair-prompt", async (c) => {
 });
 
 const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]), idempotencyKey: z.string().uuid().optional() });
-const UPSCALE_COST_MICROS = { "4k": 40_000, "8k": 80_000 } as const;
 
 async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
   const origin = new URL(c.req.url).origin;
@@ -112,6 +113,13 @@ async function presentRender(c: Context<AppContext>, job: typeof schema.renders.
         ...job.settings,
         referenceImageUrls: job.settings.referenceImageUrls
           ? await Promise.all(job.settings.referenceImageUrls.map((url) => presentForViewer(c, origin, url)))
+          : undefined,
+        highRes: job.settings.highRes
+          ? {
+              ...job.settings.highRes,
+              baseImageUrl: (await presentForViewer(c, origin, job.settings.highRes.baseImageUrl ?? null)) ?? undefined,
+              imageUrl: (await presentForViewer(c, origin, job.settings.highRes.imageUrl ?? null)) ?? undefined,
+            }
           : undefined,
         edit: job.settings.edit
           ? {
@@ -185,6 +193,9 @@ renders.post("/", async (c) => {
       422,
     );
   }
+  if (settings.highRes && settings.edit) {
+    return c.json({ code: "invalid_edit", error: "Output resolution applies to renders, not edits." }, 422);
+  }
   const editProblem = settings.edit
     ? editRequestProblem({ edit: settings.edit, prompt: body.prompt, referenceCount: settings.referenceImageUrls?.length ?? 0 })
     : null;
@@ -236,10 +247,11 @@ renders.post("/", async (c) => {
   const model = modelFor(engineMode, renderRouteFor(generationSettings));
   // A selection edit that also changes the environment runs a second, whole-image pass on the
   // single-image edit model once the first finishes (see startEnvironmentPass).
+  // A render with an output resolution runs an upscale pass once it finishes (see startUpscalePass).
   const costMicros =
-    generationSettings.edit && editPassCount(generationSettings.edit) > 1
+    (generationSettings.edit && editPassCount(generationSettings.edit) > 1
       ? model.costMicros + modelFor(engineMode, "edit").costMicros
-      : model.costMicros;
+      : model.costMicros) + (generationSettings.highRes ? upscaleCostMicros(engineMode, generationSettings.highRes.target) : 0);
   const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);
@@ -314,8 +326,9 @@ renders.post("/:id/upscale", async (c) => {
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
-  const model = modelFor(effectiveEngineMode(c.env, appSettings), "upscale");
-  const costMicros = model.id === "mock" ? 0 : UPSCALE_COST_MICROS[target];
+  const engineMode = effectiveEngineMode(c.env, appSettings);
+  const model = modelFor(engineMode, "upscale");
+  const costMicros = upscaleCostMicros(engineMode, target);
   const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
   if (!reservation) {
     const refusal = refuseBudget(appSettings);

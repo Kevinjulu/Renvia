@@ -194,6 +194,26 @@ export interface RenderUpscaleSettings {
   parentRenderId: string;
 }
 
+/**
+ * An output resolution chosen before rendering. The render runs as usual, then an AI upscale
+ * pass makes a 4K or 8K copy for downloads, all inside the same job. The standard-size result
+ * stays the render's resultImageUrl, so the Studio, edits and "set as base" keep using it.
+ */
+export interface RenderHighResSettings {
+  target: UpscaleTarget;
+  /** Set by the API once the render pass finishes: the standard result, upscaled next. */
+  baseImageUrl?: string;
+  /** Set by the API when the upscale pass succeeds: the high-resolution file. */
+  imageUrl?: string;
+  /** Why the upscale pass failed; its credits were refunded and the standard result kept. */
+  error?: string;
+}
+
+/** Credits an upscale to `target` adds, before the operator's creditsPerImage multiplier. */
+export function upscaleCreditCost(target: UpscaleTarget): number {
+  return target === "8k" ? 2 : 1;
+}
+
 /** Which model family serves a job. */
 export type RenderRoute = RenderSourceType | "references" | "fidelity" | "edit" | "edit-references" | "upscale";
 
@@ -265,6 +285,8 @@ export interface RenderGenerationSettings {
   referenceImageUrls?: string[];
   edit?: RenderEditSettings;
   upscale?: RenderUpscaleSettings;
+  /** Render tab only: also deliver a 4K or 8K copy of the result (see RenderHighResSettings). */
+  highRes?: RenderHighResSettings;
   /** Reuse a previous render's seed to reproduce it, or nudge it with a new prompt/strength. */
   seed?: number;
 }
@@ -275,11 +297,11 @@ export interface RenderGenerationSettings {
  * their own explicit cost. Keep this shared so the Studio quote and API debit agree.
  */
 export function baseCreditCostForRender(settings: RenderGenerationSettings): number {
-  if (settings.upscale) return settings.upscale.target === "8k" ? 2 : 1;
+  if (settings.upscale) return upscaleCreditCost(settings.upscale.target);
   if (settings.edit) return editPassCount(settings.edit);
   const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
-  if (hasReferences && settings.fidelity?.mode === "strict") return 2;
-  return 1;
+  const render = hasReferences && settings.fidelity?.mode === "strict" ? 2 : 1;
+  return render + (settings.highRes ? upscaleCreditCost(settings.highRes.target) : 0);
 }
 
 export interface CreateRenderRequest {

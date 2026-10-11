@@ -28,6 +28,11 @@ export function renderResultKeyFor(renderId: string, contentType: string): strin
   return `renders/${renderId}.${requireExtension(contentType)}`;
 }
 
+/** The 4K or 8K copy a render made with an output resolution keeps beside its standard result. */
+export function renderHighResKeyFor(renderId: string, target: "4k" | "8k", contentType: string): string {
+  return `renders/${renderId}-${target}.${requireExtension(contentType)}`;
+}
+
 /** The first pass of a two-pass edit, kept apart from the final result it feeds. */
 export function renderIntermediateKeyFor(renderId: string, contentType: string): string {
   return `renders/${renderId}-selection.${requireExtension(contentType)}`;

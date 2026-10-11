@@ -2,11 +2,19 @@ import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { schema, type Database } from "@renvia/db";
-import { editPassCount, type AspectRatio, type RenderBudgetResponse, type RenderEngineMode } from "@renvia/types";
+import {
+  baseCreditCostForRender,
+  editPassCount,
+  upscaleCreditCost,
+  type AspectRatio,
+  type RenderBudgetResponse,
+  type RenderEngineMode,
+  type UpscaleTarget,
+} from "@renvia/types";
 import type { Env } from "../index.js";
 import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./composite.js";
-import { refundIfFailed } from "./credits.js";
-import { modelById, modelFor, pricingFor } from "./models.js";
+import { refundIfFailed, refundRender } from "./credits.js";
+import { modelById, modelFor, pricingFor, UPSCALE_COST_MICROS } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
 import { buildEditPrompt, buildEnginePrompt, buildEnvironmentPrompt } from "./prompts.js";
 import {
@@ -15,6 +23,7 @@ import {
   ownUploadKey,
   publicUploadUrl,
   putObject,
+  renderHighResKeyFor,
   renderIntermediateKeyFor,
   renderResultKeyFor,
 } from "./storage.js";
@@ -173,6 +182,18 @@ function awaitsEnvironmentPass(render: RenderRow): boolean {
   return Boolean(edit && editPassCount(edit) > 1 && !edit.intermediateImageUrl);
 }
 
+/** A render with an output resolution whose render pass is still running. */
+function awaitsUpscalePass(render: RenderRow): boolean {
+  const highRes = render.settings?.highRes;
+  return Boolean(highRes && !highRes.baseImageUrl && !render.settings?.edit);
+}
+
+/** A render with an output resolution in its upscale pass: the standard result is stored. */
+function inUpscalePass(render: RenderRow): boolean {
+  const highRes = render.settings?.highRes;
+  return Boolean(highRes?.baseImageUrl && !highRes.imageUrl && !highRes.error);
+}
+
 function errorMessageOf(error: unknown): string {
   if (error instanceof ApiError) {
     const detail = (error.body as { detail?: unknown } | undefined)?.detail;
@@ -252,8 +273,14 @@ async function prepareUpscaleInput(
 
 async function mockUpscaleResult(env: Env, render: RenderRow, origin: string): Promise<string> {
   const target = render.settings?.upscale?.target;
-  const upload = target ? await readOwnUpload(env, render.sourceImageUrl, origin) : null;
-  if (!target || !upload) return render.sourceImageUrl;
+  if (!target) return render.sourceImageUrl;
+  return storeMockUpscale(env, render.sourceImageUrl, target, renderResultKeyFor(render.id, "image/png"), origin);
+}
+
+/** Mock mode's stand-in for the upscaler: a plain resize of `url` to the target's long edge. */
+async function storeMockUpscale(env: Env, url: string, target: UpscaleTarget, key: string, origin: string): Promise<string> {
+  const upload = await readOwnUpload(env, url, origin);
+  if (!upload) return url;
   const metadata = await sharp(upload.bytes).rotate().metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
@@ -269,7 +296,6 @@ async function mockUpscaleResult(env: Env, render: RenderRow, origin: string): P
     })
     .png()
     .toBuffer();
-  const key = renderResultKeyFor(render.id, "image/png");
   await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, "image/png");
   return publicUploadUrl(origin, key);
 }
@@ -399,7 +425,8 @@ async function storeFalResult(
 
   // An upscale checkpoint returns a 2x or 4x image. Cap that output precisely at the
   // selected long edge without changing its aspect ratio or re-running the AI model.
-  const upscaleTarget = render.settings?.upscale?.target;
+  const highRes = render.settings?.highRes;
+  const upscaleTarget = render.settings?.upscale?.target ?? (highRes?.baseImageUrl ? highRes.target : undefined);
   if (upscaleTarget) {
     const targetEdge = UPSCALE_TARGET_EDGE[upscaleTarget];
     const normalized = sharp(bytes).rotate();
@@ -477,12 +504,104 @@ async function startEnvironmentPass(env: Env, db: Database, render: RenderRow, i
   }
 }
 
+/**
+ * The render pass of a render with an output resolution has finished: store its standard
+ * result and upscale it. The render stays processing until the high-resolution copy is in.
+ */
+async function startUpscalePass(env: Env, db: Database, render: RenderRow, imageUrl: string, origin: string, seed: number | null): Promise<RenderRow> {
+  const settings = render.settings!;
+  const highRes = settings.highRes!;
+  const baseImageUrl = await storeFalResult(env, render, imageUrl, origin);
+  const model = modelFor(await engineMode(env, db), "upscale");
+
+  // Same claim as startEnvironmentPass: only the refresh that still sees the render pass's
+  // request id moves on, so a racing poll and webhook start the upscale once.
+  const [claimed] = await db
+    .update(schema.renders)
+    .set({
+      settings: { ...settings, highRes: { ...highRes, baseImageUrl } },
+      model: model.id,
+      falRequestId: null,
+      seed,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.renders.id, render.id), eq(schema.renders.falRequestId, render.falRequestId!), eq(schema.renders.status, "processing")))
+    .returning();
+  if (!claimed) {
+    const [current] = await db.select().from(schema.renders).where(eq(schema.renders.id, render.id));
+    return current ?? render;
+  }
+
+  try {
+    if (model.id === "mock") {
+      const key = renderHighResKeyFor(render.id, highRes.target, "image/png");
+      return await finishWithHighRes(db, claimed, await storeMockUpscale(env, baseImageUrl, highRes.target, key, origin));
+    }
+    const fal = falClient(env);
+    const input = await prepareUpscaleInput(env, fal, baseImageUrl, origin, highRes.target);
+    const { request_id } = await fal.queue.submit(model.id, {
+      input: model.buildInput({
+        imageUrl: input.url,
+        referenceUrls: [],
+        prompt: "",
+        influence: 4,
+        preserveStructure: true,
+        aspectRatio: "auto",
+        upscaleFactor: input.factor,
+      }),
+      webhookUrl: webhookUrlFor(origin),
+    });
+    return updateRender(db, render.id, { falRequestId: request_id });
+  } catch (error) {
+    console.error("upscale pass submit failed", render.id, error);
+    return finishWithoutHighRes(db, claimed, errorMessageOf(error));
+  }
+}
+
+/** The upscale pass succeeded: the render is done, with its standard and high-resolution copies. */
+function finishWithHighRes(db: Database, render: RenderRow, imageUrl: string): Promise<RenderRow> {
+  const settings = render.settings!;
+  return finishRender(db, render, {
+    status: "succeeded",
+    resultImageUrl: settings.highRes!.baseImageUrl,
+    settings: { ...settings, highRes: { ...settings.highRes!, imageUrl } },
+  });
+}
+
+/**
+ * The upscale pass failed or was cancelled. The render itself came out fine, so it succeeds
+ * with its standard result; only the upscale's credits come back and its spend stops counting.
+ */
+async function finishWithoutHighRes(db: Database, render: RenderRow, message: string): Promise<RenderRow> {
+  const settings = render.settings!;
+  const highRes = settings.highRes!;
+  const refund = Math.round((render.creditsCharged * upscaleCreditCost(highRes.target)) / baseCreditCostForRender(settings));
+  const finished = await finishRender(db, render, {
+    status: "succeeded",
+    resultImageUrl: highRes.baseImageUrl,
+    settings: { ...settings, highRes: { ...highRes, error: message } },
+    costMicros: Math.max(0, render.costMicros - UPSCALE_COST_MICROS[highRes.target]),
+    creditsCharged: render.creditsCharged - refund,
+  });
+  // A racing refresh may have finished it first; the refund itself applies at most once.
+  if (finished.settings?.highRes?.error) await refundRender(db, finished, refund);
+  return finished;
+}
+
+/** Ends an in-flight render that went wrong, keeping the standard result if only the upscale did. */
+async function failInFlight(db: Database, render: RenderRow, message: string): Promise<RenderRow> {
+  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, message);
+  return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, message)));
+}
+
 async function refreshFalRender(env: Env, db: Database, render: RenderRow, origin: string): Promise<RenderRow> {
   if (!render.model) return render;
   if (!render.falRequestId) {
-    // An environment pass that was claimed but never submitted: the request died in between.
-    if (render.settings?.edit?.intermediateImageUrl && Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render timed out")));
+    // A second pass (environment or upscale) that was claimed but never submitted: the
+    // request died in between.
+    const claimedPass = Boolean(render.settings?.edit?.intermediateImageUrl) || inUpscalePass(render);
+    if (claimedPass && Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
+      return failInFlight(db, render, "Render timed out");
     }
     return render;
   }
@@ -491,7 +610,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
   const status = await fal.queue.status(render.model, { requestId: render.falRequestId });
   if (status.status !== "COMPLETED") {
     if (Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render timed out")));
+      return failInFlight(db, render, "Render timed out");
     }
     return render;
   }
@@ -500,10 +619,14 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
     const result = data as { images?: { url?: string }[]; image?: { url?: string }; seed?: number };
     const imageUrl = result.images?.[0]?.url ?? result.image?.url;
-    if (!imageUrl) return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, "Render returned no image")));
+    if (!imageUrl) return failInFlight(db, render, "Render returned no image");
     if (awaitsEnvironmentPass(render)) return await startEnvironmentPass(env, db, render, imageUrl, origin);
+    if (inUpscalePass(render)) {
+      const target = render.settings!.highRes!.target;
+      const highResImageUrl = await storeFalResult(env, render, imageUrl, origin, (id, type) => renderHighResKeyFor(id, target, type));
+      return await finishWithHighRes(db, render, highResImageUrl);
+    }
 
-    const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
     // Some provider responses expose an internal, wider seed that does not fit our declared
     // unsigned-32-bit seed contract (or Postgres bigint). Never let provider metadata prevent
     // an otherwise completed image from being persisted; retain a valid echoed/user seed only.
@@ -511,13 +634,14 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     const seed = typeof echoedSeed === "number" && Number.isSafeInteger(echoedSeed) && echoedSeed >= 0 && echoedSeed <= MAX_RENDER_SEED
       ? echoedSeed
       : (render.settings?.seed ?? null);
+    if (awaitsUpscalePass(render)) return await startUpscalePass(env, db, render, imageUrl, origin, seed);
+
+    const resultImageUrl = await storeFalResult(env, render, imageUrl, origin);
     return finishRender(db, render, { status: "succeeded", resultImageUrl, seed });
   } catch (error) {
     // A completed request whose result call errors is a model-side failure (bad input,
     // safety filter, …); storage/network hiccups are left processing and retried.
-    if (error instanceof ApiError) {
-      return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, errorMessageOf(error))));
-    }
+    if (error instanceof ApiError) return failInFlight(db, render, errorMessageOf(error));
     throw error;
   }
 }
@@ -540,10 +664,17 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
     // Mock result is the source image itself — enough to exercise every downstream UI path,
     // including a seed the user typed, so the Seed control is testable without spending fal credit.
     const resultImageUrl = render.settings?.upscale ? await mockUpscaleResult(env, render, origin) : render.sourceImageUrl;
+    const highRes = awaitsUpscalePass(render) ? render.settings!.highRes! : null;
+    const highResImageUrl = highRes
+      ? await storeMockUpscale(env, resultImageUrl, highRes.target, renderHighResKeyFor(render.id, highRes.target, "image/png"), origin)
+      : null;
     return finishRender(db, render, {
       status: "succeeded",
       resultImageUrl,
       seed: render.settings?.seed ?? null,
+      ...(highRes && highResImageUrl
+        ? { settings: { ...render.settings, highRes: { ...highRes, baseImageUrl: resultImageUrl, imageUrl: highResImageUrl } } }
+        : {}),
     });
   }
 
@@ -572,6 +703,8 @@ export async function cancelRender(env: Env, db: Database, render: RenderRow): P
       console.error("fal cancel failed", render.id, error);
     }
   }
+  // Cancelling during the upscale keeps the finished render; only the upscale is dropped and refunded.
+  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, "Cancelled");
 
   const [updated] = await db
     .update(schema.renders)

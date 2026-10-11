@@ -106,6 +106,13 @@ const BRIA_UPSCALE: ModelSpec = {
   }),
 };
 
+/** Budgeted fal spend of one 4K or 8K upscale. */
+export const UPSCALE_COST_MICROS = { "4k": 40_000, "8k": 80_000 } as const;
+
+export function upscaleCostMicros(mode: RenderEngineMode, target: "4k" | "8k"): number {
+  return modelFor(mode, "upscale").id === "mock" ? 0 : UPSCALE_COST_MICROS[target];
+}
+
 const MODELS: Record<RenderEngineMode, Record<RenderRoute, ModelSpec>> = {
   mock: { photo: MOCK, drawing: MOCK, references: MOCK, fidelity: MOCK, edit: MOCK, "edit-references": MOCK, upscale: MOCK },
   dev: {

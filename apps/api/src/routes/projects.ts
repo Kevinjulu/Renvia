@@ -123,12 +123,13 @@ projects.delete("/:id", async (c) => {
   // shared by another project and can be removed immediately. Source/reference uploads are
   // intentionally retained because they may be reused in another project or the asset library.
   const renderRows = await db
-    .select({ resultImageUrl: schema.renders.resultImageUrl })
+    .select({ resultImageUrl: schema.renders.resultImageUrl, settings: schema.renders.settings })
     .from(schema.renders)
     .where(eq(schema.renders.projectId, id));
   const origin = new URL(c.req.url).origin;
   const generatedKeys = renderRows
-    .map((row) => row.resultImageUrl && ownUploadKey(row.resultImageUrl, origin))
+    .flatMap((row) => [row.resultImageUrl, row.settings?.highRes?.imageUrl])
+    .map((url) => url && ownUploadKey(url, origin))
     .filter((key): key is string => Boolean(key?.startsWith("renders/")));
 
   // No cascade on the FKs — clear dependent rows before the project itself.
