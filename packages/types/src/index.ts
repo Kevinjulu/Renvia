@@ -525,6 +525,8 @@ export interface MeResponse {
   maintenanceMessage: string | null;
   /** Each Studio feature and whether this user may use it right now. */
   features: Record<StudioFeatureKey, StudioFeatureAvailability>;
+  /** What each action costs this user now; use these rather than creditsPerImage. */
+  creditPrices: CreditPrices;
   /** The published Studio configuration version these answers come from. */
   configVersion: number;
   /** The next scheduled maintenance window, while it is upcoming or running. */
@@ -948,6 +950,8 @@ export interface AdminSettings {
   messageAccountDisabled: string | null;
   creditsPerImage: number;
   creditsPerSelection: number;
+  /** True once Plans & Pricing published credit prices: creditsPerImage/Selection then don't apply. */
+  creditPricesPublished: boolean;
   maintenanceRenders: boolean;
   maintenanceSegments: boolean;
   maintenanceMessage: string | null;
@@ -1161,7 +1165,8 @@ export type AdminAuditAction =
   | "approval.execute"
   | "audit.export"
   | "studio.publish"
-  | "maintenance.window";
+  | "maintenance.window"
+  | "plan.update";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -1207,7 +1212,7 @@ export interface AdminFinancialsResponse {
   daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
 }
 
-export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance" | "studio_change" | "maintenance_window";
+export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance" | "studio_change" | "maintenance_window" | "plan_change";
 
 /** When each high-risk action needs a second admin. 0 turns that gate off. */
 export interface AdminGovernanceThresholds {
@@ -1468,6 +1473,10 @@ export interface StudioFeatureRule {
 
 export interface StudioConfig {
   features: Record<StudioFeatureKey, StudioFeatureRule>;
+  /** Published credit prices; absent or null = Settings' creditsPerImage / creditsPerSelection. */
+  credits?: CreditPrices | null;
+  /** Holds on individual models, by model id; a model not listed runs normally. */
+  models?: Record<string, ModelRule>;
 }
 
 /** Everything on for everyone: exactly how the Studio behaved before Studio Control. */
@@ -1511,10 +1520,11 @@ export function rolloutBucket(userId: string, key: StudioFeatureKey): number {
   return hash % 100;
 }
 
-export type StudioFeatureDenial = "disabled" | "plan" | "rollout";
+/** paused: the model behind it is paused in the Model Registry. */
+export type StudioFeatureDenial = "disabled" | "plan" | "rollout" | "paused";
 
 /** Why a rule refuses this user, or null when it allows them. Ignores the enforcement mode. */
-export function featureDenial(rule: StudioFeatureRule, user: { id: string; planSlug: string }, key: StudioFeatureKey): StudioFeatureDenial | null {
+export function featureDenial(rule: StudioFeatureRule, user: { id: string; planSlug: string }, key: StudioFeatureKey): Exclude<StudioFeatureDenial, "paused"> | null {
   if (!rule.enabled) return "disabled";
   if (rule.allowedPlans && !rule.allowedPlans.includes(user.planSlug)) return "plan";
   if (rule.rolloutPercent < 100 && rolloutBucket(user.id, key) >= rule.rolloutPercent) return "rollout";
@@ -1592,3 +1602,196 @@ export interface AdminCreateMaintenanceWindowRequest {
 }
 
 export type AdminMaintenanceWindowResponse = { window: MaintenanceWindow } | { pendingApproval: true; approvalId: string };
+
+// ── Credit prices ─────────────────────────────────────────────────────────────────
+
+/** What each action costs in credits. Absolute: no other multiplier applies on top. */
+export interface CreditPrices {
+  /** A photo, massing or drawing render. */
+  render: number;
+  /** A render with reference images. */
+  references: number;
+  /** A strict-fidelity reference render. */
+  fidelity: number;
+  /** Each pass of an edit (most edits are one pass; a selection plus an environment change is two). */
+  editPass: number;
+  /** Added for a 4K copy, or charged for a standalone 4K upscale. */
+  upscale4k: number;
+  /** Added for an 8K copy, or charged for a standalone 8K upscale. */
+  upscale8k: number;
+  /** One automatic selection. */
+  selection: number;
+}
+
+/**
+ * The prices before any were published: the route's fixed weight times the operator's
+ * creditsPerImage (creditsPerSelection for selections). creditsForRender with these prices
+ * equals baseCreditCostForRender(settings) * creditsPerImage for every request.
+ */
+export function legacyCreditPrices(creditsPerImage: number, creditsPerSelection: number): CreditPrices {
+  return {
+    render: creditsPerImage,
+    references: creditsPerImage,
+    fidelity: 2 * creditsPerImage,
+    editPass: creditsPerImage,
+    upscale4k: upscaleCreditCost("4k") * creditsPerImage,
+    upscale8k: upscaleCreditCost("8k") * creditsPerImage,
+    selection: creditsPerSelection,
+  };
+}
+
+export function upscaleCredits(target: UpscaleTarget, prices: CreditPrices): number {
+  return target === "8k" ? prices.upscale8k : prices.upscale4k;
+}
+
+/** Credits a render, edit or upscale request costs at these prices. */
+export function creditsForRender(settings: RenderGenerationSettings, prices: CreditPrices): number {
+  if (settings.upscale) return upscaleCredits(settings.upscale.target, prices);
+  if (settings.edit) return editPassCount(settings.edit) * prices.editPass;
+  const hasReferences = (settings.referenceImageUrls?.length ?? 0) > 0;
+  const render = hasReferences ? (settings.fidelity?.mode === "strict" ? prices.fidelity : prices.references) : prices.render;
+  return render + (settings.highRes ? upscaleCredits(settings.highRes.target, prices) : 0);
+}
+
+export const CREDIT_PRICE_LABELS: Record<keyof CreditPrices, string> = {
+  render: "Render",
+  references: "Reference render",
+  fidelity: "Strict fidelity render",
+  editPass: "Edit (per pass)",
+  upscale4k: "4K output or upscale",
+  upscale8k: "8K output or upscale",
+  selection: "Auto select",
+};
+
+// ── Model Registry ────────────────────────────────────────────────────────────────
+
+/** An operator's hold on a model: paused models take no new jobs; running ones finish. */
+export interface ModelRule {
+  paused: boolean;
+  message: string | null;
+}
+
+export interface AdminModel {
+  id: string;
+  provider: "fal" | "mock";
+  /** Estimated USD per image, used for the budget and cost reporting. */
+  costUsd: number;
+  /** The routes it serves, per engine mode. Declared in code: each needs its own input format. */
+  serves: { mode: RenderEngineMode; route: RenderRoute | "selection" }[];
+  /** True when it serves a route in the engine mode in force now. */
+  inUse: boolean;
+  rule: ModelRule;
+  /** Studio features that stop while it's paused (in the current mode). */
+  affects: StudioFeatureKey[];
+  stats: {
+    jobs: number;
+    succeeded: number;
+    failed: number;
+    successRate: number | null;
+    p50Ms: number | null;
+    p95Ms: number | null;
+    samples: number;
+    costUsd: number;
+    lastUsedAt: string | null;
+  };
+}
+
+export interface AdminModelsResponse {
+  mode: RenderEngineMode;
+  configVersion: number;
+  models: AdminModel[];
+}
+
+// ── Plans and pricing ─────────────────────────────────────────────────────────────
+
+export interface AdminPlanTerms {
+  name: string;
+  description: string;
+  currency: string;
+  priceCents: number;
+  interval: "none" | "month";
+  monthlyCredits: number;
+  dailyRenderLimit: number | null;
+  monthlyRenderLimit: number | null;
+  maxProjects: number | null;
+  concurrentRenderLimit: number | null;
+  isActive: boolean;
+  paypalPlanId: string | null;
+}
+
+export interface AdminPlanVersion {
+  version: number;
+  terms: AdminPlanTerms;
+  reason: string;
+  createdByEmail: string | null;
+  createdAt: string;
+}
+
+export interface AdminPlan extends AdminPlanTerms {
+  id: string;
+  slug: string;
+  /** Latest recorded version; send it back as expectedVersion when editing. */
+  version: number;
+  subscribers: number;
+  versions: AdminPlanVersion[];
+  /** Studio features this plan's users get under the configuration in force. */
+  features: { key: StudioFeatureKey; available: boolean }[];
+}
+
+export interface AdminCreditPackTerms {
+  name: string;
+  currency: string;
+  priceCents: number;
+  credits: number;
+  isActive: boolean;
+}
+
+export interface AdminCreditPack extends AdminCreditPackTerms {
+  id: string;
+  sku: string;
+  version: number;
+  purchases: number;
+  versions: { version: number; terms: AdminCreditPackTerms; reason: string; createdByEmail: string | null; createdAt: string }[];
+}
+
+export interface AdminPlansResponse {
+  plans: AdminPlan[];
+  packs: AdminCreditPack[];
+  /** The prices charged now, and whether they were published or come from Settings. */
+  creditPrices: { prices: CreditPrices; source: "published" | "settings"; configVersion: number };
+}
+
+export type AdminCommercialChangeResponse =
+  | { id: string; version: number }
+  | { pendingApproval: true; approvalId: string };
+
+export interface AdminPricingSimulationRequest {
+  /** Proposed prices; omitted = the prices charged now. */
+  prices?: CreditPrices;
+  planSlug: string;
+  periodDays: number;
+  usage: {
+    renders: number;
+    referenceRenders: number;
+    fidelityRenders: number;
+    edits: number;
+    upscale4k: number;
+    upscale8k: number;
+    selections: number;
+  };
+}
+
+export interface AdminPricingSimulationResponse {
+  creditsByAction: { action: keyof CreditPrices; count: number; credits: number }[];
+  creditsNeeded: number;
+  includedCredits: number;
+  /** Credits beyond the plan's allowance, bought at the best-value active pack. */
+  extraCredits: number;
+  packsNeeded: { sku: string; name: string; count: number; costCents: number } | null;
+  /** Provider cost at the production models' estimated prices. */
+  providerCostUsd: number;
+  revenueUsd: number;
+  /** Revenue minus provider cost only: payment fees, refunds, tax and infrastructure are left out. */
+  contributionUsd: number;
+  notes: string[];
+}

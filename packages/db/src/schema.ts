@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, timestamp, integer, bigint, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
-import type { RenderGenerationSettings, StudioConfig } from "@renvia/types";
+import type { AdminCreditPackTerms, AdminPlanTerms, RenderGenerationSettings, StudioConfig } from "@renvia/types";
 
 export const users = pgTable(
   "users",
@@ -681,7 +681,7 @@ export const approvalRequests = pgTable(
   "approval_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance", "studio_change", "maintenance_window"] }).notNull(),
+    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance", "studio_change", "maintenance_window", "plan_change"] }).notNull(),
     status: text("status", { enum: ["pending", "approved", "rejected", "executed", "cancelled"] }).notNull().default("pending"),
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
@@ -844,5 +844,43 @@ export const maintenanceWindows = pgTable(
     check("maintenance_windows_scope_values", sql`${table.scope} IN ('all', 'renders', 'selections')`),
     check("maintenance_windows_order", sql`${table.endsAt} > ${table.startsAt}`),
     index("maintenance_windows_ends_idx").on(table.endsAt),
+  ],
+);
+
+/** Immutable snapshots of a plan's terms, one per change made from the admin. */
+export const billingPlanVersions = pgTable(
+  "billing_plan_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id").notNull().references(() => billingPlans.id),
+    version: integer("version").notNull(),
+    terms: jsonb("terms").$type<AdminPlanTerms>().notNull(),
+    reason: text("reason").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_plan_versions_plan_version_unique").on(table.planId, table.version),
+    check("billing_plan_versions_version_positive", sql`${table.version} > 0`),
+  ],
+);
+
+/** Immutable snapshots of a credit pack's terms, one per change made from the admin. */
+export const creditPackVersions = pgTable(
+  "credit_pack_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    packId: uuid("pack_id").notNull().references(() => creditPacks.id),
+    version: integer("version").notNull(),
+    terms: jsonb("terms").$type<AdminCreditPackTerms>().notNull(),
+    reason: text("reason").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("credit_pack_versions_pack_version_unique").on(table.packId, table.version),
+    check("credit_pack_versions_version_positive", sql`${table.version} > 0`),
   ],
 );

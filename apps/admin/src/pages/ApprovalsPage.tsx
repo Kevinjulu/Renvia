@@ -24,6 +24,7 @@ const ACTION_LABEL: Record<AdminApproval["action"], string> = {
   maintenance: "Maintenance",
   studio_change: "Studio Control change",
   maintenance_window: "Maintenance window",
+  plan_change: "Plan or pack change",
 };
 
 type Decision = { approval: AdminApproval; kind: "approve" | "reject" };

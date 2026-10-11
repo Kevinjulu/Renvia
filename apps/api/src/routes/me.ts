@@ -4,10 +4,10 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, syncUser } from "../lib/users.js";
-import { getSettings } from "../lib/settings.js";
+import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 import { ensureEntitlement } from "../lib/billing.js";
-import { currentStudioRevision, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
+import { currentStudioRevision, effectiveCreditPrices, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
 
 export const me = new Hono<AppContext>();
 
@@ -48,7 +48,8 @@ me.get("/", async (c) => {
     upcomingMaintenance: maintenance.next
       ? { scope: maintenance.next.scope, startsAt: maintenance.next.startsAt.toISOString(), endsAt: maintenance.next.endsAt.toISOString(), message: maintenance.next.message }
       : null,
-    features: featureAvailability(revision.config, user, billing.plan.slug),
+    features: featureAvailability(revision.config, user, billing.plan.slug, effectiveEngineMode(c.env, settings)),
+    creditPrices: effectiveCreditPrices(revision.config, settings),
     configVersion: revision.version,
   });
 });

@@ -8,6 +8,7 @@ import { reportLimit } from "../lib/useLimitDialog";
 import { showStudioNotice } from "../shell/StudioNotice";
 import { useFocusTrap } from "../lib/useFocusTrap";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
+import { creditPricesFor } from "../lib/creditPrices";
 import { RenderEditSurface } from "./RenderEditSurface";
 import { formatAspectRatio } from "./utils/aspectRatio";
 import { WaitingProgress } from "../shell/panel/WaitingProgress";
@@ -300,7 +301,7 @@ export function RenderPreview() {
     const click = me?.features?.["selection.click"];
     const prompt = me?.features?.["selection.prompt"];
     if (!isAdmin && click?.available === false && prompt?.available === false) return click.message ?? "Automatic selection isn't available right now.";
-    if (me && !isAdmin && me.creditBalance < 1) return "Out of credits — paint the area by hand instead.";
+    if (me && !isAdmin && me.creditBalance < creditPricesFor(me).selection) return "Out of credits — paint the area by hand instead.";
     return null;
   })();
 

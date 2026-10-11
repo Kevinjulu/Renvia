@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { LimitCode, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
+import { creditPricesFor } from "../lib/creditPrices";
 
 /** A refusal the studio can explain, lifted out of an ApiError. */
 export interface LimitRefusal {
@@ -66,12 +67,12 @@ function GlyphIcon({ name }: { name: Glyph }) {
  * the title, icon and next-step line stay so the dialog still reads as one thing.
  */
 function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
-  const perImage = me?.creditsPerImage ?? 1;
+  const prices = creditPricesFor(me);
   switch (refusal.code) {
     case "insufficient_credits":
       return {
         title: "You're out of credits",
-        body: `Standard renders cost ${perImage} ${perImage === 1 ? "credit" : "credits"}; Strict source fidelity costs ${perImage * 2} credits. Your balance can't cover the next action.`,
+        body: `Standard renders cost ${prices.render} ${prices.render === 1 ? "credit" : "credits"}; Strict source fidelity costs ${prices.fidelity} credits. Your balance can't cover the next action.`,
         icon: "coins",
         tone: "rose",
       };

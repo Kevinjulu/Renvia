@@ -20,7 +20,8 @@ import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
 import { reportClientError } from "../../components/AppErrorHandling";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
-import { upscaleCreditCost, type UpscaleTarget } from "@renvia/types";
+import { upscaleCredits, type UpscaleTarget } from "@renvia/types";
+import { creditPricesFor } from "../../lib/creditPrices";
 
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -91,7 +92,7 @@ export function RenderResultsPanel() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [upscaling, setUpscaling] = useState<UpscaleTarget | null>(null);
-  const creditsPerImage = useAccountStore((state) => state.me?.creditsPerImage ?? 1);
+  const prices = creditPricesFor(useAccountStore((state) => state.me));
   const features = useAccountStore((state) => (state.me?.role === "admin" ? undefined : state.me?.features));
   /** Studio Control's reason an upscale to `target` isn't available, or null. */
   const upscaleBlocked = (target: "4k" | "8k") => {
@@ -478,7 +479,7 @@ export function RenderResultsPanel() {
               </p>
               <div>
                 {(["4k", "8k"] as const).map((target) => {
-                  const credits = upscaleCreditCost(target) * creditsPerImage;
+                  const credits = upscaleCredits(target, prices);
                   return (
                     <button key={target} type="button" className="rp-btn" disabled={upscaling !== null || upscaleBlocked(target) !== null} title={upscaleBlocked(target) ?? undefined} onClick={() => void handleUpscale(target)}>
                       {upscaling === target ? "Starting…" : `${target.toUpperCase()} · ${plural(credits, "credit")}`}

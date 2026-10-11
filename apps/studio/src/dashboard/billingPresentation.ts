@@ -4,16 +4,16 @@ export type PackOutcome = {
   guidance: string;
 };
 
-export function packOutcome(credits: number, creditsPerImage: number): PackOutcome {
+export function packOutcome(credits: number, creditsPerRender: number): PackOutcome {
   const guidance = credits <= 50
     ? "Ideal for testing a direction or finishing a focused project."
     : "Built for an active workflow with room to explore options.";
-  if (creditsPerImage <= 0) return {
+  if (creditsPerRender <= 0) return {
     renders: null,
     renderLabel: "standard renders currently require no credits",
     guidance,
   };
-  const renders = Math.max(0, Math.floor(credits / creditsPerImage));
+  const renders = Math.max(0, Math.floor(credits / creditsPerRender));
   return {
     renders,
     renderLabel: `${renders} standard ${renders === 1 ? "render" : "renders"}`,

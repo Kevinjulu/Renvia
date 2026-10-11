@@ -384,6 +384,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "customer.tag": 0,
           "incident.update": 0,
           "maintenance.window": 0,
+          "plan.update": 0,
           "render.cancel": 0,
           "render.refresh": 0,
           "segmentation.recover": 0,
@@ -1305,6 +1306,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
     "body": {
       "budgetCriticalPercent": 90,
       "budgetWarningPercent": 70,
+      "creditPricesPublished": false,
       "creditsPerImage": 1,
       "creditsPerSelection": 1,
       "dailyRenderLimit": 5,
@@ -1848,5 +1850,13 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "POST /studio-control/restore",
   "POST /maintenance-windows",
   "POST /maintenance-windows/:id/cancel",
+  "GET /models",
+  "POST /models/hold",
+  "GET /plans",
+  "PUT /plans/:id",
+  "POST /credit-packs",
+  "PUT /credit-packs/:id",
+  "PUT /pricing/credits",
+  "POST /pricing/simulate",
 ]
 `;

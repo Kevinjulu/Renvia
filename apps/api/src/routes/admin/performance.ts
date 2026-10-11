@@ -36,7 +36,7 @@ function since(range: AdminPerformanceRange): SQL {
  * events the renders trigger writes; renders from before that have none (has_events = false).
  * The model is the first pass's — a high-resolution job's renders.model ends as the upscaler.
  */
-function jobs(range: AdminPerformanceRange): SQL {
+export function jobs(range: AdminPerformanceRange): SQL {
   return sql`
     select r.id, r.status, r.job_type, r.output_resolution, r.cost_micros, r.credits_charged,
            r.created_at, r.updated_at, r.error_message,
@@ -69,7 +69,7 @@ function jobs(range: AdminPerformanceRange): SQL {
 }
 
 /** The aggregate columns shared by the totals row and each grouped row. */
-const AGGREGATES = sql`
+export const AGGREGATES = sql`
   count(*)::int as total,
   count(*) filter (where status = 'succeeded')::int as succeeded,
   count(*) filter (where status = 'failed' and error_message is distinct from 'Cancelled')::int as failed,
@@ -99,14 +99,14 @@ function ms(value: unknown): number | null {
   return value == null ? null : Math.round(Number(value));
 }
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
-function stats(row: Row, prefix: string): AdminLatencyStats {
+export function stats(row: Row, prefix: string): AdminLatencyStats {
   const samples = Number(row[`${prefix}_samples`] ?? 0);
   return { samples, p50Ms: ms(row[`${prefix}_p50`]), p95Ms: ms(row[`${prefix}_p95`]), p99Ms: ms(row[`${prefix}_p99`]), weak: samples < WEAK_SAMPLE_SIZE };
 }
 
-function counts(row: Row): AdminPerformanceCounts {
+export function counts(row: Row): AdminPerformanceCounts {
   const succeeded = Number(row.succeeded);
   const failed = Number(row.failed);
   return {
@@ -120,7 +120,7 @@ function counts(row: Row): AdminPerformanceCounts {
   };
 }
 
-function costs(row: Row): AdminPerformanceCosts {
+export function costs(row: Row): AdminPerformanceCosts {
   const generationUsd = Number(row.generation_micros) / MICROS_PER_USD;
   const upscaleUsd = Number(row.upscale_micros) / MICROS_PER_USD;
   const succeeded = Number(row.succeeded);

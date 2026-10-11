@@ -3,6 +3,7 @@ import type { BillingCatalogResponse, BillingCheckout, CreditPack, MeResponse } 
 import { ApiError } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { packOutcome } from "./billingPresentation";
+import { creditPricesFor } from "../lib/creditPrices";
 import { CreditIcon, RefundIcon, SparkleIcon } from "./icons";
 
 type StudioApi = {
@@ -93,7 +94,8 @@ export function BillingSection({ api }: { api: StudioApi }) {
     };
   }, [api, loadCatalog]);
 
-  const standardCost = me?.creditsPerImage ?? 1;
+  const prices = creditPricesFor(me);
+  const standardCost = prices.render;
   const planName = me?.entitlement.plan.name ?? "Your plan";
   const planStatus = me?.entitlement.status ?? "active";
   const complimentary = me?.entitlement.complimentary ?? null;
@@ -157,7 +159,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
             <strong>Strict source fidelity</strong>
             <small>For when matching the source exactly matters most</small>
           </span>
-          <b>{standardCost * 2} credits</b>
+          <b>{prices.fidelity} credits</b>
         </div>
         <div className="billing-cost-row">
           <span className="billing-cost-icon"><RefundIcon /></span>

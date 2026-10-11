@@ -153,6 +153,13 @@ export function pricingFor(mode: RenderEngineMode): Record<RenderRoute, number> 
   return Object.fromEntries(entries) as Record<RenderRoute, number>;
 }
 
+/** Every route each model serves, per engine mode, for the admin Model Registry. */
+export function modelRoutes(): { mode: RenderEngineMode; route: RenderRoute; model: ModelSpec }[] {
+  return (Object.keys(MODELS) as RenderEngineMode[]).flatMap((mode) =>
+    (Object.keys(MODELS[mode]) as RenderRoute[]).map((route) => ({ mode, route, model: MODELS[mode][route] })),
+  );
+}
+
 /** Read-only model map for the admin Settings console. */
 export function modelsFor(mode: RenderEngineMode): { route: RenderRoute; modelId: string; costUsd: number }[] {
   return (Object.keys(MODELS[mode]) as RenderRoute[]).map((route) => {

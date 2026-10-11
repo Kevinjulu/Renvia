@@ -1,10 +1,14 @@
-import { and, desc, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import {
   defaultStudioConfig,
   featureDenial,
+  legacyCreditPrices,
   STUDIO_FEATURES,
+  type CreditPrices,
+  type RenderEngineMode,
+  type RenderRoute,
   type MaintenanceScope,
   type StudioConfig,
   type StudioFeatureAvailability,
@@ -12,6 +16,8 @@ import {
   type StudioFeatureKey,
 } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
+import { modelFor } from "./models.js";
+import { SAM_MODEL_ID } from "./segment.js";
 
 export type StudioRevisionRow = typeof schema.studioConfigRevisions.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
@@ -28,9 +34,22 @@ const ruleSchema = z
   })
   .strict();
 
-/** A complete config: every known feature has a rule, and nothing else is accepted. */
+const price = z.number().int().min(0).max(1000);
+const creditPricesSchema = z
+  .object({ render: price, references: price, fidelity: price, editPass: price, upscale4k: price, upscale8k: price, selection: price })
+  .strict();
+const modelRuleSchema = z.object({ paused: z.boolean(), message: z.string().trim().max(280).nullable() }).strict();
+
+/**
+ * A complete config: every known feature has a rule, and nothing else is accepted. Prices and
+ * model holds are optional, so revisions published before they existed stay valid as stored.
+ */
 export const studioConfigSchema = z
-  .object({ features: z.object(Object.fromEntries(FEATURE_KEYS.map((key) => [key, ruleSchema])) as Record<StudioFeatureKey, typeof ruleSchema>).strict() })
+  .object({
+    features: z.object(Object.fromEntries(FEATURE_KEYS.map((key) => [key, ruleSchema])) as Record<StudioFeatureKey, typeof ruleSchema>).strict(),
+    credits: creditPricesSchema.nullable().optional(),
+    models: z.record(z.string().min(1).max(200), modelRuleSchema).optional(),
+  })
   .strict();
 
 /** JSON with object keys sorted, so equal configs always hash and compare the same (jsonb reorders keys). */
@@ -53,7 +72,52 @@ export async function configChecksum(config: StudioConfig): Promise<string> {
  */
 export function normalizeConfig(config: StudioConfig): StudioConfig {
   const defaults = defaultStudioConfig();
-  return { features: { ...defaults.features, ...config.features } };
+  return { ...config, features: { ...defaults.features, ...config.features } };
+}
+
+/** The prices a revision published, or null when it left pricing to Settings. */
+export async function publishedPricesFor(db: Database, version: number | null): Promise<CreditPrices | null> {
+  if (version === null) return null;
+  const [row] = await db.select({ config: schema.studioConfigRevisions.config }).from(schema.studioConfigRevisions).where(eq(schema.studioConfigRevisions.version, version)).limit(1);
+  return row?.config.credits ?? null;
+}
+
+/** Prices charged under this config: the published ones, else Settings' per-image multipliers. */
+export function effectiveCreditPrices(config: StudioConfig, settings: AppSettingsRow): CreditPrices {
+  return config.credits ?? legacyCreditPrices(settings.creditsPerImage, settings.creditsPerSelection);
+}
+
+/** The routes each feature runs on, to find the models behind it. */
+const FEATURE_ROUTES: Record<StudioFeatureKey, (RenderRoute | "selection")[]> = {
+  "render.standard": ["photo", "drawing"],
+  "render.references": ["references"],
+  "render.fidelity": ["fidelity"],
+  "edit.standard": ["edit"],
+  "edit.references": ["edit-references"],
+  "render.upscale": ["upscale"],
+  "export.4k": ["upscale"],
+  "export.8k": ["upscale"],
+  "selection.click": ["selection"],
+  "selection.prompt": ["selection"],
+};
+
+/** The model serving a route in this engine mode (selections use SAM outside mock mode). */
+export function modelForRoute(mode: RenderEngineMode, route: RenderRoute | "selection"): string {
+  if (route === "selection") return mode === "mock" ? "mock" : SAM_MODEL_ID;
+  return modelFor(mode, route).id;
+}
+
+export function featureModels(mode: RenderEngineMode, key: StudioFeatureKey): string[] {
+  return [...new Set(FEATURE_ROUTES[key].map((route) => modelForRoute(mode, route)))];
+}
+
+/** The hold on a model behind this feature, if one of them is paused in this mode. */
+function pausedModel(config: StudioConfig, mode: RenderEngineMode, key: StudioFeatureKey) {
+  for (const id of featureModels(mode, key)) {
+    const rule = config.models?.[id];
+    if (rule?.paused) return rule;
+  }
+  return null;
 }
 
 /**
@@ -79,6 +143,7 @@ function bypasses(user: UserRow): boolean {
 
 const DEFAULT_MESSAGES: Record<StudioFeatureDenial, (label: string) => string> = {
   disabled: (label) => `${label} is switched off for now.`,
+  paused: (label) => `${label} is paused while we look into a problem.`,
   plan: (label) => `${label} isn't included in your plan.`,
   rollout: (label) => `${label} isn't available on your account yet.`,
 };
@@ -88,9 +153,11 @@ function labelFor(key: StudioFeatureKey): string {
 }
 
 /** What /me reports: each feature and whether this user can use it now. */
-export function featureAvailability(config: StudioConfig, user: UserRow, planSlug: string): Record<StudioFeatureKey, StudioFeatureAvailability> {
+export function featureAvailability(config: StudioConfig, user: UserRow, planSlug: string, mode: RenderEngineMode): Record<StudioFeatureKey, StudioFeatureAvailability> {
   return Object.fromEntries(
     FEATURE_KEYS.map((key) => {
+      const paused = bypasses(user) ? null : pausedModel(config, mode, key);
+      if (paused) return [key, { available: false, reason: "paused", message: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)) }];
       const rule = config.features[key];
       const denial = bypasses(user) ? null : featureDenial(rule, { id: user.id, planSlug }, key);
       // An observe-mode rule never refuses, so the feature is available.
@@ -119,9 +186,15 @@ export async function checkFeatures(
   user: UserRow,
   planSlug: string,
   keys: StudioFeatureKey[],
+  mode: RenderEngineMode,
 ): Promise<FeatureRefusal | null> {
   if (bypasses(user)) return null;
-  const observed: { featureKey: StudioFeatureKey; reason: StudioFeatureDenial }[] = [];
+  // A paused model stops every request that would use it; there is no observe mode for that.
+  for (const key of keys) {
+    const paused = pausedModel(revision.config, mode, key);
+    if (paused) return { code: "feature_disabled", error: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)), status: 403, feature: key, reason: "paused" };
+  }
+  const observed: { featureKey: StudioFeatureKey; reason: Exclude<StudioFeatureDenial, "paused"> }[] = [];
   let refusal: FeatureRefusal | null = null;
   for (const key of keys) {
     const rule = revision.config.features[key];

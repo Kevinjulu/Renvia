@@ -16,6 +16,8 @@ import { incidentsRoutes } from "./incidents.js";
 import { auditRoutes } from "./audit.js";
 import { performanceRoutes } from "./performance.js";
 import { studioControlRoutes } from "./studioControl.js";
+import { modelsRoutes } from "./models.js";
+import { plansRoutes } from "./plans.js";
 
 export const admin = new Hono<AdminContext>();
 
@@ -36,3 +38,5 @@ admin.route("/", incidentsRoutes);
 admin.route("/", auditRoutes);
 admin.route("/", performanceRoutes);
 admin.route("/", studioControlRoutes);
+admin.route("/", modelsRoutes);
+admin.route("/", plansRoutes);

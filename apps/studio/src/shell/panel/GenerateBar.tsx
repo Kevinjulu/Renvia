@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  baseCreditCostForRender,
+  creditsForRender,
   featuresForRender,
   renderRouteFor,
   suggestedEditPartForPrompt,
@@ -9,6 +9,7 @@ import {
   type MeResponse,
 } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
+import { creditPricesFor } from "../../lib/creditPrices";
 import { limitRefusal, type LimitRefusal } from "../../components/LimitDialog";
 import { reportLimit, useLimitDialogStore } from "../../lib/useLimitDialog";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
@@ -150,8 +151,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const upscaleUsd = budget && !isEdit && highRes ? budget.pricing.upscale * (highRes.target === "8k" ? 2 : 1) : 0;
   const estimateUsd = budget ? imageCount * (budget.pricing[route] + upscaleUsd) + (isEdit && draft.passes > 1 ? budget.pricing.edit : 0) : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
-  const creditsPerImage = me?.creditsPerImage ?? 1;
-  const creditsPerRender = baseCreditCostForRender(costSettings) * creditsPerImage;
+  const creditsPerRender = creditsForRender(costSettings, creditPricesFor(me));
   const creditsNeeded = imageCount * creditsPerRender;
   const creditBalance = me?.creditBalance ?? 0;
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;

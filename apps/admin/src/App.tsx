@@ -25,6 +25,8 @@ import { OperationsPage } from "./pages/OperationsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { PerformancePage } from "./pages/PerformancePage";
 import { StudioControlPage } from "./pages/StudioControlPage";
+import { ModelsPage } from "./pages/ModelsPage";
+import { PlansPage } from "./pages/PlansPage";
 import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
@@ -100,6 +102,8 @@ function AdminGate() {
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/performance" element={<PerformancePage />} />
           <Route path="/studio-control" element={<StudioControlPage />} />
+          <Route path="/models" element={<ModelsPage />} />
+          <Route path="/plans" element={<PlansPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
@@ -168,8 +172,8 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
     { label: "Start here", paths: ["/", "/operations"] },
     { label: "Operations", paths: ["/renders", "/segmentations", "/incidents", "/performance"] },
     { label: "Customers", paths: ["/users", "/projects", "/credits"] },
-    { label: "Commerce", paths: ["/billing", "/financials"] },
-    { label: "Platform", paths: ["/studio-control", "/settings"] },
+    { label: "Commerce", paths: ["/billing", "/financials", "/plans"] },
+    { label: "Platform", paths: ["/studio-control", "/models", "/settings"] },
     { label: "Governance", paths: ["/approvals", "/audit"] },
   ].map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) })).filter((group) => group.items.length > 0);
   return (

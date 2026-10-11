@@ -9,7 +9,7 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientCreditsError, isUniqueViolation } from "../lib/credits.js";
 import { findOwnedProject } from "../lib/projects.js";
 import {
-  baseCreditCostForRender,
+  creditsForRender,
   EDIT_SEASONS,
   EDIT_STYLES,
   EDIT_TIMES_OF_DAY,
@@ -32,7 +32,7 @@ import { repairReferencePrompt } from "../lib/prompts.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
 import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
-import { checkFeatures, currentStudioRevision } from "../lib/studioControl.js";
+import { checkFeatures, currentStudioRevision, effectiveCreditPrices } from "../lib/studioControl.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -238,7 +238,8 @@ renders.post("/", async (c) => {
   // One Studio Control revision for the whole request: its rules decide, and its version is
   // stamped on the job.
   const revision = await currentStudioRevision(db);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings));
+  const engineMode = effectiveEngineMode(c.env, appSettings);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
 
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
@@ -251,7 +252,6 @@ renders.post("/", async (c) => {
       ? settings
       : { ...settings, sourceType: await detectSourceType(c.env, body.sourceImageUrl, origin) };
 
-  const engineMode = effectiveEngineMode(c.env, appSettings);
   const model = modelFor(engineMode, renderRouteFor(generationSettings));
   // A selection edit that also changes the environment runs a second, whole-image pass on the
   // single-image edit model once the first finishes (see startEnvironmentPass).
@@ -266,10 +266,9 @@ renders.post("/", async (c) => {
     return (await replay()) ?? c.json(refusal, refusal.status);
   }
 
-  // Admins aren't charged; their renders still count toward the global fal budget.
-  // Strict source fidelity costs two credits because its Canny-controlled route costs
-  // materially more than the standard image/reference routes.
-  const credits = isAdmin ? 0 : baseCreditCostForRender(generationSettings) * appSettings.creditsPerImage;
+  // Admins aren't charged; their renders still count toward the global fal budget. Prices come
+  // from the same revision as the feature check (Settings' multipliers until prices are published).
+  const credits = isAdmin ? 0 : creditsForRender(generationSettings, effectiveCreditPrices(revision.config, appSettings));
   try {
     let created;
     try {
@@ -333,12 +332,12 @@ renders.post("/:id/upscale", async (c) => {
   const earlier = await replay();
   if (earlier) return earlier;
   const revision = await currentStudioRevision(db);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender({ upscale: { target, parentRenderId: parent.id } }));
+  const engineMode = effectiveEngineMode(c.env, appSettings);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender({ upscale: { target, parentRenderId: parent.id } }), engineMode);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
-  const engineMode = effectiveEngineMode(c.env, appSettings);
   const model = modelFor(engineMode, "upscale");
   const costMicros = upscaleCostMicros(engineMode, target);
   const reservation = await reserveBudget(db, costMicros, effectiveBudgetUsd(c.env, appSettings));
@@ -347,7 +346,7 @@ renders.post("/:id/upscale", async (c) => {
     return (await replay()) ?? c.json(refusal, refusal.status);
   }
 
-  const credits = user.role === "admin" ? 0 : baseCreditCostForRender({ upscale: { target, parentRenderId: parent.id } }) * appSettings.creditsPerImage;
+  const credits = user.role === "admin" ? 0 : creditsForRender({ upscale: { target, parentRenderId: parent.id } }, effectiveCreditPrices(revision.config, appSettings));
   try {
     const created = await createChargedRender(db, user.id, credits, {
       projectId: parent.projectId,

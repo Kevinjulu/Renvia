@@ -4,7 +4,7 @@ import type { AdminPlanCredits } from "@renvia/types";
 import type { Draft, FieldErrors } from "./types";
 import { Field, inputClass } from "./components";
 
-export function CreditsLimitsSection({ draft, plans, fieldErrors, update }: { draft: Draft; plans: AdminPlanCredits[]; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
+export function CreditsLimitsSection({ draft, plans, fieldErrors, update, pricesPublished }: { draft: Draft; plans: AdminPlanCredits[]; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void; pricesPublished: boolean }) {
   return (
     <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
       <div className="mb-5 flex items-center gap-2">
@@ -38,6 +38,11 @@ export function CreditsLimitsSection({ draft, plans, fieldErrors, update }: { dr
             ))}
           </div>
         </Field>
+        {pricesPublished && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs text-amber-900">
+            Credit prices are published in <Link to="/plans" className="font-medium underline">Plans &amp; Pricing</Link>, so the two per-job costs below don't apply until pricing is handed back to Settings.
+          </p>
+        )}
         <div className="grid gap-5 sm:grid-cols-2">
           <Field
             label="Credits per image"

@@ -1,6 +1,14 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminCommercialChangeResponse,
+  AdminCreditPackTerms,
+  AdminModelsResponse,
+  AdminPlanTerms,
+  AdminPlansResponse,
+  AdminPricingSimulationRequest,
+  AdminPricingSimulationResponse,
+  CreditPrices,
   AdminCreateMaintenanceWindowRequest,
   AdminMaintenanceWindowResponse,
   AdminPublishStudioConfigRequest,
@@ -252,6 +260,20 @@ export function useAdminApi() {
         request<AdminMaintenanceWindowResponse>(getToken, "/admin/maintenance-windows", { method: "POST", body: JSON.stringify(body) }),
       cancelMaintenanceWindow: (id: string, reason: string) =>
         request<AdminMaintenanceWindowResponse>(getToken, `/admin/maintenance-windows/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
+      getModels: () => request<AdminModelsResponse>(getToken, "/admin/models"),
+      holdModel: (body: { modelId: string; paused: boolean; message: string | null; expectedVersion: number; reason: string }) =>
+        request<AdminPublishStudioConfigResponse>(getToken, "/admin/models/hold", { method: "POST", body: JSON.stringify(body) }),
+      getPlans: () => request<AdminPlansResponse>(getToken, "/admin/plans"),
+      updatePlan: (id: string, body: { expectedVersion: number; terms: Omit<AdminPlanTerms, "currency" | "interval">; reason: string }) =>
+        request<AdminCommercialChangeResponse>(getToken, `/admin/plans/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+      createCreditPack: (body: { sku: string; terms: Omit<AdminCreditPackTerms, "currency">; reason: string }) =>
+        request<AdminCommercialChangeResponse>(getToken, "/admin/credit-packs", { method: "POST", body: JSON.stringify(body) }),
+      updateCreditPack: (id: string, body: { expectedVersion: number; terms: Omit<AdminCreditPackTerms, "currency">; reason: string }) =>
+        request<AdminCommercialChangeResponse>(getToken, `/admin/credit-packs/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+      publishCreditPrices: (body: { expectedVersion: number; prices: CreditPrices | null; reason: string }) =>
+        request<AdminPublishStudioConfigResponse>(getToken, "/admin/pricing/credits", { method: "PUT", body: JSON.stringify(body) }),
+      simulatePricing: (body: AdminPricingSimulationRequest) =>
+        request<AdminPricingSimulationResponse>(getToken, "/admin/pricing/simulate", { method: "POST", body: JSON.stringify(body) }),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

@@ -9,6 +9,8 @@ import { getSettings, effectiveBudgetUsd, effectiveEngineMode, type AppSettingsR
 import { denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, adminEventInsert } from "./shared.js";
 import { governance, requestApproval } from "./governance.js";
+import { allowanceVersionWrites } from "./plans.js";
+import { currentStudioRevision } from "../../lib/studioControl.js";
 import type { AdminContext } from "./context.js";
 
 export const settingsRoutes = new Hono<AdminContext>();
@@ -22,7 +24,7 @@ async function planMonthlyCredits(db: Database) {
 }
 
 async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
-  const [[renderSpend], [segSpend], updaterRows, changeRows, plans] = await Promise.all([
+  const [[renderSpend], [segSpend], updaterRows, changeRows, plans, revision] = await Promise.all([
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
@@ -49,6 +51,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
       .orderBy(desc(schema.adminEvents.createdAt))
       .limit(8),
     planMonthlyCredits(db),
+    currentStudioRevision(db),
   ]);
 
   const envMode = env.FAL_MODE?.trim() || null;
@@ -76,6 +79,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     messageAccountDisabled: row.messageAccountDisabled,
     creditsPerImage: row.creditsPerImage,
     creditsPerSelection: row.creditsPerSelection,
+    creditPricesPublished: Boolean(revision.config.credits),
     maintenanceRenders: row.maintenanceRenders,
     maintenanceSegments: row.maintenanceSegments,
     maintenanceMessage: row.maintenanceMessage,
@@ -194,6 +198,7 @@ settingsRoutes.put("/settings", async (c) => {
   const changed = Object.keys(applied).filter((key) => applied[key as keyof typeof applied] !== undefined);
   let updated = before;
   if (changed.length > 0) {
+    const versionWrites = await allowanceVersionWrites(db, planCredits ?? {}, reason || "Monthly credits changed in Settings", adminUser.id);
     // Plan allowances apply from each user's next credit period; nothing already granted changes.
     // Settings, plan allowances and the audit row commit together or not at all.
     const [rows] = await db.batch([
@@ -250,6 +255,7 @@ settingsRoutes.put("/settings", async (c) => {
       ...Object.entries(planCredits ?? {}).map(([slug, monthlyCredits]) =>
         db.update(schema.billingPlans).set({ monthlyCredits, updatedAt: new Date() }).where(eq(schema.billingPlans.slug, slug)),
       ),
+      ...versionWrites,
     ]);
     updated = rows[0]!;
   }

@@ -4,6 +4,8 @@ import sharp from "sharp";
 import { schema, type Database } from "@renvia/db";
 import {
   baseCreditCostForRender,
+  creditsForRender,
+  upscaleCredits,
   editPassCount,
   upscaleCreditCost,
   type AspectRatio,
@@ -16,7 +18,7 @@ import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./c
 import { refundIfFailed, refundRender } from "./credits.js";
 import { modelById, modelFor, pricingFor, UPSCALE_COST_MICROS } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
-import { effectiveMaintenance } from "./studioControl.js";
+import { effectiveMaintenance, publishedPricesFor } from "./studioControl.js";
 import { buildEditPrompt, buildEnginePrompt, buildEnvironmentPrompt } from "./prompts.js";
 import {
   extensionForContentType,
@@ -577,7 +579,7 @@ function finishWithHighRes(db: Database, render: RenderRow, imageUrl: string): P
 async function finishWithoutHighRes(db: Database, render: RenderRow, message: string): Promise<RenderRow> {
   const settings = render.settings!;
   const highRes = settings.highRes!;
-  const refund = Math.round((render.creditsCharged * upscaleCreditCost(highRes.target)) / baseCreditCostForRender(settings));
+  const refund = await upscaleRefund(db, render, highRes.target);
   const finished = await finishRender(db, render, {
     status: "succeeded",
     resultImageUrl: highRes.baseImageUrl,
@@ -588,6 +590,21 @@ async function finishWithoutHighRes(db: Database, render: RenderRow, message: st
   // A racing refresh may have finished it first; the refund itself applies at most once.
   if (finished.settings?.highRes?.error) await refundRender(db, finished, refund);
   return finished;
+}
+
+/**
+ * The upscale's share of what the render was charged. Uses the prices published in the
+ * revision the render was checked against; a render charged under Settings' multipliers (no
+ * published prices, or from before Studio Control) keeps the old fixed ratio, which those
+ * multipliers cancel out of.
+ */
+async function upscaleRefund(db: Database, render: RenderRow, target: UpscaleTarget): Promise<number> {
+  const settings = render.settings!;
+  const prices = await publishedPricesFor(db, render.configVersion);
+  const [upscale, total] = prices
+    ? [upscaleCredits(target, prices), creditsForRender(settings, prices)]
+    : [upscaleCreditCost(target), baseCreditCostForRender(settings)];
+  return total > 0 ? Math.round((render.creditsCharged * upscale) / total) : 0;
 }
 
 /** Ends an in-flight render that went wrong, keeping the standard result if only the upscale did. */

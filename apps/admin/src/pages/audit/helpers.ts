@@ -20,6 +20,7 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "billing.payment", label: "Payments" },
   { value: "studio.publish", label: "Studio Control" },
   { value: "maintenance.window", label: "Maintenance windows" },
+  { value: "plan.update", label: "Plans & pricing" },
 ];
 
 export const RANGES: { value: RangeFilter; label: string }[] = [
@@ -68,6 +69,7 @@ export const ACTION_META: Record<
   "audit.export": { label: "Audit export", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
   "studio.publish": { label: "Studio Control", tone: "amber", icon: Settings, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "maintenance.window": { label: "Maintenance window", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "plan.update": { label: "Plans & pricing", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
 };
 
 export function groupByDay(events: AdminAuditEvent[]) {

@@ -104,11 +104,16 @@ studioControlRoutes.get("/studio-control", async (c) => {
 
 /** Plain-language list of what changes between two configs, for the audit trail. */
 export function describeConfigChange(before: StudioConfig, after: StudioConfig) {
-  return STUDIO_FEATURES.flatMap(({ key, label }) => {
-    const from = before.features[key];
-    const to = after.features[key];
-    return canonicalJson(from) === canonicalJson(to) ? [] : [{ key, label, before: from, after: to }];
-  });
+  const differs = (a: unknown, b: unknown) => canonicalJson(a ?? null) !== canonicalJson(b ?? null);
+  const features = STUDIO_FEATURES.flatMap(({ key, label }) =>
+    differs(before.features[key], after.features[key]) ? [{ key: key as string, label, before: before.features[key] as unknown, after: after.features[key] as unknown }] : [],
+  );
+  const credits = differs(before.credits, after.credits) ? [{ key: "credits", label: "Credit prices", before: before.credits ?? null, after: after.credits ?? null }] : [];
+  const modelIds = [...new Set([...Object.keys(before.models ?? {}), ...Object.keys(after.models ?? {})])].sort();
+  const models = modelIds.flatMap((id) =>
+    differs(before.models?.[id], after.models?.[id]) ? [{ key: `model:${id}`, label: `Model ${id}`, before: before.models?.[id] ?? null, after: after.models?.[id] ?? null }] : [],
+  );
+  return [...features, ...credits, ...models];
 }
 
 export type PublishOutcome =
@@ -164,7 +169,7 @@ export async function publishStudioConfig(
 }
 
 /** Publishes now, or holds the change for a second admin when the Studio rule is on. */
-async function publishOrRequest(c: Context<AdminContext>, input: { expectedVersion: number; config: StudioConfig; reason: string; restoredFrom?: number | null }) {
+export async function publishOrRequest(c: Context<AdminContext>, input: { expectedVersion: number; config: StudioConfig; reason: string; restoredFrom?: number | null }) {
   const db = c.get("db"); const actor = c.get("admin");
   const rules = await governance(db);
   if (rules.studioChangeApprovalThreshold > 0 && 1 >= rules.studioChangeApprovalThreshold) {

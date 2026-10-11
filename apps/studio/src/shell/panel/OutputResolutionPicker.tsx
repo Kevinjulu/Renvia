@@ -1,4 +1,5 @@
-import { upscaleCreditCost } from "@renvia/types";
+import { upscaleCredits } from "@renvia/types";
+import { creditPricesFor } from "../../lib/creditPrices";
 import { useGenerationSettingsStore, type OutputResolution } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
 
@@ -15,7 +16,7 @@ const OPTIONS: { id: OutputResolution; label: string; edge: number | null }[] = 
 export function OutputResolutionPicker() {
   const value = useGenerationSettingsStore((state) => state.outputResolution);
   const setValue = useGenerationSettingsStore((state) => state.setOutputResolution);
-  const creditsPerImage = useAccountStore((state) => state.me?.creditsPerImage ?? 1);
+  const me = useAccountStore((state) => state.me);
   const features = useAccountStore((state) => (state.me?.role === "admin" ? undefined : state.me?.features));
   // Switched off in Studio Control: the option stays visible but can't be chosen.
   const unavailable = (option: OutputResolution) => {
@@ -23,7 +24,7 @@ export function OutputResolutionPicker() {
     const feature = features?.[option === "8k" ? "export.8k" : "export.4k"];
     return feature && !feature.available ? feature : null;
   };
-  const extraCredits = (option: OutputResolution) => (option === "standard" ? 0 : upscaleCreditCost(option) * creditsPerImage);
+  const extraCredits = (option: OutputResolution) => (option === "standard" ? 0 : upscaleCredits(option, creditPricesFor(me)));
   const selected = OPTIONS.find((option) => option.id === value)!;
   const extra = extraCredits(value);
 

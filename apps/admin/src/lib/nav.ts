@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal } from "lucide-react";
+import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -146,6 +146,28 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Who changed what",
     banner: "/banners/exterior-3.jpg",
     roles: ["analyst", "billing", "admin"],
+  },
+  {
+    to: "/plans",
+    label: "Plans & Pricing",
+    icon: BadgeDollarSign,
+    end: false,
+    title: "Plans & Pricing",
+    description: "Credit prices, plan terms and credit packs — every change versioned — plus a simulator for what a pricing change would mean.",
+    hint: "Prices, plans, packs",
+    banner: "/banners/lakeside.jpg",
+    roles: ["billing", "admin"],
+  },
+  {
+    to: "/models",
+    label: "Model Registry",
+    icon: Cpu,
+    end: false,
+    title: "Model Registry",
+    description: "The AI models behind each Studio route — cost, reliability and speed — and a switch to pause a failing one.",
+    hint: "Models, routing, holds",
+    banner: "/banners/exterior-2.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/studio-control",

@@ -8,6 +8,7 @@ import { denyUnless, hasPermission } from "./permissions.js";
 import { adminEventInsert, balanceCapGuard, findAdminUser, isBalanceCapViolation } from "./shared.js";
 import { checkRefundable, refundPaypalPayment } from "./refunds.js";
 import { applyMaintenanceWindowChange, publishStudioConfig, windowProblem, type MaintenanceWindowPayload } from "./studioControl.js";
+import { applyPlanChange, type PlanChangePayload } from "./plans.js";
 import type { AdminContext, UserRow } from "./context.js";
 
 export const governanceRoutes = new Hono<AdminContext>();
@@ -152,7 +153,7 @@ governanceRoutes.post("/approvals/:id/reject", async (c) => {
 });
 
 /** Who may execute an approved request: the same capability the action needs when it runs directly. */
-const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage", studio_change: "studio.manage", maintenance_window: "settings.manage" } as const;
+const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage", studio_change: "studio.manage", maintenance_window: "settings.manage", plan_change: "plans.manage" } as const;
 
 /** Staff who can execute some kind of approval can see the queue. */
 function canSeeApprovals(c: { get: (key: "admin") => UserRow }) {
@@ -275,6 +276,28 @@ async function executeMaintenanceWindow(c: Context<AdminContext>, request: Appro
   return c.json({ id: request.id, status: "executed" });
 }
 
+/** Applies an approved plan or pack change; the expected version is checked again first. */
+async function executePlanChange(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  let outcome;
+  try {
+    outcome = await applyPlanChange(db, request.payload as PlanChangePayload, actor.id, request.id);
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  if (!outcome.ok) {
+    await releaseApproval(db, request.id);
+    return c.json({ error: outcome.error, code: outcome.code }, outcome.status);
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: request.targetType, targetId: outcome.id, summary: `Executed approved ${request.targetType === "billing_plan" ? "plan" : "credit pack"} change (v${outcome.version})`, detail: { approvalId: request.id } }),
+  ]);
+  return c.json({ id: request.id, status: "executed" });
+}
+
 governanceRoutes.post("/approvals/:id/execute", async (c) => {
   // Coarse gate before any lookup; the action-specific permission is checked once the request is loaded.
   if (!canSeeApprovals(c)) return c.json({ error: "Forbidden" }, 403);
@@ -307,6 +330,7 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
   if (request.action === "maintenance") return executeMaintenance(c, request);
   if (request.action === "studio_change") return executeStudioChange(c, request);
   if (request.action === "maintenance_window") return executeMaintenanceWindow(c, request);
+  if (request.action === "plan_change") return executePlanChange(c, request);
   const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
   const users = await db.select({ id: schema.users.id, email: schema.users.email, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
   if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);
@@ -348,6 +372,11 @@ function describeApproval(row: ApprovalRow, emails: Map<string, string>): string
     return payload.restoredFrom
       ? `Restore Studio configuration v${String(payload.restoredFrom)}`
       : `Publish Studio Control changes${changes.length ? `: ${changes.join(", ")}` : ""}`;
+  }
+  if (row.action === "plan_change") {
+    const change = payload as unknown as PlanChangePayload;
+    if (change.kind === "pack" && change.op === "create") return `Create credit pack ${change.sku}: ${change.terms.credits} credits for ${(change.terms.priceCents / 100).toFixed(2)}`;
+    return `Change ${change.kind === "plan" ? "plan" : "credit pack"} ${change.terms.name}`;
   }
   if (row.action === "maintenance_window") {
     const window = payload.window as { scope?: string; startsAt?: string; endsAt?: string } | undefined;
