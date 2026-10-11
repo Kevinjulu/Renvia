@@ -43,44 +43,66 @@ export function requestAssetViewer(request: Request, db: Database, clerkId: stri
   return viewer;
 }
 
-// The RENVIA wordmark as strokes on a 104 x 20 grid, so it renders without any fonts installed.
-const WORDMARK_WIDTH = 104;
-const WORDMARK_HEIGHT = 20;
-const WORDMARK_PATH = [
-  "M0 20V0H8A6 5 0 0 1 8 10H0M7 10L14 20", // R
-  "M34 0H20V20H34M20 10H31", // E
-  "M40 20V0L54 20V0", // N
-  "M60 0L67 20L74 0", // V
-  "M82 0V20", // I
-  "M90 20L97 0L104 20M93 13H101", // A
+// The mark is drawn as paths, so it renders without any fonts installed. Units are pixels on a
+// 1536px-wide image; the overlay scales them to the image's long side.
+const BASE_SIDE = 1536;
+
+// The faceted R monogram on a 42 x 49 grid: top bar and bowl running into the leg, plus a
+// separate stem with slanted cuts.
+const MONOGRAM_PATH = [
+  "M0 0H26A12.75 12.75 0 0 1 26 25.5H22.5L41.7 49H30.5L6.5 19H26A6 6 0 0 0 26 7H6.7Z", // bar, bowl, leg
+  "M0 22L6.7 27.3V46.5L0 42Z", // stem
 ].join("");
 
-/** The overlay for a w x h image: a sparse diagonal pattern plus a corner badge. */
+// The RENVIA wordmark as strokes on a 127 x 20 grid, a light geometric sans with wide tracking.
+const WORDMARK_PATH = [
+  "M1 19V1H8.5A5.25 5.25 0 0 1 8.5 11.5H1M8.5 11.5L14.8 19", // R
+  "M37.3 1H24.3V19H37.3M24.3 10H36", // E
+  "M48.5 19V1L62.3 19V1", // N
+  "M72.6 1L80.8 19L89 1", // V
+  "M99.2 1V19", // I
+  "M108.4 19L117.1 1L125.8 19M111.5 12.6H122.7", // A
+].join("");
+
+// The monogram and wordmark side by side; the wordmark sits centred on the monogram.
+const MARK = `<path d="${MONOGRAM_PATH}" fill="#fff"/><path d="${WORDMARK_PATH}" transform="translate(64.7 16.5)" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>`;
+
+// Marks repeat on a straight grid, offset so the first sits just inside the top-left corner.
+const COLUMN_STEP = 326;
+const ROW_STEP = 179;
+const FIRST_MARK = { x: 65, y: 56 };
+
+// A dashed X sits in each gap between four marks, its arms reaching toward their corners.
+const CROSS_ARM = { x: 70, y: 61 };
+// Where each cross sits relative to the mark below and to the right of it.
+const CROSS_OFFSET = { x: -71, y: -63 };
+const CROSS = `<path d="M${-CROSS_ARM.x} ${-CROSS_ARM.y}L${CROSS_ARM.x} ${CROSS_ARM.y}M${CROSS_ARM.x} ${-CROSS_ARM.y}L${-CROSS_ARM.x} ${CROSS_ARM.y}" stroke="#fff" stroke-width="1" stroke-dasharray="14 5"/>`;
+
+/** The overlay for a w x h image: a grid of RENVIA marks laced with dashed crosses. */
 function overlaySvg(width: number, height: number): string {
   // The mark scales with the image so it reads the same on a thumbnail and on an 8K export.
-  const markWidth = Math.max(60, Math.round(width / 7));
-  const scale = markWidth / WORDMARK_WIDTH;
-  const markHeight = WORDMARK_HEIGHT * scale;
-  const tileWidth = markWidth * 2.4;
-  const tileHeight = markHeight * 7;
-  const stroke = 2.6;
-  const badgeScale = scale * 0.8;
-  const badgeWidth = WORDMARK_WIDTH * badgeScale + 28;
-  const badgeHeight = WORDMARK_HEIGHT * badgeScale + 20;
-  const margin = Math.round(Math.min(width, height) * 0.03);
-  const mark = (opacity: number, colour: string, extra = 0) =>
-    `<path d="${WORDMARK_PATH}" fill="none" stroke="${colour}" stroke-opacity="${opacity}" stroke-width="${stroke + extra}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+  const scale = Math.max(width, height) / BASE_SIDE;
+  const cols = Math.ceil(width / scale / COLUMN_STEP) + 1;
+  const rows = Math.ceil(height / scale / ROW_STEP) + 1;
+  const marks: string[] = [];
+  const crosses: string[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = FIRST_MARK.x + col * COLUMN_STEP;
+      const y = FIRST_MARK.y + row * ROW_STEP;
+      marks.push(`<use xlink:href="#mark" x="${x}" y="${y}"/>`);
+      // Each cross sits up and to the left of its mark, so the top row and left column get one too.
+      crosses.push(`<use xlink:href="#cross" x="${x + CROSS_OFFSET.x}" y="${y + CROSS_OFFSET.y}"/>`);
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}">
   <defs>
-    <pattern id="tile" patternUnits="userSpaceOnUse" width="${tileWidth}" height="${tileHeight}" patternTransform="rotate(-24)">
-      <g transform="translate(${tileWidth * 0.1} ${tileHeight * 0.4}) scale(${scale})">${mark(0.1, "#000", 2)}${mark(0.22, "#fff")}</g>
-      <g transform="translate(${tileWidth * 0.6} ${tileHeight * 0.9}) scale(${scale})">${mark(0.1, "#000", 2)}${mark(0.22, "#fff")}</g>
-    </pattern>
+    <g id="mark">${MARK}</g>
+    <g id="cross">${CROSS}</g>
   </defs>
-  <rect width="100%" height="100%" fill="url(#tile)"/>
-  <g transform="translate(${width - margin - badgeWidth} ${height - margin - badgeHeight})">
-    <rect width="${badgeWidth}" height="${badgeHeight}" rx="${badgeHeight / 2}" fill="#111" fill-opacity="0.45"/>
-    <g transform="translate(14 10) scale(${badgeScale})">${mark(0.92, "#fff")}</g>
+  <g transform="scale(${scale})">
+    <g opacity="0.5">${crosses.join("")}</g>
+    <g opacity="0.45">${marks.join("")}</g>
   </g>
 </svg>`;
 }
