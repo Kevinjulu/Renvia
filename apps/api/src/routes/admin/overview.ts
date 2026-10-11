@@ -4,6 +4,7 @@ import { schema } from "@renvia/db";
 import type { AdminOverviewResponse, RenderStatus } from "@renvia/types";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode } from "../../lib/settings.js";
 import { effectiveMaintenance } from "../../lib/studioControl.js";
+import { BYTES_PER_MB, storageUsage } from "../../lib/storage.js";
 import { denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, stuckBeforeSql, selectAdminRenders, toAdminRender } from "./shared.js";
 import type { AdminContext } from "./context.js";
@@ -208,6 +209,14 @@ overviewRoutes.get("/overview", async (c) => {
       message: `${stuckCount} ${stuckCount === 1 ? "render has" : "renders have"} been pending or processing for over ${settings.stuckTimeoutMinutes} minutes.`,
       href: "/renders?status=processing",
     });
+  }
+  // Storage past R2's free tier is billed, so warn well before the cap refuses new work.
+  const storage = await storageUsage(db);
+  const storageRatio = storage.usedBytes / (settings.storageCapMb * BYTES_PER_MB);
+  if (storageRatio >= 0.9) {
+    alerts.push({ id: "storage_critical", severity: "critical", message: `Image storage is at ${Math.round(storageRatio * 100)}% of its ${(settings.storageCapMb / 1000).toFixed(1)} GB cap — new uploads and renders are refused once it's full.`, href: "/settings" });
+  } else if (storageRatio >= 0.7) {
+    alerts.push({ id: "storage_warning", severity: "warning", message: `Image storage is at ${Math.round(storageRatio * 100)}% of its ${(settings.storageCapMb / 1000).toFixed(1)} GB cap.`, href: "/settings" });
   }
   if (mode !== "prod") {
     alerts.push({

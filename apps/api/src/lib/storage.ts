@@ -1,5 +1,24 @@
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { eq, sql } from "drizzle-orm";
+import { createDb, schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
+
+/** Storage settings, preferring STORAGE_* and falling back to the older NEON_STORAGE_* names. */
+export function storageConfig(env: Env) {
+  const pick = (value: string | undefined, fallback: string | undefined) => value?.trim() || fallback?.trim() || "";
+  return {
+    accessKeyId: pick(env.STORAGE_ACCESS_KEY_ID, env.NEON_STORAGE_ACCESS_KEY_ID),
+    secretAccessKey: pick(env.STORAGE_SECRET_ACCESS_KEY, env.NEON_STORAGE_SECRET_ACCESS_KEY),
+    endpoint: pick(env.STORAGE_ENDPOINT, env.NEON_STORAGE_ENDPOINT),
+    bucket: pick(env.STORAGE_BUCKET, env.NEON_STORAGE_BUCKET),
+    region: pick(env.STORAGE_REGION, env.NEON_STORAGE_REGION) || "auto",
+  };
+}
+
+export function storageConfigured(env: Env): boolean {
+  const config = storageConfig(env);
+  return Boolean(config.accessKeyId && config.secretAccessKey && config.endpoint && config.bucket);
+}
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
   "image/png": "png",
@@ -74,7 +93,8 @@ const UPLOADS_PATH = "/api/uploads/";
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 /**
  * Clean render originals get a much shorter link. A signed link can't be revoked, so after a
- * downgrade an already-issued clean link keeps working until it expires: at most this long.
+ * downgrade an already-issued clean link keeps working until it expires: at most this long,
+ * plus the rounding in linkExpiry (one twelfth of it).
  */
 const ORIGINAL_RENDER_TTL_SECONDS = 60 * 60 * 12;
 
@@ -85,7 +105,7 @@ const ORIGINAL_RENDER_TTL_SECONDS = 60 * 60 * 12;
  * decouple future media-link rotations from storage credential rotation.
  */
 function storageSigningSecret(env: Env): string {
-  return env.STORAGE_URL_SIGNING_SECRET?.trim() || env.NEON_STORAGE_SECRET_ACCESS_KEY;
+  return env.STORAGE_URL_SIGNING_SECRET?.trim() || storageConfig(env).secretAccessKey;
 }
 
 export function publicUploadUrl(origin: string, key: string): string {
@@ -120,10 +140,20 @@ async function signatureFor(secret: string, key: string, expires: number): Promi
   return new Uint8Array(await crypto.subtle.sign("HMAC", signingKey, encoder.encode(`${key}:${expires}`)));
 }
 
+/**
+ * When a link signed now expires: at least `ttl` from now, rounded up to a twelfth of the TTL.
+ * Every response in that window gets the same link for the same object, so the browser can
+ * keep the image it already downloaded instead of fetching it again under a new signature.
+ */
+export function linkExpiry(ttl: number, now = Math.floor(Date.now() / 1000)): number {
+  const window = Math.floor(ttl / 12);
+  return Math.ceil((now + ttl) / window) * window;
+}
+
 /** A browser-safe link that expires, so the storage bucket is not an anonymous public CDN. */
 export async function signedUploadUrl(env: Env, origin: string, key: string): Promise<string> {
   const ttl = isRenderOutputKey(key) ? ORIGINAL_RENDER_TTL_SECONDS : SIGNED_URL_TTL_SECONDS;
-  const expires = Math.floor(Date.now() / 1000) + ttl;
+  const expires = linkExpiry(ttl);
   const signature = base64Url(await signatureFor(storageSigningSecret(env), key, expires));
   const url = new URL(publicUploadUrl(origin, key));
   url.searchParams.set("expires", String(expires));
@@ -175,27 +205,62 @@ export function ownUploadKey(url: string, origin: string): string | null {
 }
 
 function createStorageClient(env: Env): S3Client {
+  const config = storageConfig(env);
   return new S3Client({
-    region: env.NEON_STORAGE_REGION,
-    endpoint: env.NEON_STORAGE_ENDPOINT,
+    region: config.region,
+    endpoint: config.endpoint,
     forcePathStyle: true,
-    credentials: {
-      accessKeyId: env.NEON_STORAGE_ACCESS_KEY_ID,
-      secretAccessKey: env.NEON_STORAGE_SECRET_ACCESS_KEY,
-    },
+    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
   });
 }
 
+export type StorageKind = "upload" | "render" | "watermark";
+
+export function storageKindFor(key: string): StorageKind {
+  return isWatermarkedKey(key) ? "watermark" : isRenderOutputKey(key) ? "render" : "upload";
+}
+
+/**
+ * Writes an object and records its size in storage_objects, which is how usage is counted
+ * against the storage cap. A failed record is logged, not thrown: the object is already stored.
+ */
 export async function putObject(env: Env, key: string, bytes: ArrayBuffer, contentType: string): Promise<void> {
   const client = createStorageClient(env);
   await client.send(
     new PutObjectCommand({
-      Bucket: env.NEON_STORAGE_BUCKET,
+      Bucket: storageConfig(env).bucket,
       Key: key,
       Body: new Uint8Array(bytes),
       ContentType: contentType,
     }),
   );
+  try {
+    await createDb(env.DATABASE_URL)
+      .insert(schema.storageObjects)
+      .values({ key, bytes: bytes.byteLength, contentType, kind: storageKindFor(key) })
+      .onConflictDoUpdate({ target: schema.storageObjects.key, set: { bytes: bytes.byteLength, contentType, createdAt: new Date() } });
+  } catch (error) {
+    console.error("storage object not recorded", key, error);
+  }
+}
+
+/** Bytes stored, in total and by kind, from the storage_objects ledger. */
+export async function storageUsage(db: Database): Promise<{ usedBytes: number; byKind: Record<StorageKind, number>; objects: number }> {
+  const rows = await db
+    .select({ kind: schema.storageObjects.kind, bytes: sql<string>`coalesce(sum(${schema.storageObjects.bytes}), 0)::bigint`, objects: sql<number>`count(*)::int` })
+    .from(schema.storageObjects)
+    .groupBy(schema.storageObjects.kind);
+  const byKind: Record<StorageKind, number> = { upload: 0, render: 0, watermark: 0 };
+  for (const row of rows) byKind[row.kind] = Number(row.bytes);
+  return { usedBytes: Object.values(byKind).reduce((sum, value) => sum + value, 0), byKind, objects: rows.reduce((sum, row) => sum + row.objects, 0) };
+}
+
+/** Megabytes as Cloudflare counts them (10^6 bytes). */
+export const BYTES_PER_MB = 1_000_000;
+
+/** True when `bytes` more would take stored objects past the operator's cap. */
+export async function storageWouldExceed(db: Database, capMb: number, bytes: number): Promise<boolean> {
+  return (await storageUsage(db)).usedBytes + bytes > capMb * BYTES_PER_MB;
 }
 
 export interface StoredObject {
@@ -206,7 +271,7 @@ export interface StoredObject {
 export async function getObject(env: Env, key: string): Promise<StoredObject | null> {
   const client = createStorageClient(env);
   try {
-    const result = await client.send(new GetObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: key }));
+    const result = await client.send(new GetObjectCommand({ Bucket: storageConfig(env).bucket, Key: key }));
     return {
       body: result.Body!.transformToWebStream(),
       contentType: result.ContentType ?? "application/octet-stream",
@@ -220,5 +285,6 @@ export async function getObject(env: Env, key: string): Promise<StoredObject | n
 }
 
 export async function deleteObject(env: Env, key: string): Promise<void> {
-  await createStorageClient(env).send(new DeleteObjectCommand({ Bucket: env.NEON_STORAGE_BUCKET, Key: key }));
+  await createStorageClient(env).send(new DeleteObjectCommand({ Bucket: storageConfig(env).bucket, Key: key }));
+  await createDb(env.DATABASE_URL).delete(schema.storageObjects).where(eq(schema.storageObjects.key, key));
 }

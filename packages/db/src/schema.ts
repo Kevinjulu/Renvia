@@ -556,6 +556,8 @@ export const appSettings = pgTable(
     budgetCriticalPercent: integer("budget_critical_percent").notNull().default(90),
     /** Minutes before pending/processing is considered stuck. */
     stuckTimeoutMinutes: integer("stuck_timeout_minutes").notNull().default(15),
+    /** New uploads and renders are refused once stored objects reach this many MB (10^6 bytes). */
+    storageCapMb: integer("storage_cap_mb").notNull().default(9000),
     falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
     falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -605,6 +607,7 @@ export const appSettings = pgTable(
       sql`${table.budgetCriticalPercent} > ${table.budgetWarningPercent}`,
     ),
     check("app_settings_stuck_timeout_range", sql`${table.stuckTimeoutMinutes} BETWEEN 1 AND 1440`),
+    check("app_settings_storage_cap_range", sql`${table.storageCapMb} BETWEEN 100 AND 10000`),
     check("app_settings_fal_mode_values", sql`${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
     check("app_settings_budget_range", sql`${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
   ],
@@ -882,5 +885,24 @@ export const creditPackVersions = pgTable(
   (table) => [
     uniqueIndex("credit_pack_versions_pack_version_unique").on(table.packId, table.version),
     check("credit_pack_versions_version_positive", sql`${table.version} > 0`),
+  ],
+);
+
+/**
+ * Every object the API has written to storage, with its size. Usage is summed from here rather
+ * than by listing the bucket, which R2 bills as a Class A operation.
+ */
+export const storageObjects = pgTable(
+  "storage_objects",
+  {
+    key: text("key").primaryKey(),
+    bytes: bigint("bytes", { mode: "number" }).notNull(),
+    contentType: text("content_type").notNull(),
+    kind: text("kind", { enum: ["upload", "render", "watermark"] }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("storage_objects_kind_idx").on(table.kind),
+    check("storage_objects_bytes_non_negative", sql`${table.bytes} >= 0`),
   ],
 );

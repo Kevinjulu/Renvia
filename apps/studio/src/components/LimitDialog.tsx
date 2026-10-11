@@ -25,6 +25,7 @@ const KNOWN_CODES: LimitCode[] = [
   "too_many_references",
   "upload_too_large",
   "feature_disabled",
+  "storage_full",
 ];
 
 /** Returns the refusal an error represents, or null when it's an ordinary failure. */
@@ -144,6 +145,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         title: "That image is too large",
         body: "Resize or re-export it smaller, then upload again.",
         icon: "ruler",
+        tone: "amber",
+      };
+    case "storage_full":
+      return {
+        title: "Storage is full",
+        body: "Renvia can't save new images right now. Everything you've already made is safe — try again a little later.",
+        icon: "pause",
         tone: "amber",
       };
     case "feature_disabled":

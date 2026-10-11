@@ -70,9 +70,10 @@ describe("links issued to the Studio", () => {
     await upgrade();
     const [job] = await listRenders();
     expect(keyOf(job!.resultImageUrl)).toBe(fixture.resultKey);
-    // Clean originals get a short link, so a downgrade takes effect within hours.
+    // Clean originals get a short link, so a downgrade takes effect within hours: 12, plus up to
+    // one hour of rounding that keeps the link stable enough for the browser to cache the image.
     const expires = Number(new URL(job!.resultImageUrl).searchParams.get("expires"));
-    expect(expires - Date.now() / 1000).toBeLessThanOrEqual(12 * 60 * 60 + 5);
+    expect(expires - Date.now() / 1000).toBeLessThanOrEqual(13 * 60 * 60 + 5);
   });
 
   it("watermarks renders a canvas node holds, whichever link it was saved with", async () => {

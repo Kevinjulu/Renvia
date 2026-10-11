@@ -136,6 +136,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   too_many_references: "Too many reference images",
   upload_too_large: "Image is too large",
   feature_disabled: "This feature isn't available",
+  storage_full: "Image storage is full. Your existing work is safe, but nothing new can be saved right now.",
 };
 
 function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["status"], extra: Partial<Refusal> = {}): Refusal {
@@ -196,6 +197,10 @@ export function refuseCredits(settings: AppSettingsRow, balance: number, cost: n
 
 export function refuseBudget(settings: AppSettingsRow): Refusal {
   return refuse(settings, "budget_exhausted", 402);
+}
+
+export function refuseStorage(settings: AppSettingsRow): Refusal {
+  return refuse(settings, "storage_full", 503);
 }
 
 export function refuseDisabled(settings: AppSettingsRow): Refusal {

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { and, eq } from "drizzle-orm";
-import { schema, type Database } from "@renvia/db";
+import { createDb, schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
 import { getBillingEntitlement } from "./billing.js";
 import {
@@ -12,9 +12,11 @@ import {
   publicUploadUrl,
   putObject,
   renderIdForKey,
+  storageWouldExceed,
   type AssetViewer,
   watermarkedKeyFor,
 } from "./storage.js";
+import { getSettings } from "./settings.js";
 
 /**
  * Free-plan model output is watermarked everywhere it is shown or downloaded. The clean
@@ -143,8 +145,12 @@ export async function watermarkedObject(env: Env, key: string): Promise<{ body: 
   if (!original) return null;
   const bytes = await watermarkImage(new Uint8Array(await new Response(original.body).arrayBuffer()), original.contentType);
   const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  // Deterministic key: two first requests racing both store the same bytes.
-  await putObject(env, storedCopyKey(key), body, original.contentType);
+  // Deterministic key: two first requests racing both store the same bytes. Once storage is at
+  // its cap the copy is made fresh for each request instead of stored.
+  const db = createDb(env.DATABASE_URL);
+  if (!(await storageWouldExceed(db, (await getSettings(db)).storageCapMb, body.byteLength))) {
+    await putObject(env, storedCopyKey(key), body, original.contentType);
+  }
   return { body: new Blob([body], { type: original.contentType }).stream(), contentType: original.contentType };
 }
 

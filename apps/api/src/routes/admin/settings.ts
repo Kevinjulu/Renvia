@@ -11,6 +11,7 @@ import { MICROS_PER_USD, adminEventInsert } from "./shared.js";
 import { governance, requestApproval } from "./governance.js";
 import { allowanceVersionWrites } from "./plans.js";
 import { currentStudioRevision } from "../../lib/studioControl.js";
+import { BYTES_PER_MB, storageConfigured, storageUsage } from "../../lib/storage.js";
 import type { AdminContext } from "./context.js";
 
 export const settingsRoutes = new Hono<AdminContext>();
@@ -24,7 +25,7 @@ async function planMonthlyCredits(db: Database) {
 }
 
 async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
-  const [[renderSpend], [segSpend], updaterRows, changeRows, plans, revision] = await Promise.all([
+  const [[renderSpend], [segSpend], updaterRows, changeRows, plans, revision, storage] = await Promise.all([
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
@@ -52,6 +53,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
       .limit(8),
     planMonthlyCredits(db),
     currentStudioRevision(db),
+    storageUsage(db),
   ]);
 
   const envMode = env.FAL_MODE?.trim() || null;
@@ -86,6 +88,8 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     budgetWarningPercent: row.budgetWarningPercent,
     budgetCriticalPercent: row.budgetCriticalPercent,
     stuckTimeoutMinutes: row.stuckTimeoutMinutes,
+    storageCapMb: row.storageCapMb,
+    storage: { usedBytes: storage.usedBytes, capBytes: row.storageCapMb * BYTES_PER_MB, objects: storage.objects, byKind: storage.byKind },
     falMode: row.falMode,
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
     effectiveMode,
@@ -95,12 +99,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     envBudgetUsd,
     health: {
       falKeyConfigured: Boolean(env.FAL_KEY?.trim()),
-      storageConfigured: Boolean(
-        env.NEON_STORAGE_ACCESS_KEY_ID?.trim() &&
-          env.NEON_STORAGE_SECRET_ACCESS_KEY?.trim() &&
-          env.NEON_STORAGE_ENDPOINT?.trim() &&
-          env.NEON_STORAGE_BUCKET?.trim(),
-      ),
+      storageConfigured: storageConfigured(env),
     },
     models: modelsFor(effectiveMode),
     updatedAt: row.updatedAt.toISOString(),
@@ -148,6 +147,8 @@ const updateSettingsSchema = z
     budgetWarningPercent: z.number().int().min(1).max(99).optional(),
     budgetCriticalPercent: z.number().int().min(2).max(100).optional(),
     stuckTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+    // Never above R2's free 10 GB: storage past it is billed.
+    storageCapMb: z.number().int().min(100).max(10_000).optional(),
     falMode: z.enum(["mock", "dev", "prod"]).nullable().optional(),
     falBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
     /** Why; kept in the audit row, and required context for a change that needs approval. */
@@ -245,6 +246,7 @@ settingsRoutes.put("/settings", async (c) => {
             budgetWarningPercent: before.budgetWarningPercent,
             budgetCriticalPercent: before.budgetCriticalPercent,
             stuckTimeoutMinutes: before.stuckTimeoutMinutes,
+            storageCapMb: before.storageCapMb,
             falMode: before.falMode,
             falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
           },

@@ -1,6 +1,6 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import { schema, type Database } from "@renvia/db";
 import {
   baseCreditCostForRender,
@@ -278,7 +278,15 @@ async function prepareUpscaleInput(
 async function mockUpscaleResult(env: Env, render: RenderRow, origin: string): Promise<string> {
   const target = render.settings?.upscale?.target;
   if (!target) return render.sourceImageUrl;
-  return storeMockUpscale(env, render.sourceImageUrl, target, renderResultKeyFor(render.id, "image/png"), origin);
+  return storeMockUpscale(env, render.sourceImageUrl, target, renderResultKeyFor(render.id, "image/jpeg"), origin);
+}
+
+/**
+ * 4K/8K delivery format: JPEG at quality 92 with full-resolution colour (4:4:4), visually
+ * lossless for renders and about a tenth of a PNG's size. Transparency is flattened onto white.
+ */
+function encodeHighRes(image: Sharp): Promise<Buffer> {
+  return image.flatten({ background: "#ffffff" }).jpeg({ quality: 92, chromaSubsampling: "4:4:4", mozjpeg: true }).toBuffer();
 }
 
 /** Mock mode's stand-in for the upscaler: a plain resize of `url` to the target's long edge. */
@@ -291,16 +299,15 @@ async function storeMockUpscale(env: Env, url: string, target: UpscaleTarget, ke
   const longEdge = Math.max(width, height);
   if (!longEdge) throw new Error("Couldn’t read the render dimensions");
   const desired = UPSCALE_TARGET_EDGE[target];
-  const bytes = await sharp(upload.bytes)
+  const bytes = sharp(upload.bytes)
     .rotate()
     .resize({
       width: Math.round((width / longEdge) * desired),
       height: Math.round((height / longEdge) * desired),
       kernel: sharp.kernel.lanczos3,
-    })
-    .png()
-    .toBuffer();
-  await putObject(env, key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, "image/png");
+    });
+  const encoded = await encodeHighRes(bytes);
+  await putObject(env, key, encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer, "image/jpeg");
   return publicUploadUrl(origin, key);
 }
 
@@ -428,7 +435,8 @@ async function storeFalResult(
   }
 
   // An upscale checkpoint returns a 2x or 4x image. Cap that output precisely at the
-  // selected long edge without changing its aspect ratio or re-running the AI model.
+  // selected long edge without changing its aspect ratio or re-running the AI model, and store
+  // it as high-quality JPEG: an 8K PNG can be ~100 MB, about ten times the JPEG.
   const highRes = render.settings?.highRes;
   const upscaleTarget = render.settings?.upscale?.target ?? (highRes?.baseImageUrl ? highRes.target : undefined);
   if (upscaleTarget) {
@@ -437,14 +445,15 @@ async function storeFalResult(
     const metadata = await normalized.metadata();
     const longEdge = Math.max(metadata.width ?? 0, metadata.height ?? 0);
     if (!longEdge) throw new Error("Upscaler returned an image without dimensions");
-    if (longEdge > targetEdge) {
-      bytes = new Uint8Array(await normalized.resize({
-        width: Math.round(((metadata.width ?? 0) / longEdge) * targetEdge),
-        height: Math.round(((metadata.height ?? 0) / longEdge) * targetEdge),
-        kernel: sharp.kernel.lanczos3,
-      }).png().toBuffer());
-      contentType = "image/png";
-    }
+    const sized = longEdge > targetEdge
+      ? normalized.resize({
+          width: Math.round(((metadata.width ?? 0) / longEdge) * targetEdge),
+          height: Math.round(((metadata.height ?? 0) / longEdge) * targetEdge),
+          kernel: sharp.kernel.lanczos3,
+        })
+      : normalized;
+    bytes = new Uint8Array(await encodeHighRes(sized));
+    contentType = "image/jpeg";
   }
 
   const storedType = extensionForContentType(contentType) ? contentType : "image/jpeg";
@@ -538,7 +547,7 @@ async function startUpscalePass(env: Env, db: Database, render: RenderRow, image
 
   try {
     if (model.id === "mock") {
-      const key = renderHighResKeyFor(render.id, highRes.target, "image/png");
+      const key = renderHighResKeyFor(render.id, highRes.target, "image/jpeg");
       return await finishWithHighRes(db, claimed, await storeMockUpscale(env, baseImageUrl, highRes.target, key, origin));
     }
     const fal = falClient(env);
@@ -685,7 +694,7 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
     const resultImageUrl = render.settings?.upscale ? await mockUpscaleResult(env, render, origin) : render.sourceImageUrl;
     const highRes = awaitsUpscalePass(render) ? render.settings!.highRes! : null;
     const highResImageUrl = highRes
-      ? await storeMockUpscale(env, resultImageUrl, highRes.target, renderHighResKeyFor(render.id, highRes.target, "image/png"), origin)
+      ? await storeMockUpscale(env, resultImageUrl, highRes.target, renderHighResKeyFor(render.id, highRes.target, "image/jpeg"), origin)
       : null;
     return finishRender(db, render, {
       status: "succeeded",

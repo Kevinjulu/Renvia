@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getObject, hasValidSignature, isWatermarkedKey, objectKeyFor, putObject, signedUploadUrl } from "../lib/storage.js";
+import { getObject, hasValidSignature, isWatermarkedKey, objectKeyFor, putObject, signedUploadUrl, storageWouldExceed } from "../lib/storage.js";
 import { watermarkedObject } from "../lib/watermark.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
-import { refuseInput } from "../lib/limits.js";
+import { refuseInput, refuseStorage } from "../lib/limits.js";
 
 export const uploads = new Hono<AppContext>();
 
@@ -35,6 +35,11 @@ uploads.post("/", requireAuth, async (c) => {
     const refusal = refuseInput(settings, "upload_too_large", settings.maxUploadMb, Math.ceil(bytes.byteLength / (1024 * 1024)));
     return c.json(refusal, refusal.status);
   }
+  const db = createDb(c.env.DATABASE_URL);
+  if (await storageWouldExceed(db, settings.storageCapMb, bytes.byteLength)) {
+    const refusal = refuseStorage(settings);
+    return c.json(refusal, refusal.status);
+  }
   const key = objectKeyFor(clerkId, contentType);
 
   await putObject(c.env, key, bytes, contentType);
@@ -55,11 +60,14 @@ uploads.get("/:key{.+}", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  // Objects never change once written, and linkExpiry keeps the link stable for hours, so the
+  // browser keeps its copy until the link expires instead of downloading it on every view.
+  // private: a shared cache must not extend access beyond the signature.
+  const maxAge = Math.max(0, Number(new URL(c.req.url).searchParams.get("expires")) - Math.floor(Date.now() / 1000));
   return new Response(object.body, {
     headers: {
       "Content-Type": object.contentType,
-      // Do not let a shared CDN extend access beyond the link's signature expiry.
-      "Cache-Control": "private, no-store",
+      "Cache-Control": `private, max-age=${maxAge}, immutable`,
     },
   });
 });

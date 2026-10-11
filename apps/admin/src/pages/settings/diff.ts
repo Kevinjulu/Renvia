@@ -121,6 +121,14 @@ export function diffChanges(settings: AdminSettings, draft: Draft): ChangeItem[]
   );
   pushIfChanged(
     items,
+    "storageCapMb",
+    "Storage cap",
+    `${settings.storageCapMb} MB`,
+    `${body.storageCapMb!} MB`,
+    body.storageCapMb !== undefined && body.storageCapMb !== settings.storageCapMb,
+  );
+  pushIfChanged(
+    items,
     "falMode",
     "Mode",
     formatMode(settings.falMode),

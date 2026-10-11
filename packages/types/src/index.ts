@@ -472,7 +472,9 @@ export type LimitCode =
   | "too_many_references"
   | "upload_too_large"
   /** An operator switched this Studio feature off, or it isn't available on the user's plan. */
-  | "feature_disabled";
+  | "feature_disabled"
+  /** Stored images reached the operator's storage cap; nothing new can be saved. */
+  | "storage_full";
 
 /** Everything the caller is allowed, after per-user overrides and global settings. */
 export interface UserLimits {
@@ -907,7 +909,7 @@ export interface AdminOverviewResponse {
   }[];
   /** Derived operator alerts from live thresholds. */
   alerts: {
-    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode" | "maintenance";
+    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode" | "maintenance" | "storage_warning" | "storage_critical";
     severity: "warning" | "critical" | "info";
     message: string;
     href: string;
@@ -952,6 +954,10 @@ export interface AdminSettings {
   creditsPerSelection: number;
   /** True once Plans & Pricing published credit prices: creditsPerImage/Selection then don't apply. */
   creditPricesPublished: boolean;
+  /** New uploads and renders are refused once stored images reach this (MB of 10^6 bytes). */
+  storageCapMb: number;
+  /** Stored images, from the storage ledger. */
+  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number } };
   maintenanceRenders: boolean;
   maintenanceSegments: boolean;
   maintenanceMessage: string | null;
@@ -1022,6 +1028,7 @@ export type AdminUpdateSettingsRequest = Partial<
     | "budgetWarningPercent"
     | "budgetCriticalPercent"
     | "stuckTimeoutMinutes"
+    | "storageCapMb"
     | "falMode"
     | "falBudgetUsd"
   > & {

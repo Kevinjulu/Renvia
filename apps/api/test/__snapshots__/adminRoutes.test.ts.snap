@@ -1384,6 +1384,17 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       ],
       "recentChanges": [],
       "spentUsd": 0.095,
+      "storage": {
+        "byKind": {
+          "render": 0,
+          "upload": 0,
+          "watermark": 0,
+        },
+        "capBytes": 9000000000,
+        "objects": 0,
+        "usedBytes": 0,
+      },
+      "storageCapMb": 9000,
       "stuckTimeoutMinutes": 15,
       "updatedAt": "<timestamp>",
       "updatedByEmail": null,

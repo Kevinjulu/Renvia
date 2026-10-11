@@ -24,10 +24,10 @@ import {
 } from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
-import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
+import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, refuseStorage, resolveLimits } from "../lib/limits.js";
 import { modelFor, upscaleCostMicros } from "../lib/models.js";
 import { detectSourceType } from "../lib/sourceKind.js";
-import { ownUploadKey } from "../lib/storage.js";
+import { ownUploadKey, storageWouldExceed } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
@@ -35,6 +35,17 @@ import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
 import { checkFeatures, currentStudioRevision, effectiveCreditPrices } from "../lib/studioControl.js";
 
 export const renders = new Hono<AppContext>();
+
+/**
+ * A generous guess at what a job will store: its result, a watermarked copy, and any 4K/8K
+ * copy (JPEG). Used only to stop new work before storage would pass its cap.
+ */
+function estimatedOutputBytes(settings: { highRes?: { target: "4k" | "8k" }; upscale?: { target: "4k" | "8k" } }): number {
+  const MB = 1_000_000;
+  const highRes = { "4k": 8 * MB, "8k": 25 * MB };
+  if (settings.upscale) return highRes[settings.upscale.target];
+  return 6 * MB + (settings.highRes ? highRes[settings.highRes.target] : 0);
+}
 
 renders.use("*", requireAuth);
 
@@ -244,6 +255,10 @@ renders.post("/", async (c) => {
 
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
+  if (await storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes(settings))) {
+    const refusal = refuseStorage(appSettings);
+    return (await replay()) ?? c.json(refusal, refusal.status);
+  }
 
   // Nobody has to say whether the source is a photo or a line drawing: work it out from the image
   // itself (unless the caller already did, or this is an edit, which doesn't use it).
@@ -337,6 +352,10 @@ renders.post("/:id/upscale", async (c) => {
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
+  if (await storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes({ upscale: { target } }))) {
+    const refusal = refuseStorage(appSettings);
+    return (await replay()) ?? c.json(refusal, refusal.status);
+  }
 
   const model = modelFor(engineMode, "upscale");
   const costMicros = upscaleCostMicros(engineMode, target);

@@ -22,6 +22,7 @@ import { ModelsSection } from "./settings/ModelsSection";
 import { ExemptionsSection } from "./settings/ExemptionsSection";
 import { RecentChangesSection } from "./settings/RecentChangesSection";
 import { GovernanceSection } from "./settings/GovernanceSection";
+import { StorageSection } from "./settings/StorageSection";
 
 export function SettingsPage() {
   const api = useAdminApi();
@@ -135,6 +136,8 @@ export function SettingsPage() {
           <BlockedMessagesSection draft={draft} fieldErrors={fieldErrors} update={update} />
 
           <StuckDetectionSection draft={draft} fieldErrors={fieldErrors} update={update} />
+
+          <StorageSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">

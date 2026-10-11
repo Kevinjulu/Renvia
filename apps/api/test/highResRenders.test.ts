@@ -121,8 +121,8 @@ describe("renders with an output resolution", () => {
     const done = await refreshRender(env, db, second, ORIGIN);
     expect(done.status).toBe("succeeded");
     expect(done.resultImageUrl).toBe(`${ORIGIN}/api/uploads/renders/${id}.jpg`);
-    expect(done.settings?.highRes?.imageUrl).toBe(`${ORIGIN}/api/uploads/renders/${id}-4k.png`);
-    expect(await sharp(objects.get(`renders/${id}-4k.png`)!).metadata()).toMatchObject({ width: 3840, height: 2880 });
+    expect(done.settings?.highRes?.imageUrl).toBe(`${ORIGIN}/api/uploads/renders/${id}-4k.jpg`);
+    expect(await sharp(objects.get(`renders/${id}-4k.jpg`)!).metadata()).toMatchObject({ width: 3840, height: 2880, format: "jpeg" });
     expect(await balance(user.id)).toBe(8);
   });
 
@@ -209,7 +209,7 @@ describe("renders with an output resolution", () => {
 
     expect(done.status).toBe("succeeded");
     expect(done.resultImageUrl).toBe(`${ORIGIN}/api/uploads/u/source.jpg`);
-    expect(done.settings?.highRes?.imageUrl).toBe(`${ORIGIN}/api/uploads/renders/${id}-4k.png`);
-    expect(await sharp(objects.get(`renders/${id}-4k.png`)!).metadata()).toMatchObject({ width: 3840, height: 2880 });
+    expect(done.settings?.highRes?.imageUrl).toBe(`${ORIGIN}/api/uploads/renders/${id}-4k.jpg`);
+    expect(await sharp(objects.get(`renders/${id}-4k.jpg`)!).metadata()).toMatchObject({ width: 3840, height: 2880, format: "jpeg" });
   });
 });

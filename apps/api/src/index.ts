@@ -25,11 +25,21 @@ export interface Env {
   FAL_MODE?: string;
   /** Hard cap on total estimated fal spend, in USD. Unset means no paid renders. */
   FAL_BUDGET_USD?: string;
-  NEON_STORAGE_ACCESS_KEY_ID: string;
-  NEON_STORAGE_SECRET_ACCESS_KEY: string;
-  NEON_STORAGE_ENDPOINT: string;
-  NEON_STORAGE_BUCKET: string;
-  NEON_STORAGE_REGION: string;
+  /**
+   * S3-compatible object storage (Cloudflare R2 since 2026-10-11): endpoint, bucket and keys.
+   * STORAGE_REGION defaults to "auto", which is what R2 expects.
+   */
+  STORAGE_ACCESS_KEY_ID?: string;
+  STORAGE_SECRET_ACCESS_KEY?: string;
+  STORAGE_ENDPOINT?: string;
+  STORAGE_BUCKET?: string;
+  STORAGE_REGION?: string;
+  /** The same settings under their names from Neon storage; read only when STORAGE_* is unset. */
+  NEON_STORAGE_ACCESS_KEY_ID?: string;
+  NEON_STORAGE_SECRET_ACCESS_KEY?: string;
+  NEON_STORAGE_ENDPOINT?: string;
+  NEON_STORAGE_BUCKET?: string;
+  NEON_STORAGE_REGION?: string;
   /** HMAC key used for expiring browser-accessible object URLs. */
   STORAGE_URL_SIGNING_SECRET: string;
   ALLOWED_ORIGINS: string;

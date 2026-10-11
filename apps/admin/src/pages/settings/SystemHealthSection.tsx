@@ -20,7 +20,7 @@ export function SystemHealthSection({ data }: { data: AdminSettings }) {
         <HealthRow
           ok={data.health.storageConfigured}
           label="Object storage"
-          detail={data.health.storageConfigured ? "Neon storage configured" : "Missing storage env"}
+          detail={data.health.storageConfigured ? "Configured" : "Missing STORAGE_* settings"}
         />
         <HealthRow
           ok={Boolean(data.envMode)}

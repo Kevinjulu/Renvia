@@ -29,6 +29,7 @@ export function toDraft(settings: AdminSettings): Draft {
     budgetWarningPercent: String(settings.budgetWarningPercent),
     budgetCriticalPercent: String(settings.budgetCriticalPercent),
     stuckTimeoutMinutes: String(settings.stuckTimeoutMinutes),
+    storageCapMb: String(settings.storageCapMb),
     falMode: settings.falMode ?? "",
     falBudgetUsd: settings.falBudgetUsd === null ? "" : String(settings.falBudgetUsd),
   };
@@ -99,6 +100,10 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
   const stuck = Number(draft.stuckTimeoutMinutes);
   if (!Number.isInteger(stuck) || stuck < 1 || stuck > 1440) {
     errors.stuckTimeoutMinutes = "Whole number from 1 to 1,440 minutes.";
+  }
+  const storageCap = Number(draft.storageCapMb);
+  if (!Number.isInteger(storageCap) || storageCap < 100 || storageCap > 10_000) {
+    errors.storageCapMb = "Whole number from 100 to 10,000 MB (the free 10 GB).";
   }
   const budget = draft.falBudgetUsd.trim() === "" ? null : Number(draft.falBudgetUsd);
   if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 10_000)) {
@@ -190,6 +195,7 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
       budgetWarningPercent: warning,
       budgetCriticalPercent: critical,
       stuckTimeoutMinutes: stuck,
+      storageCapMb: storageCap,
       falMode: draft.falMode || null,
       falBudgetUsd: budget,
     },
