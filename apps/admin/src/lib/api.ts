@@ -1,6 +1,11 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminCreateMaintenanceWindowRequest,
+  AdminMaintenanceWindowResponse,
+  AdminPublishStudioConfigRequest,
+  AdminPublishStudioConfigResponse,
+  AdminStudioControlResponse,
   AdminPerformanceFailuresResponse,
   AdminPerformanceRange,
   AdminPerformanceSummaryResponse,
@@ -238,6 +243,15 @@ export function useAdminApi() {
       getPerformanceSummary: (range: AdminPerformanceRange) => request<AdminPerformanceSummaryResponse>(getToken, `/admin/performance/summary${query({ range })}`),
       getPerformanceTimeseries: (range: AdminPerformanceRange) => request<AdminPerformanceTimeseriesResponse>(getToken, `/admin/performance/timeseries${query({ range })}`),
       getPerformanceFailures: (range: AdminPerformanceRange) => request<AdminPerformanceFailuresResponse>(getToken, `/admin/performance/failures${query({ range })}`),
+      getStudioControl: () => request<AdminStudioControlResponse>(getToken, "/admin/studio-control"),
+      publishStudioConfig: (body: AdminPublishStudioConfigRequest) =>
+        request<AdminPublishStudioConfigResponse>(getToken, "/admin/studio-control/publish", { method: "POST", body: JSON.stringify(body) }),
+      restoreStudioConfig: (body: { version: number; expectedVersion: number; reason: string }) =>
+        request<AdminPublishStudioConfigResponse>(getToken, "/admin/studio-control/restore", { method: "POST", body: JSON.stringify(body) }),
+      createMaintenanceWindow: (body: AdminCreateMaintenanceWindowRequest) =>
+        request<AdminMaintenanceWindowResponse>(getToken, "/admin/maintenance-windows", { method: "POST", body: JSON.stringify(body) }),
+      cancelMaintenanceWindow: (id: string, reason: string) =>
+        request<AdminMaintenanceWindowResponse>(getToken, `/admin/maintenance-windows/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
       getSettings: () => request<AdminSettings>(getToken, "/admin/settings"),
       updateSettings: (body: AdminUpdateSettingsRequest) =>
         request<AdminSettings>(getToken, "/admin/settings", { method: "PUT", body: JSON.stringify(body) }),

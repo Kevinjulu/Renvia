@@ -520,6 +520,7 @@ button { color: inherit; }
 .connection-banner button:disabled{opacity:.6;cursor:default}
 @keyframes connection-pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.connection-banner-dot{animation:none}}
+.maintenance-banner{top:auto;bottom:16px}
 @media (max-width:600px){.connection-banner{border-radius:12px;align-items:flex-start}}
 
 /* Hover-only controls must also appear for keyboard focus and on touch screens */

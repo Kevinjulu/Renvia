@@ -2,11 +2,12 @@ import { Hono, type Context } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
-import type { AdminApproval, AdminApprovalsResponse, AdminBulkGrantCreditsResponse, ApprovalAction, ApprovalStatus, UserRole } from "@renvia/types";
+import type { AdminApproval, AdminApprovalsResponse, AdminBulkGrantCreditsResponse, ApprovalAction, ApprovalStatus, StudioConfig, UserRole } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
 import { denyUnless, hasPermission } from "./permissions.js";
 import { adminEventInsert, balanceCapGuard, findAdminUser, isBalanceCapViolation } from "./shared.js";
 import { checkRefundable, refundPaypalPayment } from "./refunds.js";
+import { applyMaintenanceWindowChange, publishStudioConfig, windowProblem, type MaintenanceWindowPayload } from "./studioControl.js";
 import type { AdminContext, UserRow } from "./context.js";
 
 export const governanceRoutes = new Hono<AdminContext>();
@@ -18,7 +19,7 @@ export async function governance(db: Database) {
   return created ?? (await db.select().from(schema.governanceSettings).where(eq(schema.governanceSettings.id, 1)))[0]!;
 }
 
-export async function requestApproval(db: Database, input: { action: "bulk_credits" | "refund" | "role_change" | "maintenance"; actorId: string; targetType: string; targetId?: string; riskValue: number; threshold: number; reason: string; payload: Record<string, unknown> }) {
+export async function requestApproval(db: Database, input: { action: ApprovalAction; actorId: string; targetType: string; targetId?: string; riskValue: number; threshold: number; reason: string; payload: Record<string, unknown> }) {
   const [request] = await db.insert(schema.approvalRequests).values({ action: input.action, requestedBy: input.actorId, targetType: input.targetType, targetId: input.targetId ?? null, riskValue: input.riskValue, threshold: input.threshold, reason: input.reason, payload: input.payload }).returning();
   await db.batch([
     db.insert(schema.approvalEvents).values({ approvalId: request!.id, actorId: input.actorId, action: "requested", note: input.reason }),
@@ -35,7 +36,8 @@ governanceRoutes.get("/governance", async (c) => {
 
 governanceRoutes.put("/governance", async (c) => {
   const denied = denyUnless(c, "settings.manage"); if (denied) return c.json(denied, 403);
-  const body = z.object({ bulkCreditApprovalThreshold: z.number().int().min(0).max(1_000_000), refundApprovalThresholdCents: z.number().int().min(0).max(10_000_000), roleChangeApprovalThreshold: z.number().int().min(0).max(100), maintenanceApprovalThreshold: z.number().int().min(0).max(100), reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
+  // studioChangeApprovalThreshold is optional so a client that predates it keeps the stored value.
+  const body = z.object({ bulkCreditApprovalThreshold: z.number().int().min(0).max(1_000_000), refundApprovalThresholdCents: z.number().int().min(0).max(10_000_000), roleChangeApprovalThreshold: z.number().int().min(0).max(100), maintenanceApprovalThreshold: z.number().int().min(0).max(100), studioChangeApprovalThreshold: z.number().int().min(0).max(100).optional(), reason: z.string().trim().min(1).max(300) }).parse(await c.req.json());
   const db = c.get("db");
   const { reason, ...thresholds } = body;
   const before = await governance(db);
@@ -45,7 +47,7 @@ governanceRoutes.put("/governance", async (c) => {
       actorId: c.get("admin").id, action: "settings.update", targetType: "governance_settings", targetId: "1", summary: "Updated high-risk action thresholds",
       detail: {
         reason,
-        before: { bulkCreditApprovalThreshold: before.bulkCreditApprovalThreshold, refundApprovalThresholdCents: before.refundApprovalThresholdCents, roleChangeApprovalThreshold: before.roleChangeApprovalThreshold, maintenanceApprovalThreshold: before.maintenanceApprovalThreshold },
+        before: { bulkCreditApprovalThreshold: before.bulkCreditApprovalThreshold, refundApprovalThresholdCents: before.refundApprovalThresholdCents, roleChangeApprovalThreshold: before.roleChangeApprovalThreshold, maintenanceApprovalThreshold: before.maintenanceApprovalThreshold, studioChangeApprovalThreshold: before.studioChangeApprovalThreshold },
         after: thresholds,
       },
     }),
@@ -150,7 +152,7 @@ governanceRoutes.post("/approvals/:id/reject", async (c) => {
 });
 
 /** Who may execute an approved request: the same capability the action needs when it runs directly. */
-const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage" } as const;
+const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage", studio_change: "studio.manage", maintenance_window: "settings.manage" } as const;
 
 /** Staff who can execute some kind of approval can see the queue. */
 function canSeeApprovals(c: { get: (key: "admin") => UserRow }) {
@@ -221,6 +223,58 @@ async function executeMaintenance(c: Context<AdminContext>, request: ApprovalRow
   return c.json({ id: request.id, status: "executed" });
 }
 
+/**
+ * Publishes an approved Studio change. The expected version is checked again: if anything was
+ * published since the request, the approval is stale and a new request is needed.
+ */
+async function executeStudioChange(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const payload = z.object({ expectedVersion: z.number().int().positive(), config: z.unknown(), reason: z.string(), restoredFrom: z.number().int().nullable() }).parse(request.payload);
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  let outcome;
+  try {
+    outcome = await publishStudioConfig(db, { expectedVersion: payload.expectedVersion, config: payload.config as StudioConfig, reason: payload.reason, restoredFrom: payload.restoredFrom, actorId: actor.id, approvalId: request.id });
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  if (!outcome.ok) {
+    await releaseApproval(db, request.id);
+    return c.json({ error: outcome.error, code: outcome.code }, outcome.status);
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: "studio_config", targetId: String(outcome.version), summary: `Executed approved Studio change as v${outcome.version}`, detail: { approvalId: request.id } }),
+  ]);
+  return c.json({ id: request.id, status: "executed" });
+}
+
+/** Creates or cancels an approved maintenance window, re-checking it against the clock now. */
+async function executeMaintenanceWindow(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const payload = request.payload as MaintenanceWindowPayload;
+  if (payload.op === "create") {
+    const problem = windowProblem(payload.window);
+    if (problem) return c.json({ error: `${problem}; schedule a new window`, code: "invalid_window" }, 409);
+  }
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  try {
+    const row = await applyMaintenanceWindowChange(db, payload, actor.id, request.id);
+    if (!row) {
+      await releaseApproval(db, request.id);
+      return c.json({ error: "That window is already cancelled" }, 409);
+    }
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: "maintenance_window", targetId: payload.op === "cancel" ? payload.id : null, summary: `Executed approved maintenance window ${payload.op}`, detail: { approvalId: request.id } }),
+  ]);
+  return c.json({ id: request.id, status: "executed" });
+}
+
 governanceRoutes.post("/approvals/:id/execute", async (c) => {
   // Coarse gate before any lookup; the action-specific permission is checked once the request is loaded.
   if (!canSeeApprovals(c)) return c.json({ error: "Forbidden" }, 403);
@@ -251,6 +305,8 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
   }
   if (request.action === "refund") return executeRefund(c, request);
   if (request.action === "maintenance") return executeMaintenance(c, request);
+  if (request.action === "studio_change") return executeStudioChange(c, request);
+  if (request.action === "maintenance_window") return executeMaintenanceWindow(c, request);
   const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
   const users = await db.select({ id: schema.users.id, email: schema.users.email, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
   if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);
@@ -287,6 +343,16 @@ function describeApproval(row: ApprovalRow, emails: Map<string, string>): string
     return `Grant ${String(payload.amount)} credits to ${count} user${count === 1 ? "" : "s"}: ${String(payload.note)}`;
   }
   if (row.action === "refund") return `Refund ${String(payload.currency)} ${(Number(payload.amountCents) / 100).toFixed(2)} for PayPal payment ${String(payload.providerPaymentId)}`;
+  if (row.action === "studio_change") {
+    const changes = Array.isArray(payload.changes) ? (payload.changes as string[]) : [];
+    return payload.restoredFrom
+      ? `Restore Studio configuration v${String(payload.restoredFrom)}`
+      : `Publish Studio Control changes${changes.length ? `: ${changes.join(", ")}` : ""}`;
+  }
+  if (row.action === "maintenance_window") {
+    const window = payload.window as { scope?: string; startsAt?: string; endsAt?: string } | undefined;
+    return payload.op === "cancel" ? "Cancel a scheduled maintenance window" : `Schedule ${window?.scope ?? ""} maintenance ${window?.startsAt ?? ""} – ${window?.endsAt ?? ""}`;
+  }
   if (row.action === "maintenance") {
     const parts = [
       payload.maintenanceRenders !== undefined ? `${payload.maintenanceRenders ? "pause" : "resume"} renders` : null,

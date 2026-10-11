@@ -17,6 +17,7 @@ import {
   editPassCount,
   editRequestProblem,
   FACADE_MATERIALS,
+  featuresForRender,
   MAX_FACADE_COLOR_CHARS,
   renderRouteFor,
   suggestedEditPartForPrompt,
@@ -31,6 +32,7 @@ import { repairReferencePrompt } from "../lib/prompts.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
 import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
+import { checkFeatures, currentStudioRevision } from "../lib/studioControl.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -233,6 +235,12 @@ renders.post("/", async (c) => {
     return c.json(refusal, refusal.status);
   }
 
+  // One Studio Control revision for the whole request: its rules decide, and its version is
+  // stamped on the job.
+  const revision = await currentStudioRevision(db);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings));
+  if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
+
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
@@ -278,6 +286,7 @@ renders.post("/", async (c) => {
         costMicros,
         settings: generationSettings,
         idempotencyKey: body.idempotencyKey,
+        configVersion: revision.version,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -323,6 +332,9 @@ renders.post("/:id/upscale", async (c) => {
   const replay = () => replayResponse(c, db, parent.projectId, idempotencyKey);
   const earlier = await replay();
   if (earlier) return earlier;
+  const revision = await currentStudioRevision(db);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender({ upscale: { target, parentRenderId: parent.id } }));
+  if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
   const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
 
@@ -350,6 +362,7 @@ renders.post("/:id/upscale", async (c) => {
       costMicros,
       settings: { upscale: { target, parentRenderId: parent.id } },
       idempotencyKey,
+      configVersion: revision.version,
     });
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);

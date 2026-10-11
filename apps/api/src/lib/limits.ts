@@ -2,6 +2,7 @@ import { and, eq, gte, ne, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { LimitCode, UserLimits, UserUsage } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
+import { effectiveMaintenance } from "./studioControl.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type BillingPlanRow = typeof schema.billingPlans.$inferSelect;
@@ -134,6 +135,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   prompt_too_long: "Prompt is too long",
   too_many_references: "Too many reference images",
   upload_too_large: "Image is too large",
+  feature_disabled: "This feature isn't available",
 };
 
 function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["status"], extra: Partial<Refusal> = {}): Refusal {
@@ -157,8 +159,10 @@ export async function checkAllowance(
   const limits = resolveLimits(user, settings, plan);
   if (limits.exempt) return null;
 
-  const paused = kind === "render" ? settings.maintenanceRenders : settings.maintenanceSegments;
-  if (paused) return refuse(settings, "maintenance", 503);
+  // The Settings switches and any scheduled window that is running now.
+  const maintenance = await effectiveMaintenance(db, settings);
+  const paused = kind === "render" ? maintenance.renders : maintenance.selections;
+  if (paused) return refuse(settings, "maintenance", 503, maintenance.message?.trim() ? { error: maintenance.message.trim() } : {});
 
   const daily = kind === "render" ? limits.dailyRenders : limits.dailySegments;
   const monthly = kind === "render" ? limits.monthlyRenders : limits.monthlySegments;

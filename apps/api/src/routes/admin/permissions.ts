@@ -23,17 +23,21 @@ export type AdminPermission =
   | "billing.manage"
   | "incidents.read"
   | "incidents.manage"
+  /** See Studio Control: feature rules, revisions and maintenance windows. */
+  | "studio.read"
+  /** Publish or restore Studio Control feature rules. */
+  | "studio.manage"
   /** Grant or remove an unpaid plan. Admin-only until finer billing controls exist. */
   | "plans.manage";
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
-  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read"],
-  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage"],
+  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read", "studio.read"],
+  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage", "studio.read"],
   billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
-    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage",
+    "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage", "studio.read", "studio.manage",
   ],
 };
 

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, timestamp, integer, bigint, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
-import type { RenderGenerationSettings } from "@renvia/types";
+import type { RenderGenerationSettings, StudioConfig } from "@renvia/types";
 
 export const users = pgTable(
   "users",
@@ -145,6 +145,8 @@ export const renders = pgTable("renders", {
   jobType: text("job_type").generatedAlwaysAs(RENDER_JOB_TYPE_SQL),
   /** Generated: "4k" | "8k" when the job delivers a high-resolution copy, else null. */
   outputResolution: text("output_resolution").generatedAlwaysAs(sql`coalesce("settings" -> 'highRes' ->> 'target', "settings" -> 'upscale' ->> 'target')`),
+  /** The Studio Control version the request was checked against; null before migration 0031. */
+  configVersion: integer("config_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -252,6 +254,8 @@ export const segmentations = pgTable(
     costMicros: integer("cost_micros").notNull().default(0),
     creditsCharged: integer("credits_charged").notNull().default(0),
     errorMessage: text("error_message"),
+    /** The Studio Control version the request was checked against; null before migration 0031. */
+    configVersion: integer("config_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -664,6 +668,8 @@ export const governanceSettings = pgTable(
     refundApprovalThresholdCents: integer("refund_approval_threshold_cents").notNull().default(5000),
     roleChangeApprovalThreshold: integer("role_change_approval_threshold").notNull().default(1),
     maintenanceApprovalThreshold: integer("maintenance_approval_threshold").notNull().default(1),
+    /** 1 holds every Studio Control publish for approval; 0 (the default) lets an admin publish directly. */
+    studioChangeApprovalThreshold: integer("studio_change_approval_threshold").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid("updated_by").references(() => users.id),
   },
@@ -675,7 +681,7 @@ export const approvalRequests = pgTable(
   "approval_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance"] }).notNull(),
+    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance", "studio_change", "maintenance_window"] }).notNull(),
     status: text("status", { enum: ["pending", "approved", "rejected", "executed", "cancelled"] }).notNull().default("pending"),
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
@@ -782,4 +788,61 @@ export const incidentNotifications = pgTable(
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (table) => [index("incident_notifications_incident_idx").on(table.incidentId, table.attemptedAt)],
+);
+
+/**
+ * Published Studio configurations (feature rules). Never updated: a change or rollback is a new
+ * version. The latest version is the one in force.
+ */
+export const studioConfigRevisions = pgTable(
+  "studio_config_revisions",
+  {
+    version: integer("version").primaryKey(),
+    config: jsonb("config").$type<StudioConfig>().notNull(),
+    /** SHA-256 of the canonical JSON of `config`. */
+    checksum: text("checksum").notNull(),
+    reason: text("reason").notNull(),
+    publishedBy: uuid("published_by").references(() => users.id),
+    restoredFrom: integer("restored_from"),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("studio_config_revisions_version_positive", sql`${table.version} > 0`)],
+);
+
+/** Requests an observe-mode feature rule would have refused. */
+export const studioFeatureObservations = pgTable(
+  "studio_feature_observations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    featureKey: text("feature_key").notNull(),
+    reason: text("reason", { enum: ["disabled", "plan", "rollout"] }).notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    configVersion: integer("config_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("studio_feature_observations_feature_created_idx").on(table.featureKey, table.createdAt)],
+);
+
+/** Scheduled maintenance; active while now() is inside [startsAt, endsAt) and not cancelled. */
+export const maintenanceWindows = pgTable(
+  "maintenance_windows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scope: text("scope", { enum: ["all", "renders", "selections"] }).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    message: text("message"),
+    reason: text("reason").notNull(),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledBy: uuid("cancelled_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("maintenance_windows_scope_values", sql`${table.scope} IN ('all', 'renders', 'selections')`),
+    check("maintenance_windows_order", sql`${table.endsAt} > ${table.startsAt}`),
+    index("maintenance_windows_ends_idx").on(table.endsAt),
+  ],
 );

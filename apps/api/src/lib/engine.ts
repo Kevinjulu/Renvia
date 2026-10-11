@@ -16,6 +16,7 @@ import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./c
 import { refundIfFailed, refundRender } from "./credits.js";
 import { modelById, modelFor, pricingFor, UPSCALE_COST_MICROS } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
+import { effectiveMaintenance } from "./studioControl.js";
 import { buildEditPrompt, buildEnginePrompt, buildEnvironmentPrompt } from "./prompts.js";
 import {
   extensionForContentType,
@@ -73,14 +74,15 @@ async function spentMicros(db: Database): Promise<number> {
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {
   const settings = await getSettings(db);
   const mode = effectiveEngineMode(env, settings);
+  const maintenance = await effectiveMaintenance(db, settings);
   return {
     mode,
     pricing: pricingFor(mode),
     spentUsd: (await spentMicros(db)) / MICROS_PER_USD,
     budgetUsd: effectiveBudgetUsd(env, settings),
     creditsPerImage: settings.creditsPerImage,
-    maintenanceRenders: settings.maintenanceRenders,
-    maintenanceMessage: settings.maintenanceMessage,
+    maintenanceRenders: maintenance.renders,
+    maintenanceMessage: maintenance.message,
   };
 }
 

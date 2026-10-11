@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { schema } from "@renvia/db";
 import type { AdminOverviewResponse, RenderStatus } from "@renvia/types";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode } from "../../lib/settings.js";
+import { effectiveMaintenance } from "../../lib/studioControl.js";
 import { denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, stuckBeforeSql, selectAdminRenders, toAdminRender } from "./shared.js";
 import type { AdminContext } from "./context.js";
@@ -159,15 +160,16 @@ overviewRoutes.get("/overview", async (c) => {
   const segFinished = segByStatus.succeeded + segByStatus.failed;
 
   const alerts: AdminOverviewResponse["alerts"] = [];
-  if (settings.maintenanceRenders || settings.maintenanceSegments) {
+  const maintenance = await effectiveMaintenance(db, settings);
+  if (maintenance.renders || maintenance.selections) {
     alerts.push({
       id: "maintenance",
       severity: "critical",
-      message: settings.maintenanceMessage?.trim()
-        ? settings.maintenanceMessage.trim()
+      message: maintenance.message?.trim()
+        ? maintenance.message.trim()
         : `Maintenance is on — ${[
-            settings.maintenanceRenders ? "renders" : null,
-            settings.maintenanceSegments ? "segmentations" : null,
+            maintenance.renders ? "renders" : null,
+            maintenance.selections ? "segmentations" : null,
           ]
             .filter(Boolean)
             .join(" & ")} paused for non-admins.`,

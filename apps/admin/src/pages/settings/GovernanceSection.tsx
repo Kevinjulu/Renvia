@@ -16,6 +16,7 @@ interface GovernanceDraft {
   refundUsd: string;
   roleChange: boolean;
   maintenance: boolean;
+  studio: boolean;
   reason: string;
 }
 
@@ -26,6 +27,7 @@ function toDraft(settings: Thresholds): GovernanceDraft {
     // Role changes and maintenance switches carry a risk of 1, so any threshold of 1 or more holds them.
     roleChange: settings.roleChangeApprovalThreshold > 0,
     maintenance: settings.maintenanceApprovalThreshold > 0,
+    studio: settings.studioChangeApprovalThreshold > 0,
     reason: "",
   };
 }
@@ -54,7 +56,7 @@ export function GovernanceSection() {
   const bulkError = !Number.isInteger(bulk) || bulk < 0 || bulk > 1_000_000 ? "A whole number from 0 to 1,000,000" : undefined;
   const refundError = !Number.isFinite(refundCents) || refundCents < 0 || refundCents > 10_000_000 ? "An amount from 0 to 100,000" : undefined;
   const initial = toDraft(data.settings);
-  const dirty = draft.bulkCredits !== initial.bulkCredits || draft.refundUsd !== initial.refundUsd || draft.roleChange !== initial.roleChange || draft.maintenance !== initial.maintenance;
+  const dirty = draft.bulkCredits !== initial.bulkCredits || draft.refundUsd !== initial.refundUsd || draft.roleChange !== initial.roleChange || draft.maintenance !== initial.maintenance || draft.studio !== initial.studio;
   const canSave = me.role === "admin" && dirty && !bulkError && !refundError && draft.reason.trim().length > 0 && !saving;
 
   const save = async (event: FormEvent) => {
@@ -68,6 +70,7 @@ export function GovernanceSection() {
         refundApprovalThresholdCents: refundCents,
         roleChangeApprovalThreshold: draft.roleChange ? 1 : 0,
         maintenanceApprovalThreshold: draft.maintenance ? 1 : 0,
+        studioChangeApprovalThreshold: draft.studio ? 1 : 0,
         reason: draft.reason.trim(),
       });
       setStatus({ tone: "ok", text: "Approval rules saved. They apply to the next request." });
@@ -111,7 +114,8 @@ export function GovernanceSection() {
       </div>
       <div className="mt-4 space-y-2">
         <ToggleRow label="Role changes need approval" hint="Promotions, demotions and staff roles." checked={draft.roleChange} onChange={(roleChange) => update({ roleChange })} />
-        <ToggleRow label="Maintenance switches need approval" hint="Pausing or resuming renders and selections. With only one admin, leave this off." checked={draft.maintenance} onChange={(maintenance) => update({ maintenance })} />
+        <ToggleRow label="Maintenance switches need approval" hint="Pausing or resuming renders and selections, and scheduling or cancelling a window. With only one admin, leave this off." checked={draft.maintenance} onChange={(maintenance) => update({ maintenance })} />
+        <ToggleRow label="Studio Control changes need approval" hint="Publishing or restoring feature rules." checked={draft.studio} onChange={(studio) => update({ studio })} />
       </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">

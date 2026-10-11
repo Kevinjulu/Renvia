@@ -8,6 +8,7 @@ import { useLimitDialogStore } from "../lib/useLimitDialog";
 import { LimitDialog } from "../components/LimitDialog";
 import { AccountDialog } from "../components/account/AccountDialog";
 import { ConnectionBanner } from "../components/ConnectionBanner";
+import { MaintenanceBanner } from "../components/MaintenanceBanner";
 
 export function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -57,6 +58,7 @@ export function ProtectedRoute() {
     <>
       <Outlet />
       <ConnectionBanner />
+      <MaintenanceBanner />
       {refusal && (
         <LimitDialog
           refusal={refusal}

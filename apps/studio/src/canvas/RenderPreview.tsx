@@ -296,6 +296,10 @@ export function RenderPreview() {
   const isAdmin = me?.role === "admin";
   const autoDisabled = (() => {
     if (me?.maintenanceSegments && !isAdmin) return me.maintenanceMessage?.trim() || "Automatic selection is paused for maintenance.";
+    // Both ways of selecting switched off in Studio Control; one alone is refused when used.
+    const click = me?.features?.["selection.click"];
+    const prompt = me?.features?.["selection.prompt"];
+    if (!isAdmin && click?.available === false && prompt?.available === false) return click.message ?? "Automatic selection isn't available right now.";
     if (me && !isAdmin && me.creditBalance < 1) return "Out of credits — paint the area by hand instead.";
     return null;
   })();

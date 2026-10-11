@@ -470,7 +470,9 @@ export type LimitCode =
   | "project_limit_reached"
   | "prompt_too_long"
   | "too_many_references"
-  | "upload_too_large";
+  | "upload_too_large"
+  /** An operator switched this Studio feature off, or it isn't available on the user's plan. */
+  | "feature_disabled";
 
 /** Everything the caller is allowed, after per-user overrides and global settings. */
 export interface UserLimits {
@@ -521,6 +523,12 @@ export interface MeResponse {
   maintenanceSegments: boolean;
   /** Optional operator message while maintenance is on. */
   maintenanceMessage: string | null;
+  /** Each Studio feature and whether this user may use it right now. */
+  features: Record<StudioFeatureKey, StudioFeatureAvailability>;
+  /** The published Studio configuration version these answers come from. */
+  configVersion: number;
+  /** The next scheduled maintenance window, while it is upcoming or running. */
+  upcomingMaintenance: { scope: MaintenanceScope; startsAt: string; endsAt: string; message: string | null } | null;
   /** What this user may do right now. */
   limits: UserLimits;
   /** The separate commercial entitlement governing those limits. */
@@ -1151,7 +1159,9 @@ export type AdminAuditAction =
   | "approval.approve"
   | "approval.reject"
   | "approval.execute"
-  | "audit.export";
+  | "audit.export"
+  | "studio.publish"
+  | "maintenance.window";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -1197,7 +1207,7 @@ export interface AdminFinancialsResponse {
   daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
 }
 
-export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance";
+export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance" | "studio_change" | "maintenance_window";
 
 /** When each high-risk action needs a second admin. 0 turns that gate off. */
 export interface AdminGovernanceThresholds {
@@ -1207,8 +1217,10 @@ export interface AdminGovernanceThresholds {
   refundApprovalThresholdCents: number;
   /** 1 holds every role change for approval. */
   roleChangeApprovalThreshold: number;
-  /** 1 holds every maintenance pause or resume for approval. */
+  /** 1 holds every maintenance pause or resume, and every scheduled window, for approval. */
   maintenanceApprovalThreshold: number;
+  /** 1 holds every Studio Control publish (feature rules) for approval. */
+  studioChangeApprovalThreshold: number;
 }
 
 export interface AdminGovernanceResponse {
@@ -1398,3 +1410,185 @@ export interface AdminPerformanceFailuresResponse {
   byCategory: { category: AdminFailureCategory; count: number }[];
   groups: AdminFailureGroup[];
 }
+
+// ── Studio Control ────────────────────────────────────────────────────────────────
+
+/**
+ * Studio capabilities an operator can switch, scope to plans, or roll out gradually. Keys are
+ * stable: published revisions and jobs refer to them.
+ */
+export type StudioFeatureKey =
+  | "render.standard"
+  | "render.references"
+  | "render.fidelity"
+  | "edit.standard"
+  | "edit.references"
+  | "render.upscale"
+  | "export.4k"
+  | "export.8k"
+  | "selection.click"
+  | "selection.prompt";
+
+export interface StudioFeatureDefinition {
+  key: StudioFeatureKey;
+  label: string;
+  description: string;
+  group: "Render" | "Edit" | "Resolution" | "Auto select";
+}
+
+export const STUDIO_FEATURES: readonly StudioFeatureDefinition[] = [
+  { key: "render.standard", label: "Standard render", description: "Render from a photo, 3D massing or line drawing with a prompt.", group: "Render" },
+  { key: "render.references", label: "Reference render", description: "Render with style or material reference images.", group: "Render" },
+  { key: "render.fidelity", label: "Strict fidelity", description: "Reference render that locks the source design's geometry.", group: "Render" },
+  { key: "edit.standard", label: "Edit", description: "Change part or all of a finished render with an instruction.", group: "Edit" },
+  { key: "edit.references", label: "Edit with references", description: "Edit using reference images.", group: "Edit" },
+  { key: "render.upscale", label: "Upscale a finished render", description: "Upscale an existing render from its card.", group: "Resolution" },
+  { key: "export.4k", label: "4K output", description: "Deliver renders or upscales at 4K.", group: "Resolution" },
+  { key: "export.8k", label: "8K output", description: "Deliver renders or upscales at 8K.", group: "Resolution" },
+  { key: "selection.click", label: "Click selection", description: "Auto select an object by clicking it.", group: "Auto select" },
+  { key: "selection.prompt", label: "Prompt selection", description: "Auto select objects by describing them.", group: "Auto select" },
+];
+
+/**
+ * enforce: refuse requests the rule doesn't allow. observe: allow them, but log that the rule
+ * would have refused — the way to try a rule against real traffic before switching it on.
+ */
+export type StudioFeatureEnforcement = "enforce" | "observe";
+
+export interface StudioFeatureRule {
+  enabled: boolean;
+  enforcement: StudioFeatureEnforcement;
+  /** Plan slugs that may use it; null = every plan. */
+  allowedPlans: string[] | null;
+  /** 0–100: the share of users (stable per user) who get it. */
+  rolloutPercent: number;
+  /** Shown to the user when they can't use it; null = the Studio's own wording. */
+  message: string | null;
+}
+
+export interface StudioConfig {
+  features: Record<StudioFeatureKey, StudioFeatureRule>;
+}
+
+/** Everything on for everyone: exactly how the Studio behaved before Studio Control. */
+export function defaultStudioConfig(): StudioConfig {
+  const rule = (): StudioFeatureRule => ({ enabled: true, enforcement: "enforce", allowedPlans: null, rolloutPercent: 100, message: null });
+  return { features: Object.fromEntries(STUDIO_FEATURES.map((feature) => [feature.key, rule()])) as Record<StudioFeatureKey, StudioFeatureRule> };
+}
+
+/** The features a render, edit or upscale request uses. */
+export function featuresForRender(settings: RenderGenerationSettings): StudioFeatureKey[] {
+  const base: Record<RenderRoute, StudioFeatureKey> = {
+    photo: "render.standard",
+    drawing: "render.standard",
+    references: "render.references",
+    fidelity: "render.fidelity",
+    edit: "edit.standard",
+    "edit-references": "edit.references",
+    upscale: "render.upscale",
+  };
+  const keys: StudioFeatureKey[] = [base[renderRouteFor(settings)]];
+  const target = settings.upscale?.target ?? settings.highRes?.target;
+  if (target) keys.push(target === "8k" ? "export.8k" : "export.4k");
+  return keys;
+}
+
+/** The features an automatic selection uses: a click, a prompt, or both. */
+export function featuresForSelection(request: { prompt?: string | null; point?: unknown }): StudioFeatureKey[] {
+  const keys: StudioFeatureKey[] = [];
+  if (request.point) keys.push("selection.click");
+  if (request.prompt) keys.push("selection.prompt");
+  return keys;
+}
+
+/** A stable 0–99 bucket per user and feature (FNV-1a), so a partial rollout doesn't flicker. */
+export function rolloutBucket(userId: string, key: StudioFeatureKey): number {
+  let hash = 0x811c9dc5;
+  for (const char of `${userId}:${key}`) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash % 100;
+}
+
+export type StudioFeatureDenial = "disabled" | "plan" | "rollout";
+
+/** Why a rule refuses this user, or null when it allows them. Ignores the enforcement mode. */
+export function featureDenial(rule: StudioFeatureRule, user: { id: string; planSlug: string }, key: StudioFeatureKey): StudioFeatureDenial | null {
+  if (!rule.enabled) return "disabled";
+  if (rule.allowedPlans && !rule.allowedPlans.includes(user.planSlug)) return "plan";
+  if (rule.rolloutPercent < 100 && rolloutBucket(user.id, key) >= rule.rolloutPercent) return "rollout";
+  return null;
+}
+
+export interface StudioFeatureAvailability {
+  available: boolean;
+  /** Why it's unavailable; null when available. */
+  reason: StudioFeatureDenial | null;
+  message: string | null;
+}
+
+export type MaintenanceScope = "all" | "renders" | "selections";
+
+export interface MaintenanceWindow {
+  id: string;
+  scope: MaintenanceScope;
+  startsAt: string;
+  endsAt: string;
+  message: string | null;
+  reason: string;
+  createdByEmail: string | null;
+  cancelledAt: string | null;
+  cancelledByEmail: string | null;
+  createdAt: string;
+  /** Derived from the times: upcoming, active, ended or cancelled. */
+  state: "upcoming" | "active" | "ended" | "cancelled";
+}
+
+export interface StudioConfigRevision {
+  version: number;
+  checksum: string;
+  reason: string;
+  publishedByEmail: string | null;
+  /** Set when this revision restored an earlier one. */
+  restoredFrom: number | null;
+  approvalId: string | null;
+  createdAt: string;
+}
+
+export interface AdminStudioControlResponse {
+  current: StudioConfigRevision & { config: StudioConfig };
+  revisions: StudioConfigRevision[];
+  features: readonly StudioFeatureDefinition[];
+  plans: { slug: string; name: string }[];
+  /** Requests a rule in observe mode would have refused, per feature and reason, over 7 days. */
+  observations: { key: StudioFeatureKey; reason: StudioFeatureDenial; last24h: number; last7d: number; users7d: number }[];
+  maintenance: {
+    /** The on/off switches in Settings; they still work alongside scheduled windows. */
+    switches: { renders: boolean; selections: boolean; message: string | null };
+    windows: MaintenanceWindow[];
+  };
+  /** Studio changes and maintenance windows waiting for a second admin, or to be executed. */
+  pendingApprovals: { id: string; action: ApprovalAction; status: "pending" | "approved"; reason: string; createdAt: string }[];
+}
+
+export interface AdminPublishStudioConfigRequest {
+  /** The version the change was made against; publishing fails if another one landed since. */
+  expectedVersion: number;
+  config: StudioConfig;
+  reason: string;
+}
+
+export type AdminPublishStudioConfigResponse =
+  | { version: number; checksum: string }
+  | { pendingApproval: true; approvalId: string };
+
+export interface AdminCreateMaintenanceWindowRequest {
+  scope: MaintenanceScope;
+  startsAt: string;
+  endsAt: string;
+  message: string | null;
+  reason: string;
+}
+
+export type AdminMaintenanceWindowResponse = { window: MaintenanceWindow } | { pendingApproval: true; approvalId: string };

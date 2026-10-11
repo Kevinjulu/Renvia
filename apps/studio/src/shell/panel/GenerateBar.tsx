@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   baseCreditCostForRender,
+  featuresForRender,
   renderRouteFor,
   suggestedEditPartForPrompt,
   type CreateRenderResponse,
@@ -43,6 +44,7 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "concurrency_limit_reached") return "Your current renders are still running. Wait for one to finish before starting another.";
   if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
   if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
+  if (code === "feature_disabled") return "That option isn't available on your account right now.";
   return null;
 }
 
@@ -155,6 +157,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
+  // A Studio Control rule switched off something this request uses (the API refuses it too).
+  const unavailableFeature = me && !isAdmin ? featuresForRender(costSettings).map((key) => me.features?.[key]).find((feature) => feature && !feature.available) ?? null : null;
   const hasTarget = isEdit ? editRender !== null : filled.length > 0;
   const editProblem = isEdit ? draft.problem : null;
   // A render needs direction beyond the elevation itself: a prompt or a reference image.
@@ -167,6 +171,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     ? localRefusal("account_disabled", me?.limitMessages)
     : isMaintenance
       ? localRefusal("maintenance", me?.limitMessages)
+      : unavailableFeature
+        ? { code: "feature_disabled", message: unavailableFeature.message, limit: null, used: null }
       : isOutOfCredits
         ? localRefusal("insufficient_credits", me?.limitMessages, creditsNeeded, creditBalance)
         : isOverBudget
@@ -178,6 +184,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isDisabled) return "Account disabled";
     if (isMaintenance) return "Temporarily unavailable";
+    if (unavailableFeature) return "Not available";
     if (isOverBudget) return "Over render budget";
     if (isOutOfCredits) return creditBalance === 0 ? "Out of credits" : "Not enough credits";
     if (isEdit) return "Apply edit";
@@ -337,6 +344,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     if (isMaintenance) {
       return me.maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
     }
+    if (unavailableFeature) return unavailableFeature.message ?? "That option isn't available on your account right now.";
     if (isAdmin) {
       // Admins aren't charged credits; show the real fal spend against the global cap.
       if (!budget) return null;

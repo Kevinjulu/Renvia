@@ -23,6 +23,7 @@ const KNOWN_CODES: LimitCode[] = [
   "prompt_too_long",
   "too_many_references",
   "upload_too_large",
+  "feature_disabled",
 ];
 
 /** Returns the refusal an error represents, or null when it's an ordinary failure. */
@@ -142,6 +143,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         title: "That image is too large",
         body: "Resize or re-export it smaller, then upload again.",
         icon: "ruler",
+        tone: "amber",
+      };
+    case "feature_disabled":
+      return {
+        title: "Not available right now",
+        body: "This option isn't available on your account at the moment. Everything else still works.",
+        icon: "ban",
         tone: "amber",
       };
   }

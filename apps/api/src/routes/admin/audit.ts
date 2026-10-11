@@ -29,7 +29,7 @@ auditRoutes.get("/audit", async (c) => {
   const db = c.get("db");
   const { limit, offset } = paging.parse(c.req.query());
   const action = z
-    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "segmentation.recover", "incident.update", "billing.webhook", "billing.payment", "billing.entitlement", "customer.note", "customer.tag", "user.session_revoke", "approval.request", "approval.approve", "approval.reject", "approval.execute", "audit.export"])
+    .enum(["credits.adjust", "user.update", "settings.update", "render.refresh", "render.cancel", "segmentation.recover", "incident.update", "billing.webhook", "billing.payment", "billing.entitlement", "customer.note", "customer.tag", "user.session_revoke", "approval.request", "approval.approve", "approval.reject", "approval.execute", "audit.export", "studio.publish", "maintenance.window"])
     .optional()
     .parse(c.req.query("action") || undefined) as AdminAuditAction | undefined;
   const actorId = z.string().uuid().optional().parse(c.req.query("actorId") || undefined);
@@ -131,6 +131,8 @@ auditRoutes.get("/audit", async (c) => {
     "approval.reject": 0,
     "approval.execute": 0,
     "audit.export": 0,
+    "studio.publish": 0,
+    "maintenance.window": 0,
   };
   for (const row of actionRows) {
     if (row.action in byAction) byAction[row.action as AdminAuditAction] = row.count;

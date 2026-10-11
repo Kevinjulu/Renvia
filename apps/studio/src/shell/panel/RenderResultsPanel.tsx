@@ -92,6 +92,12 @@ export function RenderResultsPanel() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [upscaling, setUpscaling] = useState<UpscaleTarget | null>(null);
   const creditsPerImage = useAccountStore((state) => state.me?.creditsPerImage ?? 1);
+  const features = useAccountStore((state) => (state.me?.role === "admin" ? undefined : state.me?.features));
+  /** Studio Control's reason an upscale to `target` isn't available, or null. */
+  const upscaleBlocked = (target: "4k" | "8k") => {
+    const blocked = [features?.["render.upscale"], features?.[target === "8k" ? "export.8k" : "export.4k"]].find((feature) => feature?.available === false);
+    return blocked ? blocked.message ?? "Not available right now" : null;
+  };
   const [copied, setCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
@@ -474,7 +480,7 @@ export function RenderResultsPanel() {
                 {(["4k", "8k"] as const).map((target) => {
                   const credits = upscaleCreditCost(target) * creditsPerImage;
                   return (
-                    <button key={target} type="button" className="rp-btn" disabled={upscaling !== null} onClick={() => void handleUpscale(target)}>
+                    <button key={target} type="button" className="rp-btn" disabled={upscaling !== null || upscaleBlocked(target) !== null} title={upscaleBlocked(target) ?? undefined} onClick={() => void handleUpscale(target)}>
                       {upscaling === target ? "Starting…" : `${target.toUpperCase()} · ${plural(credits, "credit")}`}
                     </button>
                   );

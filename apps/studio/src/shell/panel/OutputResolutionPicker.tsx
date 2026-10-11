@@ -16,6 +16,13 @@ export function OutputResolutionPicker() {
   const value = useGenerationSettingsStore((state) => state.outputResolution);
   const setValue = useGenerationSettingsStore((state) => state.setOutputResolution);
   const creditsPerImage = useAccountStore((state) => state.me?.creditsPerImage ?? 1);
+  const features = useAccountStore((state) => (state.me?.role === "admin" ? undefined : state.me?.features));
+  // Switched off in Studio Control: the option stays visible but can't be chosen.
+  const unavailable = (option: OutputResolution) => {
+    if (option === "standard") return null;
+    const feature = features?.[option === "8k" ? "export.8k" : "export.4k"];
+    return feature && !feature.available ? feature : null;
+  };
   const extraCredits = (option: OutputResolution) => (option === "standard" ? 0 : upscaleCreditCost(option) * creditsPerImage);
   const selected = OPTIONS.find((option) => option.id === value)!;
   const extra = extraCredits(value);
@@ -31,6 +38,8 @@ export function OutputResolutionPicker() {
             role="radio"
             aria-checked={value === option.id}
             className={value === option.id ? "is-active" : ""}
+            disabled={Boolean(unavailable(option.id)) && value !== option.id}
+            title={unavailable(option.id)?.message ?? undefined}
             onClick={() => setValue(option.id)}
           >
             {option.label}
@@ -39,7 +48,9 @@ export function OutputResolutionPicker() {
         ))}
       </div>
       <small className="cp-resolution-hint">
-        {selected.edge
+        {unavailable(value)
+          ? unavailable(value)!.message ?? `${selected.label} isn't available right now. Choose another size.`
+          : selected.edge
           ? `AI-upscaled to ${selected.edge.toLocaleString()} px, ready to download · +${extra} ${extra === 1 ? "credit" : "credits"} per image`
           : "The render's own size. You can still upscale a finished render from its card."}
       </small>

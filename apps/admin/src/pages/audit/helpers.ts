@@ -18,6 +18,8 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "segmentation.recover", label: "Segmentation recovery" },
   { value: "incident.update", label: "Incident update" },
   { value: "billing.payment", label: "Payments" },
+  { value: "studio.publish", label: "Studio Control" },
+  { value: "maintenance.window", label: "Maintenance windows" },
 ];
 
 export const RANGES: { value: RangeFilter; label: string }[] = [
@@ -64,6 +66,8 @@ export const ACTION_META: Record<
   "approval.reject": { label: "Approval rejected", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "approval.execute": { label: "Approval executed", tone: "blue", icon: Shield, chip: "bg-blueprint-soft text-blueprint" },
   "audit.export": { label: "Audit export", tone: "neutral", icon: ScrollText, chip: "bg-surface-muted text-secondary" },
+  "studio.publish": { label: "Studio Control", tone: "amber", icon: Settings, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "maintenance.window": { label: "Maintenance window", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
 };
 
 export function groupByDay(events: AdminAuditEvent[]) {

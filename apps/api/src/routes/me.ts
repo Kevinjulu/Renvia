@@ -7,6 +7,7 @@ import { getOrCreateUser, syncUser } from "../lib/users.js";
 import { getSettings } from "../lib/settings.js";
 import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 import { ensureEntitlement } from "../lib/billing.js";
+import { currentStudioRevision, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
 
 export const me = new Hono<AppContext>();
 
@@ -19,7 +20,7 @@ me.get("/", async (c) => {
   // Called once per studio load, so it also refreshes the stored email from Clerk.
   const [user, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
   const billing = await ensureEntitlement(db, user.id);
-  const usage = await getUsage(db, user.id);
+  const [usage, revision, maintenance] = await Promise.all([getUsage(db, user.id), currentStudioRevision(db), effectiveMaintenance(db, settings)]);
 
   return c.json({
     ...user,
@@ -40,9 +41,15 @@ me.get("/", async (c) => {
     limitMessages: limitMessages(settings),
     creditsPerImage: settings.creditsPerImage,
     creditsPerSelection: settings.creditsPerSelection,
-    maintenanceRenders: settings.maintenanceRenders,
-    maintenanceSegments: settings.maintenanceSegments,
-    maintenanceMessage: settings.maintenanceMessage,
+    // The Settings switches and any scheduled window running now.
+    maintenanceRenders: maintenance.renders,
+    maintenanceSegments: maintenance.selections,
+    maintenanceMessage: maintenance.message,
+    upcomingMaintenance: maintenance.next
+      ? { scope: maintenance.next.scope, startsAt: maintenance.next.startsAt.toISOString(), endsAt: maintenance.next.endsAt.toISOString(), message: maintenance.next.message }
+      : null,
+    features: featureAvailability(revision.config, user, billing.plan.slug),
+    configVersion: revision.version,
   });
 });
 

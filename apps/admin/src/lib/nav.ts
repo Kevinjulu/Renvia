@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge } from "lucide-react";
+import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -146,6 +146,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Who changed what",
     banner: "/banners/exterior-3.jpg",
     roles: ["analyst", "billing", "admin"],
+  },
+  {
+    to: "/studio-control",
+    label: "Studio Control",
+    icon: SlidersHorizontal,
+    end: false,
+    title: "Studio Control",
+    description: "Switch Studio features on or off, limit them to plans, roll them out gradually, and schedule maintenance — versioned, with rollback.",
+    hint: "Features & maintenance",
+    banner: "/banners/elevation.jpg",
+    roles: ["analyst", "support", "admin"],
   },
   {
     to: "/settings",

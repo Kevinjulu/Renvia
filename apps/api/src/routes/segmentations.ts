@@ -12,6 +12,8 @@ import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
+import { checkFeatures, currentStudioRevision } from "../lib/studioControl.js";
+import { featuresForSelection } from "@renvia/types";
 
 export const segmentations = new Hono<AppContext>();
 
@@ -66,6 +68,10 @@ segmentations.post("/", async (c) => {
     return c.json(refusal, refusal.status);
   }
 
+  const revision = await currentStudioRevision(db);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForSelection(body));
+  if (featureRefusal) return c.json(featureRefusal, featureRefusal.status);
+
   const allowance = await checkAllowance(db, user, appSettings, "segment", billing.plan);
   if (allowance) return c.json(allowance, allowance.status);
 
@@ -87,6 +93,7 @@ segmentations.post("/", async (c) => {
       status: "pending",
       model: mode === "mock" ? "mock" : SAM_MODEL_ID,
       costMicros,
+      configVersion: revision.version,
     });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
