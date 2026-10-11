@@ -114,19 +114,24 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </RegionBoundary>
           <section className="studio-canvas-column">
             <div className="elevation-tabs" data-guide="canvas.tabs">
-              {views.map((view) => (
-                <button
-                  key={view.id}
-                  type="button"
-                  className={view.id === activeViewId ? "active" : ""}
-                  onClick={() => {
-                    selectView(view.id);
-                    focusViewNode(view.id);
-                  }}
-                >
-                  {tabLabel(view)}
-                </button>
-              ))}
+              {/* Only the tabs scroll, so the add menu's popover isn't clipped by the scroller. */}
+              <div className="elevation-tabs-list" role="tablist" aria-label="Elevations">
+                {views.map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={view.id === activeViewId}
+                    className={view.id === activeViewId ? "active" : ""}
+                    onClick={() => {
+                      selectView(view.id);
+                      focusViewNode(view.id);
+                    }}
+                  >
+                    {tabLabel(view)}
+                  </button>
+                ))}
+              </div>
               <AddViewMenu />
             </div>
             <div className="studio-stage-wrap" data-guide="canvas.stage" {...PROTECTED_IMAGES} data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front Elevation"}`}>
