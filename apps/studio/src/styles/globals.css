@@ -543,3 +543,11 @@ button { color: inherit; }
 .app-error div{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:22px}
 .app-error button{min-height:44px;border:0;border-radius:10px;padding:11px 18px;background:#171717;color:#fff;font-weight:600;cursor:pointer}
 .app-error a{color:#171717;font-weight:600;text-underline-offset:3px}
+
+/* Rendered images leave through the download flow: no native drag, no iOS long-press menu. */
+[data-protected-images] img,
+[data-protected-images] canvas {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}

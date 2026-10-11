@@ -1,5 +1,6 @@
 import type { RenderJob } from "@renvia/types";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
+import { PROTECTED_IMAGES } from "../../lib/protectedImages";
 
 /** Top of the Edit tab: names the render open in the viewer, the only thing an edit changes. */
 export function EditModeHeader({ render }: { render: RenderJob }) {
@@ -7,7 +8,7 @@ export function EditModeHeader({ render }: { render: RenderJob }) {
   if (!render.resultImageUrl) return null;
 
   return (
-    <div className="edit-target-card">
+    <div className="edit-target-card" {...PROTECTED_IMAGES}>
       <button type="button" className="edit-target-thumb" title="View this render full size" onClick={() => setPreviewJob(render.id)}>
         <img src={render.resultImageUrl} alt="" />
       </button>

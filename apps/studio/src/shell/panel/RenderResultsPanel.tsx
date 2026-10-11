@@ -18,6 +18,7 @@ import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStor
 import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
 import { reportClientError } from "../../components/AppErrorHandling";
+import { PROTECTED_IMAGES } from "../../lib/protectedImages";
 
 function timeAgo(iso: string, now: number) {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
@@ -218,7 +219,7 @@ export function RenderResultsPanel() {
 
   if (!activeJob) {
     return (
-      <aside className="rp-panel" data-guide="results.panel">
+      <aside className="rp-panel" data-guide="results.panel" {...PROTECTED_IMAGES}>
         <header className="rp-head">
           <strong>Renders</strong>
         </header>
@@ -276,7 +277,7 @@ export function RenderResultsPanel() {
   const history = starredOnly ? jobs.filter((item) => item.isFavorite) : jobs;
 
   return (
-    <aside className="rp-panel" data-guide="results.panel">
+    <aside className="rp-panel" data-guide="results.panel" {...PROTECTED_IMAGES}>
       <header className="rp-head">
         <strong>Renders</strong>
         <span>{jobs.length}</span>

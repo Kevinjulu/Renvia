@@ -21,8 +21,10 @@ import { useElevationUpload } from "../canvas/hooks/useElevationUpload";
 import { nodeForView, tabLabel, type BuildingView } from "../canvas/buildingViews";
 import { reportClientError } from "../components/AppErrorHandling";
 import { RegionBoundary } from "../components/RegionBoundary";
+import { PROTECTED_IMAGES, useProtectedImages } from "../lib/protectedImages";
 
 export function StudioShell({ projectId }: { projectId: string }) {
+  useProtectedImages();
   const apiClient = useApiClient();
   const [project, setProject] = useState<Project | null>(null);
   const views = useCanvasStore((state) => state.views);
@@ -127,7 +129,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               ))}
               <AddViewMenu />
             </div>
-            <div className="studio-stage-wrap" data-guide="canvas.stage" data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front Elevation"}`}>
+            <div className="studio-stage-wrap" data-guide="canvas.stage" {...PROTECTED_IMAGES} data-view-label={`${activeIndex + 1}   ${activeView ? tabLabel(activeView) : "Front Elevation"}`}>
               <RegionBoundary name="The canvas">
                 <CanvasStage />
                 <RenderPreview />
@@ -135,7 +137,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               </RegionBoundary>
               <StudioNotice />
             </div>
-            <div className="elevation-filmstrip" data-guide="canvas.filmstrip">
+            <div className="elevation-filmstrip" data-guide="canvas.filmstrip" {...PROTECTED_IMAGES}>
               {views.map((view, index) => {
                 const node = nodeForView(nodes, view.id);
                 const skipped = Boolean(node) && skippedViewIds.includes(view.id);

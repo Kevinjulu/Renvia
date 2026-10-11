@@ -5,6 +5,7 @@ import { filledBuildingViews, isDefaultViewId, nodeForView, renderableBuildingVi
 import { viewImage } from "../../canvas/utils/viewImage";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
+import { PROTECTED_IMAGES } from "../../lib/protectedImages";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -50,6 +51,7 @@ export function ActiveElevationCard() {
     <section
       className={`cp-elevation ${node ? "is-filled" : "is-empty"} ${skipped ? "is-skipped" : ""} ${isDragOver ? "is-dragover" : ""} ${nextStepClass(suggestUpload)}`}
       data-guide="control.uploads"
+      {...PROTECTED_IMAGES}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragOver(true);

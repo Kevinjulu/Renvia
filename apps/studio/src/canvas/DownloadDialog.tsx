@@ -5,6 +5,7 @@ import { useApiClient } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { reportLimit } from "../lib/useLimitDialog";
 import { queueRender, RenderNotConfirmedError } from "./utils/queueRender";
+import { PROTECTED_IMAGES } from "../lib/protectedImages";
 
 type Format = "jpeg" | "png" | "webp";
 type Layout = "render" | "compare";
@@ -275,7 +276,7 @@ export function DownloadDialog() {
   return (
     <div className="dl-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <div className="dl-dialog" role="dialog" aria-modal="true" aria-labelledby="dl-title">
-        <div className={`dl-preview ${layout === "compare" ? "is-compare" : ""}`}>
+        <div className={`dl-preview ${layout === "compare" ? "is-compare" : ""}`} {...PROTECTED_IMAGES}>
           {layout === "compare" && (
             <figure>
               <img src={job.sourceImageUrl} alt="" />
