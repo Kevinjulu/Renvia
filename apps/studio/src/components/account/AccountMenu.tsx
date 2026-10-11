@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useClerk, useUser } from "@clerk/react";
-import { AUTH_ROUTES } from "../../lib/authRoutes";
+import { websiteUrl } from "../../lib/websiteLinks";
+import { creditPricesFor } from "../../lib/creditPrices";
 import { creditsLeftPercent, planLabel, useAccountStore } from "../../lib/useAccountStore";
 import { getRecentlyViewed } from "../../lib/localCollections";
 import { useGuideStore } from "../../guide/useGuideStore";
@@ -16,6 +17,7 @@ const ICONS: Record<string, ReactNode> = {
   activity: <><path d="M3 12h4l2.5-6 5 12 2.5-6h4" /></>,
   help: <><circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.2-2.4 3.7" /><path d="M12 17.2h.01" /></>,
   signOut: <><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M10 16 6 12l4-4M6 12h10" /></>,
+  website: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></>,
 };
 
 function MenuIcon({ name }: { name: keyof typeof ICONS }) {
@@ -40,6 +42,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const me = useAccountStore((state) => state.me);
+  const prices = creditPricesFor(me);
   const granted = useAccountStore((state) => state.granted);
   const navigate = useNavigate();
   const menuId = useId();
@@ -117,7 +120,8 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await signOut({ redirectUrl: AUTH_ROUTES.signIn });
+      // Back to the website, which then shows its signed-out header again.
+      await signOut({ redirectUrl: websiteUrl("/", "signed-out") });
     } finally {
       setSigningOut(false);
     }
@@ -180,7 +184,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
                   </div>
                 )}
                 <div className="account-credits-row">
-                  <small>{isLow ? "Running low — top up from Billing." : "Standard render: 1 credit · Strict fidelity: 2"}</small>
+                  <small>{isLow ? "Running low — top up from Billing." : `Standard render: ${prices.render} ${prices.render === 1 ? "credit" : "credits"} · Strict fidelity: ${prices.fidelity}`}</small>
                   <button type="button" role="menuitem" className="account-credits-cta" onClick={() => go("/billing")}>
                     Billing
                   </button>
@@ -214,6 +218,9 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
             <button type="button" role="menuitem" onClick={() => go("/help/getting-started")}>
               <MenuIcon name="help" /> Help center
             </button>
+            <a role="menuitem" href={websiteUrl("/", "signed-in")}>
+              <MenuIcon name="website" /> Renvia website
+            </a>
           </div>
 
           <div className="account-menu-group">

@@ -44,10 +44,10 @@
 
 .account-menu-group{display:flex;flex-direction:column;padding:6px}
 .account-menu-group+.account-menu-group{border-top:1px solid #f0ede8}
-.account-menu-group button[role=menuitem]{display:flex;width:100%;align-items:center;gap:11px;border:0;border-radius:9px;padding:8px 10px;background:none;color:#2a2a2a;font-size:13px;text-align:left;cursor:pointer;transition:background .12s,color .12s}
-.account-menu-group button svg{width:17px;height:17px;flex:none;fill:none;stroke:#77736e;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.account-menu-group button:hover,.account-menu-group button:focus-visible{outline:0;background:#f5f4f1;color:#141414}
-.account-menu-group button:hover svg,.account-menu-group button:focus-visible svg{stroke:#141414}
+.account-menu-group button[role=menuitem],.account-menu-group a[role=menuitem]{text-decoration:none;display:flex;width:100%;align-items:center;gap:11px;border:0;border-radius:9px;padding:8px 10px;background:none;color:#2a2a2a;font-size:13px;text-align:left;cursor:pointer;transition:background .12s,color .12s}
+.account-menu-group button svg,.account-menu-group a[role=menuitem] svg{width:17px;height:17px;flex:none;fill:none;stroke:#77736e;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.account-menu-group button:hover,.account-menu-group button:focus-visible,.account-menu-group a[role=menuitem]:hover,.account-menu-group a[role=menuitem]:focus-visible{outline:0;background:#f5f4f1;color:#141414}
+.account-menu-group button:hover svg,.account-menu-group button:focus-visible svg,.account-menu-group a[role=menuitem]:hover svg,.account-menu-group a[role=menuitem]:focus-visible svg{stroke:#141414}
 .account-menu-group button.is-danger{color:#c9372c}
 .account-menu-group button.is-danger svg{stroke:#c9372c}
 .account-menu-group button.is-danger:hover,.account-menu-group button.is-danger:focus-visible{background:#fdf1ef}

@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/react";
 import App from "./App";
 import { clerkAppearance } from "./lib/clerkAppearance";
 import { AUTH_ROUTES } from "./lib/authRoutes";
+import { MARKETING_URL } from "./lib/env";
 import "./styles/globals.css";
 import "./styles/render-panel.css";
 import "./styles/control-panel.css";
@@ -27,6 +28,8 @@ createRoot(rootElement).render(
       signInFallbackRedirectUrl={AUTH_ROUTES.afterAuth}
       signUpFallbackRedirectUrl={AUTH_ROUTES.afterAuth}
       afterSignOutUrl={AUTH_ROUTES.signIn}
+      // Signing out from the account menu returns to the website (see websiteLinks.ts).
+      allowedRedirectOrigins={[window.location.origin, new URL(MARKETING_URL).origin]}
       appearance={clerkAppearance}
     >
       <App />

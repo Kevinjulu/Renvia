@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
-import { LOGIN_URL, SIGNUP_URL } from "@/lib/config";
+import { LOGIN_URL, SIGNUP_URL, STUDIO_URL } from "@/lib/config";
+import { syncStudioSession } from "@/lib/studioSession";
 
 const NAV_LINKS = [
   { label: "Product", href: "/#features", index: "01" },
@@ -29,6 +30,10 @@ export function Navbar() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Signed in to the Studio on this browser: no "Sign in", and "Start rendering" opens the Studio.
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => setSignedIn(syncStudioSession()), []);
+  const startHref = signedIn ? STUDIO_URL : SIGNUP_URL;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -62,8 +67,8 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-2 lg:flex">
-          <a href={LOGIN_URL} className="rounded-[11px] px-4 py-2.5 text-[13px] font-medium text-[#595954] transition-colors hover:bg-black/[0.04] hover:text-[#151716]">Sign in</a>
-          <a href={SIGNUP_URL} className="group inline-flex h-10 items-center gap-2.5 rounded-[11px] bg-[#151716] px-4 text-[13px] font-medium text-white shadow-[0_10px_25px_-14px_rgba(0,0,0,.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#292b29] active:translate-y-0">Start rendering <span className="transition-transform duration-200 group-hover:translate-x-0.5"><ArrowIcon /></span></a>
+          {!signedIn && <a href={LOGIN_URL} className="rounded-[11px] px-4 py-2.5 text-[13px] font-medium text-[#595954] transition-colors hover:bg-black/[0.04] hover:text-[#151716]">Sign in</a>}
+          <a href={startHref} className="group inline-flex h-10 items-center gap-2.5 rounded-[11px] bg-[#151716] px-4 text-[13px] font-medium text-white shadow-[0_10px_25px_-14px_rgba(0,0,0,.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#292b29] active:translate-y-0">Start rendering <span className="transition-transform duration-200 group-hover:translate-x-0.5"><ArrowIcon /></span></a>
         </div>
 
         <button type="button" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-controls="mobile-navigation" aria-label={menuOpen ? "Close menu" : "Open menu"} className="grid h-10 w-10 place-items-center rounded-[12px] border border-black/[0.08] bg-white/70 text-[#151716] transition-colors hover:bg-white lg:hidden"><MenuIcon open={menuOpen} /></button>
@@ -80,9 +85,9 @@ export function Navbar() {
         <nav className="flex flex-1 flex-col justify-center py-5">
           {NAV_LINKS.map((link) => <a key={link.label} href={link.href} onClick={() => setMenuOpen(false)} className="group flex items-baseline justify-between border-b border-white/10 py-4 sm:py-5"><span className="font-display text-[clamp(1.9rem,8vw,3.5rem)] font-medium leading-none tracking-[-0.045em] text-white/90 transition-all duration-200 group-hover:translate-x-2 group-hover:text-white">{link.label}</span><span className="font-mono text-[10px] text-white/35 transition-colors group-hover:text-[#d98a6f]">{link.index}</span></a>)}
         </nav>
-        <div className="grid grid-cols-[1fr_1.45fr] gap-3 pt-5">
-          <a href={LOGIN_URL} className="grid h-12 place-items-center rounded-[13px] border border-white/15 text-sm font-medium text-white/75 transition-colors hover:bg-white/5 hover:text-white">Sign in</a>
-          <a href={SIGNUP_URL} className="group flex h-12 items-center justify-center gap-2.5 rounded-[13px] bg-[#c86442] text-sm font-medium text-white transition-colors hover:bg-[#d27352]">Start rendering <span className="transition-transform group-hover:translate-x-0.5"><ArrowIcon /></span></a>
+        <div className={`grid gap-3 pt-5 ${signedIn ? "grid-cols-1" : "grid-cols-[1fr_1.45fr]"}`}>
+          {!signedIn && <a href={LOGIN_URL} className="grid h-12 place-items-center rounded-[13px] border border-white/15 text-sm font-medium text-white/75 transition-colors hover:bg-white/5 hover:text-white">Sign in</a>}
+          <a href={startHref} className="group flex h-12 items-center justify-center gap-2.5 rounded-[13px] bg-[#c86442] text-sm font-medium text-white transition-colors hover:bg-[#d27352]">Start rendering <span className="transition-transform group-hover:translate-x-0.5"><ArrowIcon /></span></a>
         </div>
       </div>
     </div>
