@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
-import { useApiClient } from "../lib/apiClient";
-import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
-import { reportLimit } from "../lib/useLimitDialog";
-import { queueRender, RenderNotConfirmedError } from "./utils/queueRender";
+import { useAccountStore } from "../lib/useAccountStore";
 import { PROTECTED_IMAGES } from "../lib/protectedImages";
 
 type Format = "jpeg" | "png" | "webp";
 type Layout = "render" | "compare";
-type UpscaleTarget = "4k" | "8k";
 
 const FORMATS: { id: Format; label: string; hint: string; mime: string; ext: string }[] = [
   { id: "jpeg", label: "JPG", hint: "Smallest file, works everywhere", mime: "image/jpeg", ext: "jpg" },
@@ -26,10 +22,6 @@ const SIZE_PRESETS = [
 
 const LOSSY_QUALITY = 0.92;
 const COMPARE_GAP = 16;
-const HIGH_RES_EXPORTS: { target: UpscaleTarget; label: string; edge: number; credits: number; hint: string }[] = [
-  { target: "4k", label: "High-res 4K", edge: 3840, credits: 1, hint: "Sharp presentation and print export" },
-  { target: "8k", label: "Ultra 8K", edge: 7680, credits: 2, hint: "Large-format print export" },
-];
 
 function slug(text: string) {
   return text
@@ -69,19 +61,16 @@ function saveBlob(blob: Blob, filename: string) {
 }
 
 /**
- * Download options for a render, over a blurred studio. The AI returns one fixed size per
- * render. Original exports preserve the model output, while high-resolution choices queue
- * a separate AI enhancement job before it is downloaded.
+ * Download options for a render, over a blurred studio. Original is the render as delivered:
+ * its 4K or 8K copy when it was rendered at that resolution, else the model's own output.
+ * Upscaling happens before rendering (or from the results card), never here.
  */
 export function DownloadDialog() {
-  const apiClient = useApiClient();
   const jobId = useDownloadDialogStore((state) => state.jobId);
   const close = useDownloadDialogStore((state) => state.close);
   const job = useRenderJobsStore((state) => state.jobs.find((item) => item.id === jobId) ?? null);
-  const imageUrl = job?.resultImageUrl ?? job?.sourceImageUrl ?? null;
-  const canUpscale = job?.status === "succeeded" && Boolean(job.resultImageUrl);
-  const addJob = useRenderJobsStore((state) => state.addJob);
-  const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
+  const highRes = job?.settings?.highRes;
+  const imageUrl = highRes?.imageUrl ?? job?.resultImageUrl ?? job?.sourceImageUrl ?? null;
   const me = useAccountStore((state) => state.me);
   // Free-plan model output reaches the browser watermarked, so every download carries it too.
   const watermarked = me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
@@ -94,7 +83,7 @@ export function DownloadDialog() {
   const [layout, setLayout] = useState<Layout>("render");
   const [name, setName] = useState("");
   const [estimate, setEstimate] = useState<number | null>(null);
-  const [busy, setBusy] = useState<"download" | "copy" | UpscaleTarget | null>(null);
+  const [busy, setBusy] = useState<"download" | "copy" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const downloadRef = useRef<HTMLButtonElement>(null);
 
@@ -108,7 +97,13 @@ export function DownloadDialog() {
     setEdge(null);
     setLayout("render");
     setNotice(null);
-    setName(slug(["renvia", job.viewLabel ?? "render", job.settings?.edit ? "edit" : null, job.createdAt.slice(0, 10)].filter(Boolean).join(" ")));
+    setName(
+      slug(
+        ["renvia", job.viewLabel ?? "render", job.settings?.edit ? "edit" : null, highRes?.imageUrl ? highRes.target : null, job.createdAt.slice(0, 10)]
+          .filter(Boolean)
+          .join(" "),
+      ),
+    );
     loadBitmap(imageUrl)
       .then((result) => !cancelled && setRender(result))
       .catch(() => !cancelled && setLoadError(true));
@@ -249,30 +244,6 @@ export function DownloadDialog() {
     }
   };
 
-  const handleUpscale = async (target: UpscaleTarget) => {
-    if (!job || !original) return;
-    setBusy(target);
-    setNotice(null);
-    try {
-      const { job: upscale } = await queueRender((body) => apiClient.upscaleRender(job.id, body), { target }, {
-        slot: `export:${job.id}`,
-        onSlow: () => setNotice("Renvia is responding slowly — checking whether your export started…"),
-      });
-      addJob(upscale);
-      setActiveJob(upscale.id);
-      void refreshAccount(apiClient.getMe);
-      close();
-    } catch (error) {
-      if (error instanceof RenderNotConfirmedError) {
-        setNotice("Renvia didn't confirm the export in time. Check the results panel before trying again — trying again won't charge twice.");
-        return;
-      }
-      if (!reportLimit(error)) setNotice("Couldn't queue the high-resolution export. Please try again.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <div className="dl-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}>
       <div className="dl-dialog" role="dialog" aria-modal="true" aria-labelledby="dl-title">
@@ -358,34 +329,16 @@ export function DownloadDialog() {
                   })}
                 </div>
                 <small className="dl-hint">
-                  Original preserves the AI result exactly at {original ? `${original.width} × ${original.height}` : "its native size"}.
+                  {highRes?.imageUrl
+                    ? `Original is the ${highRes.target.toUpperCase()} AI upscale of this render, at ${original ? `${original.width} × ${original.height}` : "full size"}.`
+                    : `Original preserves the AI result exactly at ${original ? `${original.width} × ${original.height}` : "its native size"}.`}
                 </small>
+                {highRes?.error && (
+                  <small className="dl-hint">
+                    The {highRes.target.toUpperCase()} upscale didn't work, so this is the standard render and those credits were refunded. You can upscale it from its card in Renders.
+                  </small>
+                )}
               </section>
-
-              {original && (
-                <section>
-                  <p className="dl-label">AI high-resolution export</p>
-                  <div className="dl-sizes dl-upscale-sizes" role="group" aria-label="AI high-resolution export">
-                    {HIGH_RES_EXPORTS.map((option) => {
-                      const isAlreadyLarge = Math.max(original.width, original.height) >= option.edge;
-                      const chargedCredits = option.credits * (me?.creditsPerImage ?? 1);
-                      return (
-                        <button
-                          key={option.target}
-                          type="button"
-                          disabled={!canUpscale || isAlreadyLarge || busy !== null}
-                          onClick={() => void handleUpscale(option.target)}
-                        >
-                          <strong>{busy === option.target ? "Preparing…" : option.label}</strong>
-                          <span>Up to {option.edge.toLocaleString()} px</span>
-                          <small>{!canUpscale ? "Available when the render finishes" : isAlreadyLarge ? "Already this size" : `${option.hint} · ${chargedCredits} ${chargedCredits === 1 ? "credit" : "credits"}`}</small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <small className="dl-hint">AI-enhanced export preserves the architecture while restoring detail. It opens in your renders when ready.</small>
-                </section>
-              )}
 
               <section>
                 <p className="dl-label">Layout</p>

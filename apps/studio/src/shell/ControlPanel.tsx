@@ -1,6 +1,7 @@
 import { ActiveElevationCard } from "./panel/ActiveElevationCard";
 import { StylePicker } from "./panel/StylePicker";
 import { AspectRatioPicker } from "./panel/AspectRatioPicker";
+import { OutputResolutionPicker } from "./panel/OutputResolutionPicker";
 import { RenderEditTabs } from "./panel/RenderEditTabs";
 import { RenderTabBody } from "./panel/RenderTabBody";
 import { EditTabBody } from "./panel/EditTabBody";
@@ -51,6 +52,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
               <StylePicker value={style} onChange={setStyle} />
               <AspectRatioPicker value={aspectRatio} onChange={setAspectRatio} />
             </div>
+            <OutputResolutionPicker />
             <RenderTabBody prompt={prompt} onPromptChange={setPrompt} onMoveToEdit={movePromptToEdit} />
           </>
         ) : (

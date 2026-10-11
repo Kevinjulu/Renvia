@@ -7,11 +7,15 @@ import {
   type FidelityMode,
   type ProtectedGeometryFeature,
   type RenderGenerationSettings,
+  type UpscaleTarget,
 } from "@renvia/types";
 import { readStudioPreferences } from "../../lib/studioPreferences";
 
 /** Where an edit lands: the whole render, or only the area selected on it. */
 export type EditScope = "whole" | "selection";
+
+/** Standard is the model's own size; 4K and 8K add an AI upscale to the same render job. */
+export type OutputResolution = "standard" | UpscaleTarget;
 
 export const STYLE_INFLUENCE_LABELS = ["Minimal", "Balanced", "Strong", "Maximum"] as const;
 
@@ -28,6 +32,8 @@ interface GenerationSettingsState {
   protectedGeometry: ProtectedGeometryFeature[];
   geometryReviewedAt: string | null;
   referenceImageUrls: string[];
+  /** Render tab only; stays as the user left it, like the other render settings. */
+  outputResolution: OutputResolution;
   /**
    * Reproduces (locked) or nudges (same seed, new prompt/strength) a previous render.
    * Null means a fresh random seed — the normal case.
@@ -50,6 +56,7 @@ interface GenerationSettingsState {
   confirmGeometryReview: () => void;
   setReferenceImageUrls: (urls: string[]) => void;
   setSeed: (seed: number | null) => void;
+  setOutputResolution: (value: OutputResolution) => void;
   setEditMethod: (method: EditMethod) => void;
   setEditReferenceUrl: (url: string | null) => void;
   setEditScope: (scope: EditScope) => void;
@@ -84,6 +91,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   protectedGeometry: ["silhouette", "roof", "openings", "massing", "camera"],
   geometryReviewedAt: null,
   referenceImageUrls: [],
+  outputResolution: "standard",
   seed: null,
   editMethod: "prompt",
   editReferenceUrl: null,
@@ -108,6 +116,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       preserveStructure: referenceImageUrls.length > 0 ? true : state.preserveStructure,
     })),
   setSeed: (seed) => set({ seed }),
+  setOutputResolution: (outputResolution) => set({ outputResolution }),
   setEditMethod: (editMethod) => set({ editMethod }),
   setEditReferenceUrl: (editReferenceUrl) => set({ editReferenceUrl }),
   setEditScope: (editScope) => set({ editScope }),
@@ -143,6 +152,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
         protectedGeometry: settings?.fidelity?.protectedFeatures ?? state.protectedGeometry,
         geometryReviewedAt: settings?.fidelity?.reviewedAt ?? null,
         referenceImageUrls: settings?.referenceImageUrls ?? [],
+        outputResolution: settings?.highRes?.target ?? "standard",
       };
     }),
 }));

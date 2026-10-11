@@ -89,6 +89,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const geometryReviewedAt = useGenerationSettingsStore((state) => state.geometryReviewedAt);
   const referenceImageUrls = useGenerationSettingsStore((state) => state.referenceImageUrls);
   const seed = useGenerationSettingsStore((state) => state.seed);
+  const outputResolution = useGenerationSettingsStore((state) => state.outputResolution);
   const addJob = useRenderJobsStore((state) => state.addJob);
   const renderStrokes = useRenderEditStore((state) => state.strokes);
   const failedJobCount = useRenderJobsStore((state) => state.jobs.filter((job) => job.status === "failed").length);
@@ -129,6 +130,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const draft = useEditDraft();
   const editRender = draft.render;
 
+  // 4K and 8K add an upscale pass to every render this Generate makes (render tab only).
+  const highRes = outputResolution === "standard" ? undefined : { target: outputResolution };
   const remainingUsd = budget ? Math.max(0, budget.budgetUsd - budget.spentUsd) : 0;
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
@@ -138,13 +141,16 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     : {
         referenceImageUrls,
         fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
+        highRes,
       };
   const route = renderRouteFor(costSettings);
   // A two-pass edit's environment pass runs on the single-image edit model.
-  const estimateUsd = budget ? imageCount * budget.pricing[route] + (isEdit && draft.passes > 1 ? budget.pricing.edit : 0) : 0;
+  const upscaleUsd = budget && !isEdit && highRes ? budget.pricing.upscale * (highRes.target === "8k" ? 2 : 1) : 0;
+  const estimateUsd = budget ? imageCount * (budget.pricing[route] + upscaleUsd) + (isEdit && draft.passes > 1 ? budget.pricing.edit : 0) : 0;
   const isOverBudget = budget !== null && budget.mode !== "mock" && estimateUsd > remainingUsd;
   const creditsPerImage = me?.creditsPerImage ?? 1;
-  const creditsNeeded = imageCount * baseCreditCostForRender(costSettings) * creditsPerImage;
+  const creditsPerRender = baseCreditCostForRender(costSettings) * creditsPerImage;
+  const creditsNeeded = imageCount * creditsPerRender;
   const creditBalance = me?.creditBalance ?? 0;
   const isOutOfCredits = me !== null && !isAdmin && creditsNeeded > creditBalance;
   const isDisabled = me?.disabled ?? false;
@@ -199,6 +205,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         ? { mode: fidelityMode, protectedFeatures: protectedGeometry, ...(geometryReviewedAt ? { reviewedAt: geometryReviewedAt } : {}) }
         : undefined,
       seed: seed ?? undefined,
+      highRes,
     };
     try {
       // A locked seed reproduces the same image for every view/variation it's applied to —
@@ -320,7 +327,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     }
   };
 
-  const scope = isEdit ? (draft.passes > 1 ? "2 steps" : draft.hasArea ? "Selected area" : "1 edit") : plural(imageCount, "image");
+  const scope = isEdit
+    ? draft.passes > 1 ? "2 steps" : draft.hasArea ? "Selected area" : "1 edit"
+    : `${plural(imageCount, "image")}${highRes ? ` at ${highRes.target.toUpperCase()}` : ""}`;
+  // Several images multiply the cost, so say what each one costs.
+  const creditsText = `${plural(creditsNeeded, "credit")}${!isEdit && imageCount > 1 ? ` (${creditsPerRender} each)` : ""}`;
   const costLine = (() => {
     if (!hasTarget || !me) return null;
     if (isMaintenance) {
@@ -332,7 +343,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       if (budget.mode === "mock") return `Admin · mock mode, ${scope.toLowerCase()} at no cost`;
       return `Admin · ${scope} ≈ ${formatUsd(estimateUsd)} · ${formatUsd(remainingUsd)} of budget left`;
     }
-    return `${scope} · ${plural(creditsNeeded, "credit")} · ${plural(creditBalance, "credit")} left`;
+    return `${scope} · ${creditsText} · ${plural(creditBalance, "credit")} left`;
   })();
   const costIsBlocking = isOverBudget || isOutOfCredits || isMaintenance;
   // Nudge before they run out, at the threshold the operator set.

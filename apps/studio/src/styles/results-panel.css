@@ -73,6 +73,9 @@
 .rp-btn.is-primary { height: 40px; border-color: var(--rp-ink); background: var(--rp-ink); color: #fff; font-size: 13px; box-shadow: 0 5px 14px rgba(20, 24, 32, .14); }
 .rp-btn.is-primary:hover:not(:disabled) { border-color: #2b2e33; background: #2b2e33; }
 .rp-btn:disabled { opacity: .4; cursor: not-allowed; }
+.rp-upscale { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.rp-upscale p { margin: 0; color: #6b7280; font-size: 11.5px; line-height: 1.4; }
+.rp-upscale > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 /* Sections */
 .rp-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }

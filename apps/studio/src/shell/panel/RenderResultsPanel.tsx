@@ -19,6 +19,11 @@ import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
 import { reportClientError } from "../../components/AppErrorHandling";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
+import { upscaleCreditCost, type UpscaleTarget } from "@renvia/types";
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
 
 function timeAgo(iso: string, now: number) {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
@@ -84,6 +89,8 @@ export function RenderResultsPanel() {
   const [isPromoting, setIsPromoting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [upscaling, setUpscaling] = useState<UpscaleTarget | null>(null);
+  const creditsPerImage = useAccountStore((state) => state.me?.creditsPerImage ?? 1);
   const [copied, setCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [starredOnly, setStarredOnly] = useState(false);
@@ -188,6 +195,25 @@ export function RenderResultsPanel() {
     }
   };
 
+  // Renders made at Standard can still be upscaled; the 4K/8K copy arrives as its own job.
+  const handleUpscale = async (target: UpscaleTarget) => {
+    if (!activeJob || upscaling) return;
+    setUpscaling(target);
+    setActionError(null);
+    try {
+      const { job } = await queueRender((body) => apiClient.upscaleRender(activeJob.id, body), { target }, { slot: `export:${activeJob.id}` });
+      addJob(job);
+      setActiveJob(job.id);
+      void refreshAccount(apiClient.getMe);
+    } catch (error) {
+      if (error instanceof RenderNotConfirmedError) {
+        setActionError("Renvia didn't confirm the upscale in time. Check the list before trying again — trying again won't charge twice.");
+      } else if (!reportLimit(error)) setActionError("Couldn't start the upscale. Try again.");
+    } finally {
+      setUpscaling(null);
+    }
+  };
+
   // Keeping a look pins this render's seed for the next one; choosing it again lets go.
   const handleKeepLook = () => {
     if (activeJob?.seed == null) return;
@@ -255,6 +281,9 @@ export function RenderResultsPanel() {
     ? jobs.find((item) => item.status === "succeeded" && item.resultImageUrl === job.sourceImageUrl)
     : undefined;
   const references = job.settings?.referenceImageUrls ?? [];
+  const highRes = job.settings?.highRes;
+  // Upscaling makes sense for a finished render that has no high-resolution copy yet.
+  const canUpscale = succeeded && !job.settings?.upscale && !highRes?.imageUrl;
   const tags = [
     job.settings?.upscale
       ? `${job.settings.upscale.target.toUpperCase()} export`
@@ -265,6 +294,7 @@ export function RenderResultsPanel() {
       : job.settings?.sourceType === "drawing"
         ? "From drawing"
         : "From photo",
+    highRes?.imageUrl ? highRes.target.toUpperCase() : null,
     job.style,
     formatAspectRatio(job.aspectRatio),
   ].filter((tag): tag is string => Boolean(tag));
@@ -357,7 +387,16 @@ export function RenderResultsPanel() {
           )}
           {inFlight && (
             <figcaption className="rp-progress">
-              <JobProgress job={job} label={job.status === "pending" ? "Queued" : job.settings?.upscale ? "Enhancing" : "Rendering"} />
+              <JobProgress job={job} label={
+                  job.status === "pending"
+                    ? "Queued"
+                    : job.settings?.upscale
+                      ? "Enhancing"
+                      : highRes?.baseImageUrl
+                        ? `Upscaling to ${highRes.target.toUpperCase()}`
+                        : "Rendering"
+                }
+              />
               <small key={fact}>{fact}</small>
               <button type="button" className="rp-progress-cancel" disabled={isCancelling} onClick={() => void handleCancel()}>
                 {isCancelling ? "Cancelling…" : "Cancel"}
@@ -423,6 +462,25 @@ export function RenderResultsPanel() {
               {isPromoting ? "Setting…" : "Set as base"}
             </button>
           </div>
+          {canUpscale && (
+            <div className="rp-upscale">
+              <p>
+                {highRes?.error
+                  ? `The ${highRes.target.toUpperCase()} upscale didn't work and its credits were refunded. Try again:`
+                  : "Need it larger? Upscale this render:"}
+              </p>
+              <div>
+                {(["4k", "8k"] as const).map((target) => {
+                  const credits = upscaleCreditCost(target) * creditsPerImage;
+                  return (
+                    <button key={target} type="button" className="rp-btn" disabled={upscaling !== null} onClick={() => void handleUpscale(target)}>
+                      {upscaling === target ? "Starting…" : `${target.toUpperCase()} · ${plural(credits, "credit")}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <section className="rp-prompt">
