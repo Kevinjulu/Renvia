@@ -13,6 +13,7 @@ import {
   putObject,
   renderIdForKey,
   type AssetViewer,
+  watermarkedKeyFor,
 } from "./storage.js";
 
 /**
@@ -118,6 +119,17 @@ export async function watermarkImage(bytes: Uint8Array, contentType: string): Pr
   return new Uint8Array(await encoded.toBuffer());
 }
 
+// Bump when the overlay changes, so copies made with an earlier design are remade on next open.
+const WATERMARK_VERSION = 2;
+
+/** Where the copy behind a watermarked/ link is stored; links stay the same across versions. */
+const storedCopyKey = (key: string) => `watermarked-v${WATERMARK_VERSION}/${originalKeyFor(key)}`;
+
+/** Every stored watermarked copy of a model-output key, current and from earlier designs. */
+export function watermarkedCopyKeys(key: string): string[] {
+  return [watermarkedKeyFor(key), storedCopyKey(key)];
+}
+
 /**
  * The watermarked copy for a watermarked/ key, made from its original the first time it is
  * asked for and stored beside it. Null when the key isn't a watermarked render output or the
@@ -125,14 +137,14 @@ export async function watermarkImage(bytes: Uint8Array, contentType: string): Pr
  */
 export async function watermarkedObject(env: Env, key: string): Promise<{ body: ReadableStream; contentType: string } | null> {
   if (!isWatermarkedKey(key) || !isRenderOutputKey(originalKeyFor(key))) return null;
-  const existing = await getObject(env, key);
+  const existing = await getObject(env, storedCopyKey(key));
   if (existing) return existing;
   const original = await getObject(env, originalKeyFor(key));
   if (!original) return null;
   const bytes = await watermarkImage(new Uint8Array(await new Response(original.body).arrayBuffer()), original.contentType);
   const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   // Deterministic key: two first requests racing both store the same bytes.
-  await putObject(env, key, body, original.contentType);
+  await putObject(env, storedCopyKey(key), body, original.contentType);
   return { body: new Blob([body], { type: original.contentType }).stream(), contentType: original.contentType };
 }
 

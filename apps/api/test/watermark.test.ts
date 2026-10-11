@@ -95,7 +95,7 @@ describe("serving watermarked copies", () => {
     const served = new Uint8Array(await res.arrayBuffer());
     expect(Buffer.compare(Buffer.from(served), Buffer.from(objects.get(fixture.resultKey)!))).not.toBe(0);
     expect(await sharp(served).metadata()).toMatchObject({ width: 320, height: 200 });
-    expect(objects.has(`watermarked/${fixture.resultKey}`)).toBe(true);
+    expect(objects.has(`watermarked-v2/${fixture.resultKey}`)).toBe(true);
   });
 
   it("refuses unsigned links and watermarked keys that aren't model output", async () => {
