@@ -149,6 +149,25 @@ next, or from one paid renewal to the next for a PayPal subscription.
   purchases. `GET /me/credits` returns a user's balance and history.
 - Users with the `admin` role are not charged for renders.
 
+## Watermarks
+
+Model output (renders, edit passes, 4K/8K exports, all under `renders/` in storage)
+reaches free-plan users only as a watermarked copy, in the Studio and in downloads.
+Paid plans, admin-granted plans included, see it clean.
+
+- The API decides per viewer when it issues links (`presentForViewer`): a free-plan
+  user gets a signed link to `watermarked/renders/...`, never to the original. The
+  plan is read at that moment, so upgrading unlocks earlier renders straight away.
+- The watermarked copy is made from the original the first time it is opened
+  (`apps/api/src/lib/watermark.ts`) and stored beside it. Admin tools always see
+  originals.
+- Inputs made from a render (edits, "set as base", references, auto-select) are
+  swapped back to the clean original on the server, and only the user's own renders
+  are accepted (`resolveImageInput`). Another account's render is refused (403).
+- Signed links can't be revoked. Clean originals are linked for 12 hours (other files
+  for 7 days), so after a downgrade an already-issued clean link works for at most
+  12 hours.
+
 ## Spend control
 
 Rendering costs real money, so it is gated three ways:

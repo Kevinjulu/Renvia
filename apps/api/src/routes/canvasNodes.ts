@@ -7,7 +7,8 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
-import { presentUploadUrl } from "../lib/storage.js";
+import { presentForViewer } from "../lib/presentAsset.js";
+
 
 export const canvasNodes = new Hono<AppContext>();
 
@@ -28,7 +29,7 @@ async function presentNode(c: Context<AppContext>, node: typeof schema.canvasNod
   const origin = new URL(c.req.url).origin;
   const data = { ...(node.data as Record<string, unknown>) };
   for (const field of ["url", "imageUrl", "sourceImageUrl", "resultImageUrl", "beforeUrl", "afterUrl"]) {
-    if (typeof data[field] === "string") data[field] = await presentUploadUrl(c.env, origin, data[field]);
+    if (typeof data[field] === "string") data[field] = await presentForViewer(c, origin, data[field]);
   }
   return { ...node, data };
 }

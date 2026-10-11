@@ -26,9 +26,11 @@ import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/set
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { modelFor } from "../lib/models.js";
 import { detectSourceType } from "../lib/sourceKind.js";
-import { ownUploadKey, presentUploadUrl } from "../lib/storage.js";
+import { ownUploadKey } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
 import { ensureEntitlement } from "../lib/billing.js";
+import { presentForViewer } from "../lib/presentAsset.js";
+import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
 
 export const renders = new Hono<AppContext>();
 
@@ -109,21 +111,21 @@ async function presentRender(c: Context<AppContext>, job: typeof schema.renders.
     ? {
         ...job.settings,
         referenceImageUrls: job.settings.referenceImageUrls
-          ? await Promise.all(job.settings.referenceImageUrls.map((url) => presentUploadUrl(c.env, origin, url)))
+          ? await Promise.all(job.settings.referenceImageUrls.map((url) => presentForViewer(c, origin, url)))
           : undefined,
         edit: job.settings.edit
           ? {
               ...job.settings.edit,
-              maskImageUrl: (await presentUploadUrl(c.env, origin, job.settings.edit.maskImageUrl ?? null)) ?? undefined,
-              intermediateImageUrl: (await presentUploadUrl(c.env, origin, job.settings.edit.intermediateImageUrl ?? null)) ?? undefined,
+              maskImageUrl: (await presentForViewer(c, origin, job.settings.edit.maskImageUrl ?? null)) ?? undefined,
+              intermediateImageUrl: (await presentForViewer(c, origin, job.settings.edit.intermediateImageUrl ?? null)) ?? undefined,
             }
           : undefined,
       }
     : job.settings;
   return {
     ...job,
-    sourceImageUrl: await presentUploadUrl(c.env, origin, job.sourceImageUrl),
-    resultImageUrl: await presentUploadUrl(c.env, origin, job.resultImageUrl),
+    sourceImageUrl: await presentForViewer(c, origin, job.sourceImageUrl),
+    resultImageUrl: await presentForViewer(c, origin, job.resultImageUrl),
     settings,
   };
 }
@@ -190,6 +192,17 @@ renders.post("/", async (c) => {
     return c.json({ code: "invalid_edit", error: editProblem }, 422);
   }
   const origin = new URL(c.req.url).origin;
+  // A free-plan user's renders reach the Studio watermarked; edits, "set as base" and
+  // references made from them must use the clean original, and only from their own renders.
+  try {
+    body.sourceImageUrl = await resolveImageInput(db, user.id, body.sourceImageUrl, origin);
+    if (settings.referenceImageUrls) {
+      settings.referenceImageUrls = await Promise.all(settings.referenceImageUrls.map((url) => resolveImageInput(db, user.id, url, origin)));
+    }
+  } catch (error) {
+    if (error instanceof ForeignRenderError) return c.json({ error: error.message, code: "foreign_render" }, 403);
+    throw error;
+  }
   const maskImageUrl = settings.edit?.maskImageUrl;
   // The masked area is composited back from our own copies of the source and mask.
   if (maskImageUrl && (!ownUploadKey(body.sourceImageUrl, origin) || !ownUploadKey(maskImageUrl, origin))) {

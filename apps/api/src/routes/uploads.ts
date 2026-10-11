@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getObject, hasValidSignature, objectKeyFor, putObject, signedUploadUrl } from "../lib/storage.js";
+import { getObject, hasValidSignature, isWatermarkedKey, objectKeyFor, putObject, signedUploadUrl } from "../lib/storage.js";
+import { watermarkedObject } from "../lib/watermark.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput } from "../lib/limits.js";
@@ -47,7 +48,8 @@ uploads.get("/:key{.+}", async (c) => {
   if (!(await hasValidSignature(c.env, key, new URL(c.req.url)))) {
     return c.json({ error: "Unauthorized" }, 401);
   }
-  const object = await getObject(c.env, key);
+  // A watermarked copy is made from its original the first time anyone opens it.
+  const object = isWatermarkedKey(key) ? await watermarkedObject(c.env, key) : await getObject(c.env, key);
 
   if (!object) {
     return c.json({ error: "Not found" }, 404);

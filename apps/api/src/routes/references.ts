@@ -6,8 +6,9 @@ import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { getSettings } from "../lib/settings.js";
-import { objectKeyFor, presentUploadUrl, publicUploadUrl, putObject } from "../lib/storage.js";
+import { objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
+import { presentForViewer } from "../lib/presentAsset.js";
 
 export const references = new Hono<AppContext>();
 
@@ -30,7 +31,7 @@ references.get("/", async (c) => {
     .orderBy(desc(schema.referenceImages.createdAt));
 
   const origin = new URL(c.req.url).origin;
-  return c.json({ references: await Promise.all(rows.map(async (row) => ({ ...row, url: await presentUploadUrl(c.env, origin, row.url) }))) });
+  return c.json({ references: await Promise.all(rows.map(async (row) => ({ ...row, url: await presentForViewer(c, origin, row.url) }))) });
 });
 
 references.post("/", async (c) => {
@@ -60,7 +61,7 @@ references.post("/", async (c) => {
     .values({ ownerId, url, source: body.source })
     .returning();
 
-  return c.json({ ...created, url: await presentUploadUrl(c.env, new URL(c.req.url).origin, created!.url) }, 201);
+  return c.json({ ...created, url: await presentForViewer(c, new URL(c.req.url).origin, created!.url) }, 201);
 });
 
 references.delete("/:id", async (c) => {

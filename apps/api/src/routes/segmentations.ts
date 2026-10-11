@@ -11,6 +11,7 @@ import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInpu
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
 import { ensureEntitlement } from "../lib/billing.js";
+import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
 
 export const segmentations = new Hono<AppContext>();
 
@@ -46,6 +47,13 @@ segmentations.post("/", async (c) => {
   }
 
   const origin = new URL(c.req.url).origin;
+  // Selecting on a free-plan render: find objects in the clean original, not the watermark.
+  try {
+    body.imageUrl = await resolveImageInput(db, user.id, body.imageUrl, origin);
+  } catch (error) {
+    if (error instanceof ForeignRenderError) return c.json({ error: error.message, code: "foreign_render" }, 403);
+    throw error;
+  }
   if (!ownUploadKey(body.imageUrl, origin)) {
     return c.json({ error: "Selection needs an uploaded image", code: "invalid_image" }, 400);
   }

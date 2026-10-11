@@ -33,10 +33,45 @@ export function renderIntermediateKeyFor(renderId: string, contentType: string):
   return `renders/${renderId}-selection.${requireExtension(contentType)}`;
 }
 
+/**
+ * Model output: renders, edit passes and high-resolution exports. Free-plan viewers only ever
+ * get links to its watermarked copy, stored beside it under WATERMARKED_PREFIX.
+ */
+const RENDER_PREFIX = "renders/";
+const WATERMARKED_PREFIX = "watermarked/";
+
+export function isRenderOutputKey(key: string): boolean {
+  return key.startsWith(RENDER_PREFIX);
+}
+
+export function watermarkedKeyFor(key: string): string {
+  return `${WATERMARKED_PREFIX}${key}`;
+}
+
+export function isWatermarkedKey(key: string): boolean {
+  return key.startsWith(WATERMARKED_PREFIX);
+}
+
+/** The clean object behind a watermarked copy's key; any other key is returned unchanged. */
+export function originalKeyFor(key: string): string {
+  return isWatermarkedKey(key) ? key.slice(WATERMARKED_PREFIX.length) : key;
+}
+
+/** The render a model-output key belongs to (renders/<id>.png, renders/<id>-selection.png). */
+export function renderIdForKey(key: string): string | null {
+  const match = /^renders\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/.exec(originalKeyFor(key));
+  return match?.[1] ?? null;
+}
+
 // The whole app is mounted under "/api" for Vercel's api/ directory convention
 // (see apps/api/api/[...route].ts), so served objects live under this prefix.
 const UPLOADS_PATH = "/api/uploads/";
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
+/**
+ * Clean render originals get a much shorter link. A signed link can't be revoked, so after a
+ * downgrade an already-issued clean link keeps working until it expires: at most this long.
+ */
+const ORIGINAL_RENDER_TTL_SECONDS = 60 * 60 * 12;
 
 /**
  * Keep media reachable if an older deployment has not yet been given the
@@ -82,7 +117,8 @@ async function signatureFor(secret: string, key: string, expires: number): Promi
 
 /** A browser-safe link that expires, so the storage bucket is not an anonymous public CDN. */
 export async function signedUploadUrl(env: Env, origin: string, key: string): Promise<string> {
-  const expires = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS;
+  const ttl = isRenderOutputKey(key) ? ORIGINAL_RENDER_TTL_SECONDS : SIGNED_URL_TTL_SECONDS;
+  const expires = Math.floor(Date.now() / 1000) + ttl;
   const signature = base64Url(await signatureFor(storageSigningSecret(env), key, expires));
   const url = new URL(publicUploadUrl(origin, key));
   url.searchParams.set("expires", String(expires));
@@ -90,14 +126,25 @@ export async function signedUploadUrl(env: Env, origin: string, key: string): Pr
   return url.toString();
 }
 
-/** Re-sign one of our persisted URLs; external links are returned unchanged. */
-export function presentUploadUrl(env: Env, origin: string, url: string): Promise<string>;
-export function presentUploadUrl(env: Env, origin: string, url: null): Promise<null>;
-export function presentUploadUrl(env: Env, origin: string, url: string | null): Promise<string | null>;
-export async function presentUploadUrl(env: Env, origin: string, url: string | null): Promise<string | null> {
+/** Who a link is for. Free-plan viewers get watermarked model output; staff tools omit it. */
+export interface AssetViewer {
+  watermark: boolean;
+}
+
+/**
+ * Re-sign one of our persisted URLs for `viewer`; external links are returned unchanged.
+ * Model output is linked clean, or as its watermarked copy when the viewer needs one,
+ * whichever form the stored URL was in. Without a viewer (staff tools) it is always clean.
+ */
+export function presentUploadUrl(env: Env, origin: string, url: string, viewer?: AssetViewer): Promise<string>;
+export function presentUploadUrl(env: Env, origin: string, url: null, viewer?: AssetViewer): Promise<null>;
+export function presentUploadUrl(env: Env, origin: string, url: string | null, viewer?: AssetViewer): Promise<string | null>;
+export async function presentUploadUrl(env: Env, origin: string, url: string | null, viewer?: AssetViewer): Promise<string | null> {
   if (!url) return null;
-  const key = ownUploadKey(url, origin);
-  return key ? signedUploadUrl(env, origin, key) : url;
+  const stored = ownUploadKey(url, origin);
+  if (!stored) return url;
+  const key = originalKeyFor(stored);
+  return signedUploadUrl(env, origin, viewer?.watermark && isRenderOutputKey(key) ? watermarkedKeyFor(key) : key);
 }
 
 export async function hasValidSignature(env: Env, key: string, url: URL): Promise<boolean> {

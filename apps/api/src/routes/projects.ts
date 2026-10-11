@@ -8,8 +8,9 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput, resolveLimits } from "../lib/limits.js";
-import { deleteObject, ownUploadKey, presentUploadUrl } from "../lib/storage.js";
+import { deleteObject, ownUploadKey, watermarkedKeyFor } from "../lib/storage.js";
 import { ensureEntitlement } from "../lib/billing.js";
+import { presentForViewer } from "../lib/presentAsset.js";
 
 export const projects = new Hono<AppContext>();
 
@@ -48,7 +49,7 @@ projects.post("/", async (c) => {
     .values({ ownerId: user.id, name: body.name })
     .returning();
 
-  return c.json({ ...created, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, created!.thumbnailUrl) }, 201);
+  return c.json({ ...created, thumbnailUrl: await presentForViewer(c, new URL(c.req.url).origin, created!.thumbnailUrl) }, 201);
 });
 
 projects.get("/", async (c) => {
@@ -63,7 +64,7 @@ projects.get("/", async (c) => {
     .orderBy(desc(schema.projects.createdAt));
 
   const origin = new URL(c.req.url).origin;
-  return c.json({ projects: await Promise.all(rows.map(async (project) => ({ ...project, thumbnailUrl: await presentUploadUrl(c.env, origin, project.thumbnailUrl) }))) });
+  return c.json({ projects: await Promise.all(rows.map(async (project) => ({ ...project, thumbnailUrl: await presentForViewer(c, origin, project.thumbnailUrl) }))) });
 });
 
 projects.get("/:id", async (c) => {
@@ -78,7 +79,7 @@ projects.get("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  return c.json({ ...project, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, project.thumbnailUrl) });
+  return c.json({ ...project, thumbnailUrl: await presentForViewer(c, new URL(c.req.url).origin, project.thumbnailUrl) });
 });
 
 projects.patch("/:id", async (c) => {
@@ -103,7 +104,7 @@ projects.patch("/:id", async (c) => {
     .where(eq(schema.projects.id, id))
     .returning();
 
-  return c.json({ ...updated, thumbnailUrl: await presentUploadUrl(c.env, new URL(c.req.url).origin, updated!.thumbnailUrl) });
+  return c.json({ ...updated, thumbnailUrl: await presentForViewer(c, new URL(c.req.url).origin, updated!.thumbnailUrl) });
 });
 
 projects.delete("/:id", async (c) => {
@@ -134,7 +135,8 @@ projects.delete("/:id", async (c) => {
   await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id));
   await db.delete(schema.projects).where(eq(schema.projects.id, id));
 
-  await Promise.allSettled(generatedKeys.map((key) => deleteObject(c.env, key)));
+  // Each output's watermarked copy goes with it (deleting one that was never made is a no-op).
+  await Promise.allSettled(generatedKeys.flatMap((key) => [deleteObject(c.env, key), deleteObject(c.env, watermarkedKeyFor(key))]));
 
   return c.json({ id });
 });

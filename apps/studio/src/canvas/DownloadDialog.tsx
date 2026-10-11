@@ -82,6 +82,8 @@ export function DownloadDialog() {
   const addJob = useRenderJobsStore((state) => state.addJob);
   const setActiveJob = useRenderJobsStore((state) => state.setActiveJob);
   const me = useAccountStore((state) => state.me);
+  // Free-plan model output reaches the browser watermarked, so every download carries it too.
+  const watermarked = me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
 
   const [render, setRender] = useState<{ blob: Blob; bitmap: ImageBitmap } | null>(null);
   const [source, setSource] = useState<ImageBitmap | null>(null);
@@ -299,6 +301,11 @@ export function DownloadDialog() {
               </svg>
             </button>
           </header>
+          {watermarked && (
+            <p className="dl-hint dl-watermark-note">
+              Free-plan downloads, including high-resolution exports, carry a Renvia watermark. Paid plans download clean files, and upgrading unlocks your earlier renders too.
+            </p>
+          )}
 
           {loadError ? (
             <p className="dl-error">Couldn't load this image. Check your connection and try again.</p>
