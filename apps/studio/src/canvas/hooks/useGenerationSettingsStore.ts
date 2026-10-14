@@ -127,9 +127,10 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       else (editEnvironment as Record<keyof EditEnvironment, string>)[key] = value;
       return { editEnvironment };
     }),
-  applyRenderSettings: ({ prompt, style, aspectRatio, seed, settings }) =>
+  applyRenderSettings: ({ prompt, style, aspectRatio, settings }) =>
     set((state) => {
-      const shared = { style, aspectRatio: (aspectRatio as AspectRatio) || "auto", seed };
+      // The seed is never restored: with no control to release it, it would pin every later render.
+      const shared = { style, aspectRatio: (aspectRatio as AspectRatio) || "auto", seed: null };
       // Edit jobs restore into the Edit tab's fields and leave the Render tab's alone.
       if (settings?.edit) {
         const editReferenceUrl = settings.referenceImageUrls?.[0] ?? null;

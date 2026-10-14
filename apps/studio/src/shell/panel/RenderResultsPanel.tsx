@@ -85,8 +85,6 @@ export function RenderResultsPanel() {
   const updateJob = useRenderJobsStore((state) => state.updateJob);
   const openDownload = useDownloadDialogStore((state) => state.open);
   const applyRenderSettings = useGenerationSettingsStore((state) => state.applyRenderSettings);
-  const keptSeed = useGenerationSettingsStore((state) => state.seed);
-  const setSeed = useGenerationSettingsStore((state) => state.setSeed);
 
   const [isPromoting, setIsPromoting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -220,12 +218,6 @@ export function RenderResultsPanel() {
     } finally {
       setUpscaling(null);
     }
-  };
-
-  // Keeping a look pins this render's seed for the next one; choosing it again lets go.
-  const handleKeepLook = () => {
-    if (activeJob?.seed == null) return;
-    setSeed(keptSeed === activeJob.seed ? null : activeJob.seed);
   };
 
   const handleSetAsBase = async () => {
@@ -539,18 +531,6 @@ export function RenderResultsPanel() {
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-              {job.seed != null && (
-                <div className="rp-look">
-                  <span>
-                    {keptSeed === job.seed
-                      ? "Your next render keeps this look."
-                      : "Like this one? Keep its look and refine it."}
-                  </span>
-                  <button type="button" onClick={handleKeepLook}>
-                    {keptSeed === job.seed ? "Stop" : "Keep this look"}
-                  </button>
                 </div>
               )}
             </div>
