@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import type { EditMethod } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
-import { KeepLookControl } from "./KeepLookControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { ENVIRONMENT_CONTROLS, environmentLabels } from "./editEnvironmentOptions";
 import { hasSelection, startRenderEdit, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
@@ -74,7 +73,6 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
   const setEnvironment = useGenerationSettingsStore((state) => state.setEditEnvironment);
   const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
   const setEditInfluence = useGenerationSettingsStore((state) => state.setEditInfluence);
-  const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
 
   const isEditingRender = useRenderEditStore((state) => state.targetJobId !== null);
@@ -247,7 +245,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
         </div>
       )}
 
-      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength · ${seed === null ? "Fresh takes" : "Keeping a look"}`}>
+      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength`}>
         <label className="cp-setting is-stacked" data-guide="control.influence">
           <span>
             <strong>Edit strength</strong>
@@ -258,7 +256,6 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
             <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
           </span>
         </label>
-        <KeepLookControl />
       </AdvancedSection>
     </div>
   );

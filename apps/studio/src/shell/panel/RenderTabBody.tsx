@@ -3,7 +3,6 @@ import { suggestedEditPartForPrompt, type ProtectedGeometryFeature, type PromptR
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
-import { KeepLookControl } from "./KeepLookControl";
 import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
 import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
@@ -47,7 +46,6 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
   const setReferenceImageUrls = useGenerationSettingsStore((state) => state.setReferenceImageUrls);
   const referenceCount = referenceImageUrls.length;
   const suggestReference = useNextStepHint() === "reference";
-  const seed = useGenerationSettingsStore((state) => state.seed);
   const me = useAccountStore((state) => state.me);
   const maxPromptChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const maxReferences = me?.limits.maxReferenceImages ?? DEFAULT_MAX_REFERENCES;
@@ -86,7 +84,6 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
   const advancedSummary = [
     `${STYLE_INFLUENCE_LABELS[styleInfluence - 1]} influence`,
     referenceCount > 0 ? "Reference structure lock" : preserveStructure ? "Structure kept" : "Loose structure",
-    seed === null ? "Fresh takes" : "Keeping a look",
   ].join(" · ");
 
   return (
@@ -228,7 +225,6 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
             )}
           </div>
         )}
-        <KeepLookControl />
       </AdvancedSection>
     </div>
   );

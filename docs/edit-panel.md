@@ -23,7 +23,7 @@ From top to bottom:
 6. **What will happen**: the edit in plain words, e.g.
    > 1. "Make the windows match the reference", using the reference, in the selected area.
    > 2. Then, over the whole image: dusk, winter.
-7. **Advanced settings**: Edit strength and Keep the same look, unchanged.
+7. **Advanced settings**: Edit strength, unchanged.
 
 **Apply edit** stays disabled until the edit is complete, with the reason shown beneath it. The cost line reads `2 steps · 2 credits` when the environment pass will run.
 
@@ -156,4 +156,4 @@ In production the `edit` route is FLUX Kontext Pro ($0.04) and the `edit-referen
 
 - The panel has not yet been checked end to end in the running Studio.
 - Reference edits have not been checked in prod mode; the dev engine ignores reference images, so only prod shows their effect.
-- In prod, FLUX 3 Edit is not sent the seed or guidance value, so **Edit strength** and **Keep the same look** have no effect on reference edits.
+- In prod, FLUX 3 Edit is not sent the seed or guidance value, so **Edit strength** has no effect on reference edits.
