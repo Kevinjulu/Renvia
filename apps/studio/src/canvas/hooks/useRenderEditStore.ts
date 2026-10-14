@@ -20,13 +20,14 @@ export type RenderMaskStroke =
 interface RenderEditState {
   /** Render being edited in the full-size viewer; null when edits target the canvas image. */
   targetJobId: string | null;
-  tool: RenderEditTool;
+  /** Null until the person picks a selection tool, so a stray click never marks the render. */
+  tool: RenderEditTool | null;
   /** Brush diameter in screen pixels; converted to image pixels when a stroke is drawn. */
   brushSize: number;
   strokes: RenderMaskStroke[];
   /** Edit job queued from the viewer — shown in Compare once it finishes. */
   awaitingJobId: string | null;
-  setTool: (tool: RenderEditTool) => void;
+  setTool: (tool: RenderEditTool | null) => void;
   setBrushSize: (size: number) => void;
   addStroke: (stroke: RenderMaskStroke) => void;
   undo: () => void;
@@ -37,7 +38,7 @@ interface RenderEditState {
 
 export const useRenderEditStore = create<RenderEditState>((set) => ({
   targetJobId: null,
-  tool: "brush",
+  tool: null,
   brushSize: 36,
   strokes: [],
   awaitingJobId: null,
@@ -49,7 +50,7 @@ export const useRenderEditStore = create<RenderEditState>((set) => ({
   undo: () => set((state) => ({ strokes: state.strokes.slice(0, -1) })),
   clearStrokes: () => set({ strokes: [] }),
   setAwaitingJob: (awaitingJobId) => set({ awaitingJobId }),
-  stopEditing: () => set({ targetJobId: null, strokes: [] }),
+  stopEditing: () => set({ targetJobId: null, strokes: [], tool: null }),
 }));
 
 /** Opens a finished render full-size in edit mode and points the Edit tab at it. */

@@ -125,7 +125,7 @@ function EditToolbar({ onDone, onTextSelect, isSelecting, autoDisabled }: EditTo
             aria-pressed={tool === item.id}
             disabled={item.id === "magic" && autoDisabled !== null}
             title={item.id === "magic" ? (autoDisabled ?? `Auto select — click an object (1 credit) (${item.key})`) : `${item.label} (${item.key})`}
-            onClick={() => setTool(item.id)}
+            onClick={() => setTool(tool === item.id ? null : item.id)}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">{item.icon}</svg>
             <span>{item.label}</span>
@@ -409,7 +409,9 @@ export function RenderPreview() {
                 ? "Click the part you want to change, or type what to select. Each automatic selection costs 1 credit; painting is free."
                 : selected
                 ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
-                : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
+                : tool === null
+                  ? "To change only part of the render, pick a tool above and mark it. Or skip it to edit the whole render. Describe the change in the Edit panel."
+                  : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
           </p>
           {isSelecting && <span className="render-edit-pending">Finding that area…</span>}
         </footer>

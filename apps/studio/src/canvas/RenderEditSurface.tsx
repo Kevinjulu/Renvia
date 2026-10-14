@@ -164,7 +164,7 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   useEffect(() => setPolygon([]), [tool]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.button !== 0 || !box) return;
+    if (event.button !== 0 || !box || !tool) return;
     const point = toImage(event);
     if (tool === "magic") {
       if (!isSelecting) onMagicSelect(point);
@@ -224,7 +224,7 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
           <img src={imageUrl} alt="Render being edited" draggable={false} />
           <canvas
             ref={canvasRef}
-            className={`is-${tool}${isSelecting ? " is-busy" : ""}`}
+            className={`is-${tool ?? "idle"}${isSelecting ? " is-busy" : ""}`}
             style={box}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}

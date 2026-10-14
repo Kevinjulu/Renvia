@@ -93,7 +93,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   referenceImageUrls: [],
   outputResolution: "standard",
   seed: null,
-  editMethod: "prompt",
+  editMethod: "reference-prompt",
   editReferenceUrl: null,
   editScope: "whole",
   editEnvironment: {},
