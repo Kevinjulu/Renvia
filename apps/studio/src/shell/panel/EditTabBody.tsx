@@ -42,13 +42,34 @@ const SUN_ICON = (
 const quoted = (text: string) => `“${text}”`;
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+/** "a", "a and b", "a, b and c". */
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** The selection as tagged, e.g. "the front door and the window"; null when nothing is tagged. */
+function namedSelection(labels: string[]): string | null {
+  return labels.length > 0 ? joinList(labels.map((label) => `the ${label.toLowerCase()}`)) : null;
+}
+
+/** The selected-area badge: "Front door and window selected — only these change". */
+function selectionBadge(labels: string[], areaCount: number): string {
+  const several = areaCount > 1;
+  if (labels.length > 0) return `${capitalize(joinList(labels.map((label) => label.toLowerCase())))} selected — only ${several ? "these change" : "it changes"}`;
+  return several ? `${areaCount} areas selected — only they change` : "Area selected — only it changes";
+}
+
 /** What Apply will do, in plain words, so nobody has to work it out from the controls. */
-function summaryLines(method: EditMethod, prompt: string, hasArea: boolean, environment: string[], label: string | null): string[] {
-  const where = hasArea ? (label ? ` on the ${label.toLowerCase()} only` : " in the selected area") : "";
+function summaryLines(method: EditMethod, prompt: string, hasArea: boolean, environment: string[], labels: string[], areaCount: number): string[] {
+  const named = namedSelection(labels);
+  const several = areaCount > 1;
+  const where = hasArea ? (named ? ` on ${named} only` : several ? " in the selected areas" : " in the selected area") : "";
   const main = (() => {
     if (method === "reference") {
       if (!hasArea) return "The render takes on the reference's materials and colours.";
-      return label ? `The ${label.toLowerCase()} takes on the reference's design.` : "The selected area takes on the reference's design.";
+      const subject = named ? capitalize(named) : several ? "The selected areas" : "The selected area";
+      return `${subject} ${several ? "take" : "takes"} on the reference's design.`;
     }
     if (!prompt) return null;
     return method === "reference-prompt" ? `${quoted(prompt)}, using the reference${where}.` : `${quoted(prompt)}${where}.`;
@@ -106,7 +127,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
 
   const maxChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const environmentPicked = environmentLabels(environment);
-  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked, draft.selectionLabel);
+  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked, draft.selectionLabels, draft.areaCount);
   const showPrompt = method !== "reference";
 
   return (
@@ -198,7 +219,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
           (areaPainted ? (
             <div className="cp-prompt-tag">
               <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2.5h4L10 6.5l-3.5 3.5L2.5 6.5Z" /><circle cx="4.2" cy="4.2" r="0.7" fill="currentColor" stroke="none" /></svg>
-              <span>{draft.selectionLabel ? `${capitalize(draft.selectionLabel)} selected — only it changes` : "Area selected — only it changes"}</span>
+              <span>{selectionBadge(draft.selectionLabels, draft.areaCount)}</span>
               <button type="button" aria-label="Clear the selected area" onClick={clearStrokes}>
                 <svg viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6M8 2 2 8" /></svg>
               </button>

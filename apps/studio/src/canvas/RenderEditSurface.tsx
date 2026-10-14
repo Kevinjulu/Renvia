@@ -6,6 +6,11 @@ import { drawStrokes, useRenderEditStore, type RenderMaskStroke } from "./hooks/
 const SELECTION_COLOUR = "#2F6FED";
 /** Clicking this close (in screen pixels) to a polygon's first point closes it. */
 const CLOSE_DISTANCE = 10;
+/** Pressing this close (in screen pixels) to a finished polygon's point picks it up to move it. */
+const HANDLE_DISTANCE = 8;
+
+/** A point of a finished polygon: which mark, and the index of its x in that mark's points. */
+type VertexRef = { stroke: number; point: number };
 
 type Draft =
   | { kind: "brush" | "eraser"; points: number[] }
@@ -30,6 +35,8 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   const addStroke = useRenderEditStore((state) => state.addStroke);
   const undo = useRenderEditStore((state) => state.undo);
   const setTool = useRenderEditStore((state) => state.setTool);
+  const updateStroke = useRenderEditStore((state) => state.updateStroke);
+  const setImageSize = useRenderEditStore((state) => state.setImageSize);
 
   const areaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,6 +46,8 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   const [draft, setDraft] = useState<Draft>(null);
   const [polygon, setPolygon] = useState<number[]>([]);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [dragVertex, setDragVertex] = useState<VertexRef | null>(null);
+  const [overVertex, setOverVertex] = useState(false);
   const { zoom, transformOrigin, targetRef, onWheel, resetZoom, isZoomed } = useWheelZoom(imageUrl);
 
   useEffect(() => {
@@ -47,8 +56,27 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
     setPolygon([]);
   }, [imageUrl]);
 
+  // Selection areas are worked out in the image's own pixels, so the store needs its size.
+  useEffect(() => setImageSize(natural), [natural, setImageSize]);
+
   /** Image pixels per on-screen pixel, at the current zoom. */
   const scale = box && natural ? natural.width / (box.width * zoom) : 1;
+
+  /** Finished polygons can be reshaped with the Polygon tool while no new one is being drawn. */
+  const editingVertices = tool === "polygon" && polygon.length === 0;
+
+  /** The finished polygon point under an image point, newest polygon first. */
+  const vertexAt = (point: { x: number; y: number }): VertexRef | null => {
+    if (!editingVertices) return null;
+    for (let stroke = strokes.length - 1; stroke >= 0; stroke--) {
+      const mark = strokes[stroke]!;
+      if (mark.kind !== "polygon") continue;
+      for (let index = 0; index < mark.points.length; index += 2) {
+        if (Math.hypot(point.x - mark.points[index]!, point.y - mark.points[index + 1]!) / scale <= HANDLE_DISTANCE) return { stroke, point: index };
+      }
+    }
+    return null;
+  };
 
   const toImage = (event: { clientX: number; clientY: number }) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -117,6 +145,19 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
       }
     }
 
+    // Handles on finished polygons, so it's clear their points can be dragged.
+    if (tool === "polygon" && polygon.length === 0) {
+      for (const mark of strokes) {
+        if (mark.kind !== "polygon") continue;
+        for (let index = 0; index < mark.points.length; index += 2) {
+          context.beginPath();
+          context.arc(mark.points[index]!, mark.points[index + 1]!, 4 * scale, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+        }
+      }
+    }
+
     if (pointer && tool === "magic") {
       context.beginPath();
       context.arc(pointer.x, pointer.y, 7 * scale, 0, Math.PI * 2);
@@ -170,6 +211,12 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
       if (!isSelecting) onMagicSelect(point);
       return;
     }
+    const vertex = vertexAt(point);
+    if (vertex) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDragVertex(vertex);
+      return;
+    }
     if (tool === "polygon") {
       if (polygon.length >= 6) {
         const distance = Math.hypot(point.x - polygon[0]!, point.y - polygon[1]!) / scale;
@@ -190,6 +237,17 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
     if (!box) return;
     const point = toImage(event);
     setPointer(point);
+    if (dragVertex) {
+      const mark = strokes[dragVertex.stroke];
+      if (mark?.kind === "polygon") {
+        const points = [...mark.points];
+        points[dragVertex.point] = Math.min(Math.max(point.x, 0), natural?.width ?? point.x);
+        points[dragVertex.point + 1] = Math.min(Math.max(point.y, 0), natural?.height ?? point.y);
+        updateStroke(dragVertex.stroke, { kind: "polygon", points });
+      }
+      return;
+    }
+    setOverVertex(vertexAt(point) !== null);
     setDraft((current) => {
       if (!current) return current;
       if (current.kind === "rectangle") return { ...current, x1: point.x, y1: point.y };
@@ -198,6 +256,10 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
   };
 
   const onPointerUp = () => {
+    if (dragVertex) {
+      setDragVertex(null);
+      return;
+    }
     if (!draft) return;
     if (draft.kind === "rectangle") {
       const width = Math.abs(draft.x1 - draft.x0);
@@ -224,12 +286,15 @@ export function RenderEditSurface({ imageUrl, onExit, onMagicSelect, isSelecting
           <img src={imageUrl} alt="Render being edited" draggable={false} />
           <canvas
             ref={canvasRef}
-            className={`is-${tool ?? "idle"}${isSelecting ? " is-busy" : ""}`}
+            className={`is-${tool ?? "idle"}${isSelecting ? " is-busy" : ""}${dragVertex || overVertex ? " is-on-vertex" : ""}`}
             style={box}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerCancel={() => setDraft(null)}
+            onPointerCancel={() => {
+              setDraft(null);
+              setDragVertex(null);
+            }}
             onPointerLeave={() => setPointer(null)}
             onDoubleClick={() => tool === "polygon" && closePolygon()}
           />

@@ -82,6 +82,20 @@ const createRenderSchema = z.object({
           action: z.enum(["add", "remove", "change"]).optional(),
           maskImageUrl: z.string().url().optional(),
           selectionLabel: z.string().trim().max(60).optional(),
+          selectionAreas: z
+            .array(
+              z.object({
+                box: z.object({
+                  left: z.number().finite().min(0),
+                  top: z.number().finite().min(0),
+                  width: z.number().finite().positive(),
+                  height: z.number().finite().positive(),
+                }),
+                label: z.string().trim().max(60).optional(),
+              }),
+            )
+            .max(8)
+            .optional(),
           environment: z
             .object({
               timeOfDay: z.enum(EDIT_TIMES_OF_DAY).optional(),

@@ -20,8 +20,15 @@ import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
 import { reportClientError } from "../../components/AppErrorHandling";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
-import { upscaleCredits, type UpscaleTarget } from "@renvia/types";
+import { upscaleCredits, type RenderEditSettings, type UpscaleTarget } from "@renvia/types";
 import { creditPricesFor } from "../../lib/creditPrices";
+
+/** "Area edit · Door, Window": what the selection was tagged as, when it was. */
+function areaEditTag(edit: RenderEditSettings): string {
+  const tagged = edit.selectionAreas?.flatMap((area) => (area.label ? [area.label] : [])) ?? (edit.selectionLabel ? [edit.selectionLabel] : []);
+  const labels = [...new Set(tagged.map((label) => label.charAt(0).toUpperCase() + label.slice(1)))];
+  return labels.length > 0 ? `Area edit · ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? "…" : ""}` : "Area edit";
+}
 
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -289,9 +296,7 @@ export function RenderResultsPanel() {
       ? `${job.settings.upscale.target.toUpperCase()} export`
       : job.settings?.edit
       ? job.settings.edit.maskImageUrl
-        ? job.settings.edit.selectionLabel
-          ? `Area edit · ${job.settings.edit.selectionLabel.charAt(0).toUpperCase()}${job.settings.edit.selectionLabel.slice(1)}`
-          : "Area edit"
+        ? areaEditTag(job.settings.edit)
         : "Edit"
       : job.settings?.sourceType === "drawing"
         ? "From drawing"

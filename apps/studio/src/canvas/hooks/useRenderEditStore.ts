@@ -3,6 +3,13 @@ import { useCanvasStore } from "./useCanvasStore";
 import { useRenderJobsStore } from "./useRenderJobsStore";
 import { pickRenderToEdit } from "../utils/pickRenderToEdit";
 
+/** A selected area's tag, pinned to a point inside that area (image pixels). */
+export interface AreaTag {
+  x: number;
+  y: number;
+  label: string;
+}
+
 export type RenderEditTool = "brush" | "eraser" | "rectangle" | "polygon" | "magic";
 
 /**
@@ -26,16 +33,22 @@ interface RenderEditState {
   brushSize: number;
   strokes: RenderMaskStroke[];
   /**
-   * What the selection is ("front door"): the words typed into Auto select, or a quick pick.
-   * Sent with the edit so the model knows which element to change. Null when untagged.
+   * What each selected area is ("front door"): the words typed into Auto select, or a quick
+   * pick. Each tag is pinned to a point inside its area, in image pixels, so it follows that
+   * area as marks are added (see selectionAreas.ts). Later tags win.
    */
-  selectionLabel: string | null;
+  areaTags: AreaTag[];
+  /** Natural size of the render being edited, once it has loaded. */
+  imageSize: { width: number; height: number } | null;
   /** Edit job queued from the viewer — shown in Compare once it finishes. */
   awaitingJobId: string | null;
   setTool: (tool: RenderEditTool | null) => void;
   setBrushSize: (size: number) => void;
-  setSelectionLabel: (label: string | null) => void;
+  setAreaTags: (tags: AreaTag[]) => void;
+  setImageSize: (size: { width: number; height: number } | null) => void;
   addStroke: (stroke: RenderMaskStroke) => void;
+  /** Replaces one mark, e.g. a polygon whose point was dragged. */
+  updateStroke: (index: number, stroke: RenderMaskStroke) => void;
   undo: () => void;
   clearStrokes: () => void;
   setAwaitingJob: (id: string | null) => void;
@@ -47,29 +60,33 @@ export const useRenderEditStore = create<RenderEditState>((set) => ({
   tool: null,
   brushSize: 36,
   strokes: [],
-  selectionLabel: null,
+  areaTags: [],
+  imageSize: null,
   awaitingJobId: null,
   setTool: (tool) => set({ tool }),
   setBrushSize: (brushSize) => set({ brushSize }),
-  setSelectionLabel: (selectionLabel) => set({ selectionLabel: selectionLabel?.trim() || null }),
+  setAreaTags: (areaTags) => set({ areaTags }),
+  setImageSize: (imageSize) => set({ imageSize }),
   addStroke: (stroke) => {
     set((state) => ({ strokes: [...state.strokes, stroke] }));
   },
-  // A tag describes the selection, so it goes when the selection does.
+  updateStroke: (index, stroke) => set((state) => ({ strokes: state.strokes.map((item, at) => (at === index ? stroke : item)) })),
+  // Tags describe the selection, so they go when the selection does. A tag whose area was undone
+  // just stops matching anything; it's dropped here once nothing is selected at all.
   undo: () =>
     set((state) => {
       const strokes = state.strokes.slice(0, -1);
-      return { strokes, selectionLabel: hasSelection(strokes) ? state.selectionLabel : null };
+      return { strokes, areaTags: hasSelection(strokes) ? state.areaTags : [] };
     }),
-  clearStrokes: () => set({ strokes: [], selectionLabel: null }),
+  clearStrokes: () => set({ strokes: [], areaTags: [] }),
   setAwaitingJob: (awaitingJobId) => set({ awaitingJobId }),
-  stopEditing: () => set({ targetJobId: null, strokes: [], selectionLabel: null, tool: null }),
+  stopEditing: () => set({ targetJobId: null, strokes: [], areaTags: [], imageSize: null, tool: null }),
 }));
 
 /** Opens a finished render full-size in edit mode and points the Edit tab at it. */
 export function startRenderEdit(jobId: string) {
   const { targetJobId } = useRenderEditStore.getState();
-  useRenderEditStore.setState(targetJobId === jobId ? {} : { targetJobId: jobId, strokes: [], selectionLabel: null });
+  useRenderEditStore.setState(targetJobId === jobId ? {} : { targetJobId: jobId, strokes: [], areaTags: [], imageSize: null });
   useRenderJobsStore.getState().setPreviewJob(jobId);
   useCanvasStore.getState().setActiveTab("edit");
 }

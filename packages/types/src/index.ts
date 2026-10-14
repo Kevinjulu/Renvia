@@ -114,6 +114,14 @@ export interface EditEnvironment {
 }
 
 /** Present on edit jobs (Edit tab); absent on renders. */
+/** One separate area of an edit's selection. */
+export interface EditSelectionArea {
+  /** Bounding box in the source image's pixels. */
+  box: { left: number; top: number; width: number; height: number };
+  /** What it is ("front door"), from Auto select's words or a quick pick. */
+  label?: string;
+}
+
 export interface RenderEditSettings {
   mode: EditMode;
   method?: EditMethod;
@@ -124,10 +132,15 @@ export interface RenderEditSettings {
    */
   maskImageUrl?: string;
   /**
-   * What the selection is, in the person's words ("front door"): the text typed into Auto
-   * select, or a quick pick. Tells the model which element in the selected area to change.
+   * What the selection is, in the person's words ("front door"). Written by Studio before
+   * selections had separate areas; kept so those jobs still read. New edits send selectionAreas.
    */
   selectionLabel?: string;
+  /**
+   * The selection's separate areas, largest first, each with its box in source pixels and the
+   * person's tag for it if they gave one. Tells the model what and where each area is.
+   */
+  selectionAreas?: EditSelectionArea[];
   environment?: EditEnvironment;
   /**
    * Set by the API, never the client: the selection's composited result, stored when the first

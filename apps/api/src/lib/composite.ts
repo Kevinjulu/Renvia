@@ -107,13 +107,19 @@ export function selectionPlacement(box: CropRect, frame: CropRect): string | nul
   return `in the ${vertical} ${horizontal}`;
 }
 
-/** What a selection edit needs: the crop sent to the model, and where the selection sits in it. */
-export async function selectionFraming(source: Uint8Array, mask: Uint8Array): Promise<{ crop: CropRect | null; placement: string | null }> {
+/**
+ * What a selection edit needs: the crop sent to the model, the frame the model sees (the crop,
+ * or the whole source), and where the whole selection sits in it.
+ */
+export async function selectionFraming(
+  source: Uint8Array,
+  mask: Uint8Array,
+): Promise<{ crop: CropRect | null; frame: CropRect | null; placement: string | null }> {
   const selection = await selectionBox(source, mask);
-  if (!selection) return { crop: null, placement: null };
+  if (!selection) return { crop: null, frame: null, placement: null };
   const crop = cropAround(selection.box, selection.width, selection.height);
   const frame = crop ?? { left: 0, top: 0, width: selection.width, height: selection.height };
-  return { crop, placement: selectionPlacement(selection.box, frame) };
+  return { crop, frame, placement: selectionPlacement(selection.box, frame) };
 }
 
 /** The crop of the (EXIF-rotated) source that the model edits. */

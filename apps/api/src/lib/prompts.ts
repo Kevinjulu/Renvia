@@ -192,10 +192,11 @@ export interface EditPromptOptions {
   hasSelection?: boolean;
   /** The model is sent a close-up crop of the selection rather than the whole image (see editCropFor). */
   isCloseUp?: boolean;
-  /** What the person said the selection is ("front door"), from Auto select's words or a quick pick. */
-  selectionLabel?: string;
-  /** Where the selection sits in the image the model is given ("in the centre"); see selectionPlacement. */
-  selectionPlacement?: string;
+  /**
+   * The selection's separate areas, largest first: what the person said each is ("front door")
+   * and where it sits in the image the model is given ("in the centre"; see selectionPlacement).
+   */
+  selectionAreas?: { label?: string; placement?: string }[];
   /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
   style?: string;
 }
@@ -327,11 +328,35 @@ function selectionSentence(label: string, placement: string, frame: string): str
   return "";
 }
 
+/** "a", "a and b", "a, b and c". */
+function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** One of several areas, in words: "the front door in the lower right", "an area at the top". */
+function areaPhrase({ label, placement }: { label: string; placement: string }): string {
+  if (label && placement) return `the ${label} ${placement}`;
+  if (label) return `the ${label}`;
+  if (placement) return `an area ${placement}`;
+  return "";
+}
+
+/** Lists several selected areas: "In this image, the areas to change are the door on the left and the window at the top." */
+function areasSentence(areas: { label: string; placement: string }[], frame: string): string {
+  // Auto select's "windows" can tag several areas alike; naming each twice reads as noise.
+  const phrases = [...new Set(areas.map(areaPhrase).filter(Boolean))];
+  if (phrases.length === 0) return "";
+  const unnamed = areas.filter((area) => !areaPhrase(area)).length;
+  if (unnamed > 0) phrases.push(unnamed === 1 ? "one more selected area" : `${unnamed} more selected areas`);
+  return `In ${frame}, the areas to change are ${joinList(phrases)}.`;
+}
+
 /**
  * The change itself for an edit with a reference. The reference is always image 2 (an edit
  * takes exactly one); image 1 is the render being edited, or a close-up of its selected area.
  */
-function referenceInstruction(method: EditMethod, subject: string, hasSelection: boolean, label = ""): string {
+function referenceInstruction(method: EditMethod, subject: string, hasSelection: boolean, target = "the selected element"): string {
   if (method === "reference-prompt") {
     return (
       `Use image 2 as the reference for this change: ${asSentence(subject)} ` +
@@ -340,7 +365,7 @@ function referenceInstruction(method: EditMethod, subject: string, hasSelection:
     );
   }
   return hasSelection
-    ? `Make the ${label || "selected element"} match the corresponding element in image 2: its design, shape details, material, colour ` +
+    ? `Make ${target} match the corresponding element in image 2: its design, shape details, material, colour ` +
         "and finish, fitted to the element's current position, size and perspective."
     : "Apply the look of image 2 to the building in image 1: its materials, finishes, colours and detailing, mapped onto " +
         "the matching surfaces of image 1. Never copy image 2's building, layout or viewpoint.";
@@ -357,37 +382,54 @@ export function buildEditPrompt({
   hasReferences,
   hasSelection = false,
   isCloseUp = false,
-  selectionLabel,
-  selectionPlacement,
+  selectionAreas,
   style,
 }: EditPromptOptions): string {
   const subject = prompt.trim();
   const method = editMethodFor(edit, { hasReferences, hasPrompt: subject !== "" });
   const usesReference = hasReferences && method !== "prompt";
   const environment = hasSelection ? [] : environmentSentences(edit.environment);
-  const label = hasSelection ? cleanSelectionLabel(selectionLabel) : "";
-  const placement = hasSelection ? selectionPlacement?.trim() ?? "" : "";
+  const areas = hasSelection
+    ? (selectionAreas ?? []).map((area) => ({ label: cleanSelectionLabel(area.label), placement: area.placement?.trim() ?? "" }))
+    : [];
+  const several = areas.length > 1;
+  const { label, placement } = areas[0] ?? { label: "", placement: "" };
+  // Tags point the model at the selected elements; without them there's nothing to name.
+  const labels = [...new Set(areas.map((area) => area.label).filter(Boolean))];
+  const allTagged = areas.length > 0 && areas.every((area) => area.label);
+  const target = allTagged ? joinList(labels.map((name) => `the ${name}`)) : "";
+  const describe = (frame: string) => (several ? areasSentence(areas, frame) : selectionSentence(label, placement, frame));
 
   const roles = usesReference
     ? isCloseUp
-      ? `Image 1 is a close-up of the selected part of the building to edit${selectionTarget(label, placement, "image 1")} Image 2 is the reference.`
-      : `Image 1 is the building image to edit. Image 2 is the reference.${hasSelection ? ` ${selectionSentence(label, placement, "image 1")}` : ""}`
+      ? several
+        ? `Image 1 is a close-up of the selected parts of the building to edit. Image 2 is the reference. ${describe("image 1")}`
+        : `Image 1 is a close-up of the selected part of the building to edit${selectionTarget(label, placement, "image 1")} Image 2 is the reference.`
+      : `Image 1 is the building image to edit. Image 2 is the reference.${hasSelection ? ` ${describe("image 1")}` : ""}`
     : // Already a close-up crop of just the selected region, but saying so in words keeps the
       // model from mistaking it for the whole building.
       isCloseUp
-      ? `This is a close-up of the selected part of the building${selectionTarget(label, placement, "this image")}`
+      ? several
+        ? `This is a close-up of the selected parts of the building. ${describe("this image")}`
+        : `This is a close-up of the selected part of the building${selectionTarget(label, placement, "this image")}`
       : hasSelection
-        ? selectionSentence(label, placement, "the image")
+        ? describe("the image")
         : "";
-  const instruction = usesReference ? referenceInstruction(method, subject, hasSelection, label) : promptInstruction(subject, edit);
-  // The tag points the model at the selected element; without one there's nothing to name.
-  const focus = hasSelection && label && !usesReference && subject ? `Apply this change to the ${label} only.` : "";
+  const instruction = usesReference
+    ? referenceInstruction(method, subject, hasSelection, target || (several ? "the selected elements" : "the selected element"))
+    : promptInstruction(subject, edit);
+  const focus =
+    hasSelection && subject && !usesReference && labels.length > 0
+      ? target
+        ? `Apply this change to ${target} only.`
+        : "Apply this change to the selected areas only."
+      : "";
   // A prompt-only edit names its own change; a reference or the environment could otherwise be
   // read as licence to rebuild, so those always restate the form lock.
   const formLock = usesReference || environment.length > 0 ? EDIT_FORM_LOCK : "";
 
   return [
-    roles,
+    roles.trim(),
     instruction,
     focus,
     ...environment,

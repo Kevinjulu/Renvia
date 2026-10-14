@@ -32,8 +32,7 @@ describe("buildEditPrompt", () => {
       hasReferences: false,
       hasSelection: true,
       isCloseUp: true,
-      selectionLabel: "Front door.",
-      selectionPlacement: "in the centre",
+      selectionAreas: [{ label: "Front door.", placement: "in the centre" }],
     });
     expect(prompt).toBe(
       "This is a close-up of the selected part of the building: the front door, in the centre of this image. " +
@@ -47,7 +46,7 @@ describe("buildEditPrompt", () => {
       edit: { mode: "prompt", method: "prompt" },
       hasReferences: false,
       hasSelection: true,
-      selectionPlacement: "in the lower right",
+      selectionAreas: [{ placement: "in the lower right" }],
     });
     expect(prompt.startsWith("The area to change is in the lower right of the image. Paint it white.")).toBe(true);
   });
@@ -59,15 +58,58 @@ describe("buildEditPrompt", () => {
       hasReferences: true,
       hasSelection: true,
       isCloseUp: true,
-      selectionLabel: "garage door",
+      selectionAreas: [{ label: "garage door" }],
     });
     expect(prompt).toContain("Image 1 is a close-up of the selected part of the building to edit: the garage door. Image 2 is the reference.");
     expect(prompt).toContain("Make the garage door match the corresponding element in image 2");
   });
 
   it("ignores a tag when nothing is selected", () => {
-    const prompt = buildEditPrompt({ prompt: "make the front door red", edit: { mode: "prompt", method: "prompt" }, hasReferences: false, selectionLabel: "roof" });
+    const prompt = buildEditPrompt({ prompt: "make the front door red", edit: { mode: "prompt", method: "prompt" }, hasReferences: false, selectionAreas: [{ label: "roof" }] });
     expect(prompt).toBe("Make the front door red. Keep everything else in the image exactly as it is.");
+  });
+
+  it("names each of several tagged areas and where they are", () => {
+    const prompt = buildEditPrompt({
+      prompt: "make it black",
+      edit: { mode: "prompt", method: "prompt" },
+      hasReferences: false,
+      hasSelection: true,
+      isCloseUp: true,
+      selectionAreas: [
+        { label: "front door", placement: "on the right" },
+        { label: "window", placement: "in the upper left" },
+      ],
+    });
+    expect(prompt).toBe(
+      "This is a close-up of the selected parts of the building. " +
+        "In this image, the areas to change are the front door on the right and the window in the upper left. " +
+        "Make it black. Apply this change to the front door and the window only. Keep everything else in the image exactly as it is.",
+    );
+  });
+
+  it("counts untagged areas without inventing names for them", () => {
+    const prompt = buildEditPrompt({
+      prompt: "make it black",
+      edit: { mode: "prompt", method: "prompt" },
+      hasReferences: false,
+      hasSelection: true,
+      selectionAreas: [{ label: "door", placement: "on the left" }, {}, {}],
+    });
+    expect(prompt).toContain("In the image, the areas to change are the door on the left and 2 more selected areas.");
+    expect(prompt).toContain("Apply this change to the selected areas only.");
+  });
+
+  it("matches several tagged elements to a reference", () => {
+    const prompt = buildEditPrompt({
+      prompt: "",
+      edit: { mode: "element", method: "reference" },
+      hasReferences: true,
+      hasSelection: true,
+      selectionAreas: [{ label: "windows" }, { label: "windows" }],
+    });
+    expect(prompt).toContain("Image 2 is the reference. In image 1, the areas to change are the windows.");
+    expect(prompt).toContain("Make the windows match the corresponding element in image 2");
   });
 
   it("applies a whole-image reference as a look, never a new building", () => {

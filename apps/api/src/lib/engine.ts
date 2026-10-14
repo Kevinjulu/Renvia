@@ -10,11 +10,12 @@ import {
   upscaleCreditCost,
   type AspectRatio,
   type RenderBudgetResponse,
+  type RenderEditSettings,
   type RenderEngineMode,
   type UpscaleTarget,
 } from "@renvia/types";
 import type { Env } from "../index.js";
-import { compositeMaskedEdit, cropSource, selectionFraming, type CropRect } from "./composite.js";
+import { compositeMaskedEdit, cropSource, selectionFraming, selectionPlacement, type CropRect } from "./composite.js";
 import { refundIfFailed, refundRender } from "./credits.js";
 import { modelById, modelFor, pricingFor, UPSCALE_COST_MICROS } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
@@ -316,8 +317,21 @@ interface MaskedEditInputs {
   mask: Uint8Array<ArrayBuffer>;
   /** Region sent to the model, or null when it edits the whole image. */
   crop: CropRect | null;
+  /** The image the model is given: the crop, or the whole source. */
+  frame: CropRect | null;
   /** Where the selection sits in the image the model is given ("in the centre"), when that helps. */
   placement: string | null;
+}
+
+/**
+ * Each selected area as the prompt names it: its tag and where it sits in the image the model
+ * sees. Edits from before selections had areas carry one tag for the whole selection.
+ */
+function describeSelectionAreas(edit: RenderEditSettings, masked: MaskedEditInputs): { label?: string; placement?: string }[] {
+  const areas = edit.selectionAreas ?? [];
+  if (areas.length === 0 || !masked.frame) return [{ label: edit.selectionLabel, placement: masked.placement ?? undefined }];
+  const frame = masked.frame;
+  return areas.map((area) => ({ label: area.label, placement: selectionPlacement(area.box, frame) ?? undefined }));
 }
 
 /** Source, mask and crop of a selection edit; null for renders and whole-image edits. */
@@ -383,8 +397,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           hasReferences,
           hasSelection: Boolean(masked),
           isCloseUp: Boolean(masked?.crop),
-          selectionLabel: masked ? settings.edit.selectionLabel : undefined,
-          selectionPlacement: masked?.placement ?? undefined,
+          selectionAreas: masked ? describeSelectionAreas(settings.edit, masked) : undefined,
           style: render.style,
         })
       : buildEnginePrompt({

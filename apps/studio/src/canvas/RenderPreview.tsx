@@ -15,6 +15,7 @@ import { WaitingProgress } from "../shell/panel/WaitingProgress";
 import { useWheelZoom } from "./hooks/useWheelZoom";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 import { isSameImage } from "./utils/sameImage";
+import { tagLatestAreas, useSelectionAreas } from "./utils/selectionAreas";
 
 /** Before/after slider — always presented in a wide 16:9 frame so differences are easy to inspect. */
 function CompareView({ renderUrl, sourceUrl }: { renderUrl: string; sourceUrl: string }) {
@@ -96,16 +97,28 @@ const EDIT_TOOLS: { id: RenderEditTool; label: string; key: string; icon: ReactN
   { id: "magic", label: "Auto", key: "A", icon: <><path d="M8 1.5 9 5l3.5 1L9 7l-1 3.5L7 7 3.5 6 7 5Z" /><path d="M12.5 10.5 13 12l1.5.5L13 13l-.5 1.5-.5-1.5L10.5 12.5 12 12Z" /></> },
 ];
 
+/** Remembers, per browser, that the Polygon tip has been shown once. */
+const POLYGON_TIP_KEY = "renvia:polygon-tip:v1";
+/** Fallback for when storage is unavailable, so the tip still shows only once per page load. */
+let polygonTipShown = false;
+
 /** The things people most often select on a building; one tap tags the selection. */
 const SELECTION_TAGS = ["Window", "Door", "Garage door", "Roof", "Wall", "Pillar", "Balcony", "Garden"];
 
 /**
- * Tags the selection with what it is, so the edit can name it to the model ("the front door").
- * Optional: an untagged selection still works, the model just has to work out what it is.
+ * Tags the area just marked with what it is, so the edit can name it to the model ("the front
+ * door"). Each separate area keeps its own tag; marking a new area moves the picker to it.
+ * Optional: an untagged area still works, the model just has to work out what it is.
  */
 function SelectionTag() {
-  const label = useRenderEditStore((state) => state.selectionLabel);
-  const setLabel = useRenderEditStore((state) => state.setSelectionLabel);
+  const { areas, activeIds } = useSelectionAreas();
+  const active = areas.filter((area) => activeIds.includes(area.id));
+  const activeLabels = [...new Set(active.map((area) => area.label ?? null))];
+  const label = activeLabels.length === 1 ? activeLabels[0]! : null;
+  const setLabel = tagLatestAreas;
+  const others = areas.filter((area) => !activeIds.includes(area.id));
+  const otherTags = [...new Set(others.flatMap((area) => (area.label ? [area.label] : [])))];
+  const untagged = others.filter((area) => !area.label).length;
   const isPreset = label !== null && SELECTION_TAGS.some((tag) => tag.toLowerCase() === label.toLowerCase());
   const [custom, setCustom] = useState(label !== null && !isPreset ? label : "");
 
@@ -118,7 +131,7 @@ function SelectionTag() {
 
   return (
     <div className="render-edit-tag" role="group" aria-label="What is selected">
-      <strong>What did you select?</strong>
+      <strong>{areas.length > 1 ? "What is this area?" : "What did you select?"}</strong>
       {SELECTION_TAGS.map((tag) => {
         const active = label?.toLowerCase() === tag.toLowerCase();
         return (
@@ -138,6 +151,11 @@ function SelectionTag() {
           setLabel(event.target.value);
         }}
       />
+      {others.length > 0 && (
+        <em>
+          Also selected: {[...otherTags, ...(untagged > 0 ? [untagged === 1 ? "1 untagged area" : `${untagged} untagged areas`] : [])].join(" · ")}
+        </em>
+      )}
     </div>
   );
 }
@@ -239,6 +257,25 @@ export function RenderPreview() {
   const tool = useRenderEditStore((state) => state.tool);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectNotice, setSelectNotice] = useState<string | null>(null);
+  const [showPolygonTip, setShowPolygonTip] = useState(false);
+
+  // A first rectangle is the moment to mention Polygon: windows and doors seen at an angle are
+  // slanted, and a box around them catches wall too. Shown once per browser; gone on the next mark.
+  useEffect(() => {
+    if (strokes.at(-1)?.kind !== "rectangle") {
+      setShowPolygonTip(false);
+      return;
+    }
+    if (polygonTipShown) return;
+    polygonTipShown = true;
+    try {
+      if (localStorage.getItem(POLYGON_TIP_KEY) === "1") return;
+      localStorage.setItem(POLYGON_TIP_KEY, "1");
+    } catch {
+      // Storage blocked: the page-load flag above still keeps it to once.
+    }
+    setShowPolygonTip(true);
+  }, [strokes]);
   const { zoom, transformOrigin, targetRef: imageRef, onWheel, resetZoom, isZoomed } = useWheelZoom<HTMLImageElement>(`${previewJobId}:${mode}`);
   const updateJob = useRenderJobsStore((state) => state.updateJob);
   const setAwaitingJob = useRenderEditStore((state) => state.setAwaitingJob);
@@ -307,7 +344,7 @@ export function RenderPreview() {
       }
       addStroke(await maskStrokeFrom(result.maskDataUrl));
       // The words that found the area are the best description of it.
-      if (request.prompt) useRenderEditStore.getState().setSelectionLabel(request.prompt);
+      if (request.prompt) tagLatestAreas(request.prompt);
       setSelectNotice(
         result.objectCount === 1 ? "Selected 1 area — erase or paint to adjust." : `Selected ${result.objectCount} areas — erase or paint to adjust.`,
       );
@@ -453,7 +490,9 @@ export function RenderPreview() {
           <p>
             {selectNotice
               ? selectNotice
-              : tool === "magic"
+              : showPolygonTip && tool !== "polygon"
+                ? "Tip: windows and doors seen at an angle are slanted. The Polygon tool (P) follows their shape, so it won't catch the wall around them."
+                : tool === "magic"
                 ? "Click the part you want to change, or type what to select. Each automatic selection costs 1 credit; painting is free."
                 : selected
                 ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
