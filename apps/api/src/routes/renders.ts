@@ -81,6 +81,7 @@ const createRenderSchema = z.object({
           method: z.enum(["prompt", "reference", "reference-prompt"]).optional(),
           action: z.enum(["add", "remove", "change"]).optional(),
           maskImageUrl: z.string().url().optional(),
+          selectionLabel: z.string().trim().max(60).optional(),
           environment: z
             .object({
               timeOfDay: z.enum(EDIT_TIMES_OF_DAY).optional(),

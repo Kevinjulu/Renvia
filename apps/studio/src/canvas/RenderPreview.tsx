@@ -96,6 +96,52 @@ const EDIT_TOOLS: { id: RenderEditTool; label: string; key: string; icon: ReactN
   { id: "magic", label: "Auto", key: "A", icon: <><path d="M8 1.5 9 5l3.5 1L9 7l-1 3.5L7 7 3.5 6 7 5Z" /><path d="M12.5 10.5 13 12l1.5.5L13 13l-.5 1.5-.5-1.5L10.5 12.5 12 12Z" /></> },
 ];
 
+/** The things people most often select on a building; one tap tags the selection. */
+const SELECTION_TAGS = ["Window", "Door", "Garage door", "Roof", "Wall", "Pillar", "Balcony", "Garden"];
+
+/**
+ * Tags the selection with what it is, so the edit can name it to the model ("the front door").
+ * Optional: an untagged selection still works, the model just has to work out what it is.
+ */
+function SelectionTag() {
+  const label = useRenderEditStore((state) => state.selectionLabel);
+  const setLabel = useRenderEditStore((state) => state.setSelectionLabel);
+  const isPreset = label !== null && SELECTION_TAGS.some((tag) => tag.toLowerCase() === label.toLowerCase());
+  const [custom, setCustom] = useState(label !== null && !isPreset ? label : "");
+
+  // Auto select's words arrive from outside; show them in the field when they aren't a preset.
+  // Typing here also changes the label, trimmed, so only sync when it really differs.
+  useEffect(() => {
+    if (label !== null && !isPreset && label !== custom.trim()) setCustom(label);
+    if ((label === null || isPreset) && custom.trim() !== "" && custom.trim() !== label) setCustom("");
+  }, [label, isPreset, custom]);
+
+  return (
+    <div className="render-edit-tag" role="group" aria-label="What is selected">
+      <strong>What did you select?</strong>
+      {SELECTION_TAGS.map((tag) => {
+        const active = label?.toLowerCase() === tag.toLowerCase();
+        return (
+          <button key={tag} type="button" className={active ? "is-active" : ""} aria-pressed={active} onClick={() => setLabel(active ? null : tag)}>
+            {tag}
+          </button>
+        );
+      })}
+      <input
+        value={custom}
+        maxLength={60}
+        placeholder="Other…"
+        aria-label="Name what you selected"
+        className={label !== null && !isPreset ? "is-active" : ""}
+        onChange={(event) => {
+          setCustom(event.target.value);
+          setLabel(event.target.value);
+        }}
+      />
+    </div>
+  );
+}
+
 interface EditToolbarProps {
   onDone: () => void;
   onTextSelect: (text: string) => void;
@@ -260,6 +306,8 @@ export function RenderPreview() {
         return;
       }
       addStroke(await maskStrokeFrom(result.maskDataUrl));
+      // The words that found the area are the best description of it.
+      if (request.prompt) useRenderEditStore.getState().setSelectionLabel(request.prompt);
       setSelectNotice(
         result.objectCount === 1 ? "Selected 1 area — erase or paint to adjust." : `Selected ${result.objectCount} areas — erase or paint to adjust.`,
       );
@@ -414,6 +462,7 @@ export function RenderPreview() {
                   : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
           </p>
           {isSelecting && <span className="render-edit-pending">Finding that area…</span>}
+          {selected && <SelectionTag />}
         </footer>
       ) : (
         (job.prompt || job.style || formatAspectRatio(job.aspectRatio)) && (

@@ -289,7 +289,9 @@ export function RenderResultsPanel() {
       ? `${job.settings.upscale.target.toUpperCase()} export`
       : job.settings?.edit
       ? job.settings.edit.maskImageUrl
-        ? "Area edit"
+        ? job.settings.edit.selectionLabel
+          ? `Area edit · ${job.settings.edit.selectionLabel.charAt(0).toUpperCase()}${job.settings.edit.selectionLabel.slice(1)}`
+          : "Area edit"
         : "Edit"
       : job.settings?.sourceType === "drawing"
         ? "From drawing"

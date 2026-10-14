@@ -123,6 +123,11 @@ export interface RenderEditSettings {
    * Only that area of the model's output is pasted back onto the source.
    */
   maskImageUrl?: string;
+  /**
+   * What the selection is, in the person's words ("front door"): the text typed into Auto
+   * select, or a quick pick. Tells the model which element in the selected area to change.
+   */
+  selectionLabel?: string;
   environment?: EditEnvironment;
   /**
    * Set by the API, never the client: the selection's composited result, stored when the first
@@ -1684,7 +1689,7 @@ export interface AdminModel {
   /** Estimated USD per image, used for the budget and cost reporting. */
   costUsd: number;
   /** The routes it serves, per engine mode. Declared in code: each needs its own input format. */
-  serves: { mode: RenderEngineMode; route: RenderRoute | "selection" }[];
+  serves: { mode: RenderEngineMode; route: RenderRoute | "selection" | "selection-click" }[];
   /** True when it serves a route in the engine mode in force now. */
   inUse: boolean;
   rule: ModelRule;

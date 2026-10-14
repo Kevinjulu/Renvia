@@ -14,7 +14,7 @@ import {
   type UpscaleTarget,
 } from "@renvia/types";
 import type { Env } from "../index.js";
-import { compositeMaskedEdit, cropSource, editCropFor, type CropRect } from "./composite.js";
+import { compositeMaskedEdit, cropSource, selectionFraming, type CropRect } from "./composite.js";
 import { refundIfFailed, refundRender } from "./credits.js";
 import { modelById, modelFor, pricingFor, UPSCALE_COST_MICROS } from "./models.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "./settings.js";
@@ -316,6 +316,8 @@ interface MaskedEditInputs {
   mask: Uint8Array<ArrayBuffer>;
   /** Region sent to the model, or null when it edits the whole image. */
   crop: CropRect | null;
+  /** Where the selection sits in the image the model is given ("in the centre"), when that helps. */
+  placement: string | null;
 }
 
 /** Source, mask and crop of a selection edit; null for renders and whole-image edits. */
@@ -326,7 +328,7 @@ async function maskedEditInputs(env: Env, render: RenderRow, origin: string): Pr
   if (!maskUrl) return null;
   const [source, mask] = await Promise.all([readOwnUpload(env, render.sourceImageUrl, origin), readOwnUpload(env, maskUrl, origin)]);
   if (!source || !mask) throw new Error("Edit source or mask isn't one of our uploads");
-  return { source: source.bytes, mask: mask.bytes, crop: await editCropFor(source.bytes, mask.bytes) };
+  return { source: source.bytes, mask: mask.bytes, ...(await selectionFraming(source.bytes, mask.bytes)) };
 }
 
 function webhookUrlFor(origin: string): string | undefined {
@@ -381,6 +383,8 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           hasReferences,
           hasSelection: Boolean(masked),
           isCloseUp: Boolean(masked?.crop),
+          selectionLabel: masked ? settings.edit.selectionLabel : undefined,
+          selectionPlacement: masked?.placement ?? undefined,
           style: render.style,
         })
       : buildEnginePrompt({

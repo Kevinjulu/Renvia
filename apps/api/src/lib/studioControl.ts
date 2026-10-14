@@ -17,7 +17,7 @@ import {
 } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
 import { modelFor } from "./models.js";
-import { SAM_MODEL_ID } from "./segment.js";
+import { SAM_CLICK_MODEL_ID, SAM_MODEL_ID } from "./segment.js";
 
 export type StudioRevisionRow = typeof schema.studioConfigRevisions.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
@@ -88,7 +88,7 @@ export function effectiveCreditPrices(config: StudioConfig, settings: AppSetting
 }
 
 /** The routes each feature runs on, to find the models behind it. */
-const FEATURE_ROUTES: Record<StudioFeatureKey, (RenderRoute | "selection")[]> = {
+const FEATURE_ROUTES: Record<StudioFeatureKey, (RenderRoute | SelectionRoute)[]> = {
   "render.standard": ["photo", "drawing"],
   "render.references": ["references"],
   "render.fidelity": ["fidelity"],
@@ -97,13 +97,17 @@ const FEATURE_ROUTES: Record<StudioFeatureKey, (RenderRoute | "selection")[]> = 
   "render.upscale": ["upscale"],
   "export.4k": ["upscale"],
   "export.8k": ["upscale"],
-  "selection.click": ["selection"],
+  "selection.click": ["selection-click"],
   "selection.prompt": ["selection"],
 };
 
+/** Typed selection runs on SAM 3, click selection on SAM 2. */
+export type SelectionRoute = "selection" | "selection-click";
+
 /** The model serving a route in this engine mode (selections use SAM outside mock mode). */
-export function modelForRoute(mode: RenderEngineMode, route: RenderRoute | "selection"): string {
+export function modelForRoute(mode: RenderEngineMode, route: RenderRoute | SelectionRoute): string {
   if (route === "selection") return mode === "mock" ? "mock" : SAM_MODEL_ID;
+  if (route === "selection-click") return mode === "mock" ? "mock" : SAM_CLICK_MODEL_ID;
   return modelFor(mode, route).id;
 }
 

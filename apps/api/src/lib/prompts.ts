@@ -192,6 +192,10 @@ export interface EditPromptOptions {
   hasSelection?: boolean;
   /** The model is sent a close-up crop of the selection rather than the whole image (see editCropFor). */
   isCloseUp?: boolean;
+  /** What the person said the selection is ("front door"), from Auto select's words or a quick pick. */
+  selectionLabel?: string;
+  /** Where the selection sits in the image the model is given ("in the centre"); see selectionPlacement. */
+  selectionPlacement?: string;
   /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
   style?: string;
 }
@@ -296,11 +300,38 @@ function promptInstruction(subject: string, edit: RenderEditSettings): string {
   }[edit.action];
 }
 
+/** A selection tag as safe prompt text: one short line, no quotes or stray punctuation. */
+export function cleanSelectionLabel(label: string | undefined): string {
+  return (label ?? "")
+    .replace(/["“”]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?,;:]+$/, "")
+    .slice(0, 60)
+    .toLowerCase();
+}
+
+/** Ends the close-up sentence: ": the front door, in the centre of this image." or just "." */
+function selectionTarget(label: string, placement: string, frame: string): string {
+  if (label && placement) return `: the ${label}, ${placement} of ${frame}.`;
+  if (label) return `: the ${label}.`;
+  if (placement) return `. The area to change is ${placement} of ${frame}.`;
+  return ".";
+}
+
+/** Names a selection on the whole image, which has no close-up sentence to carry it. */
+function selectionSentence(label: string, placement: string, frame: string): string {
+  if (label && placement) return `The area to change is the ${label}, ${placement} of ${frame}.`;
+  if (label) return `The area to change is the ${label}.`;
+  if (placement) return `The area to change is ${placement} of ${frame}.`;
+  return "";
+}
+
 /**
  * The change itself for an edit with a reference. The reference is always image 2 (an edit
  * takes exactly one); image 1 is the render being edited, or a close-up of its selected area.
  */
-function referenceInstruction(method: EditMethod, subject: string, hasSelection: boolean): string {
+function referenceInstruction(method: EditMethod, subject: string, hasSelection: boolean, label = ""): string {
   if (method === "reference-prompt") {
     return (
       `Use image 2 as the reference for this change: ${asSentence(subject)} ` +
@@ -309,7 +340,7 @@ function referenceInstruction(method: EditMethod, subject: string, hasSelection:
     );
   }
   return hasSelection
-    ? "Make the selected element match the corresponding element in image 2: its design, shape details, material, colour " +
+    ? `Make the ${label || "selected element"} match the corresponding element in image 2: its design, shape details, material, colour ` +
         "and finish, fitted to the element's current position, size and perspective."
     : "Apply the look of image 2 to the building in image 1: its materials, finishes, colours and detailing, mapped onto " +
         "the matching surfaces of image 1. Never copy image 2's building, layout or viewpoint.";
@@ -320,22 +351,37 @@ function referenceInstruction(method: EditMethod, subject: string, hasSelection:
  * of the result is composited back (see engine.ts), so the environment is left out and applied
  * over the whole result by its own pass; without one, it is part of this prompt.
  */
-export function buildEditPrompt({ prompt, edit, hasReferences, hasSelection = false, isCloseUp = false, style }: EditPromptOptions): string {
+export function buildEditPrompt({
+  prompt,
+  edit,
+  hasReferences,
+  hasSelection = false,
+  isCloseUp = false,
+  selectionLabel,
+  selectionPlacement,
+  style,
+}: EditPromptOptions): string {
   const subject = prompt.trim();
   const method = editMethodFor(edit, { hasReferences, hasPrompt: subject !== "" });
   const usesReference = hasReferences && method !== "prompt";
   const environment = hasSelection ? [] : environmentSentences(edit.environment);
+  const label = hasSelection ? cleanSelectionLabel(selectionLabel) : "";
+  const placement = hasSelection ? selectionPlacement?.trim() ?? "" : "";
 
   const roles = usesReference
     ? isCloseUp
-      ? "Image 1 is a close-up of the selected part of the building to edit. Image 2 is the reference."
-      : "Image 1 is the building image to edit. Image 2 is the reference."
+      ? `Image 1 is a close-up of the selected part of the building to edit${selectionTarget(label, placement, "image 1")} Image 2 is the reference.`
+      : `Image 1 is the building image to edit. Image 2 is the reference.${hasSelection ? ` ${selectionSentence(label, placement, "image 1")}` : ""}`
     : // Already a close-up crop of just the selected region, but saying so in words keeps the
       // model from mistaking it for the whole building.
       isCloseUp
-      ? "This is a close-up of the selected part of the building."
-      : "";
-  const instruction = usesReference ? referenceInstruction(method, subject, hasSelection) : promptInstruction(subject, edit);
+      ? `This is a close-up of the selected part of the building${selectionTarget(label, placement, "this image")}`
+      : hasSelection
+        ? selectionSentence(label, placement, "the image")
+        : "";
+  const instruction = usesReference ? referenceInstruction(method, subject, hasSelection, label) : promptInstruction(subject, edit);
+  // The tag points the model at the selected element; without one there's nothing to name.
+  const focus = hasSelection && label && !usesReference && subject ? `Apply this change to the ${label} only.` : "";
   // A prompt-only edit names its own change; a reference or the environment could otherwise be
   // read as licence to rebuild, so those always restate the form lock.
   const formLock = usesReference || environment.length > 0 ? EDIT_FORM_LOCK : "";
@@ -343,6 +389,7 @@ export function buildEditPrompt({ prompt, edit, hasReferences, hasSelection = fa
   return [
     roles,
     instruction,
+    focus,
     ...environment,
     formLock,
     environment.length > 0 ? KEEP_THE_REST_AFTER_CHANGES : KEEP_THE_REST,

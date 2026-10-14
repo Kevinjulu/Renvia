@@ -40,13 +40,15 @@ const SUN_ICON = (
 );
 
 const quoted = (text: string) => `“${text}”`;
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** What Apply will do, in plain words, so nobody has to work it out from the controls. */
-function summaryLines(method: EditMethod, prompt: string, hasArea: boolean, environment: string[]): string[] {
-  const where = hasArea ? " in the selected area" : "";
+function summaryLines(method: EditMethod, prompt: string, hasArea: boolean, environment: string[], label: string | null): string[] {
+  const where = hasArea ? (label ? ` on the ${label.toLowerCase()} only` : " in the selected area") : "";
   const main = (() => {
     if (method === "reference") {
-      return hasArea ? "The selected area takes on the reference's design." : "The render takes on the reference's materials and colours.";
+      if (!hasArea) return "The render takes on the reference's materials and colours.";
+      return label ? `The ${label.toLowerCase()} takes on the reference's design.` : "The selected area takes on the reference's design.";
     }
     if (!prompt) return null;
     return method === "reference-prompt" ? `${quoted(prompt)}, using the reference${where}.` : `${quoted(prompt)}${where}.`;
@@ -104,7 +106,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
 
   const maxChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const environmentPicked = environmentLabels(environment);
-  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked);
+  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked, draft.selectionLabel);
   const showPrompt = method !== "reference";
 
   return (
@@ -196,13 +198,13 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
           (areaPainted ? (
             <div className="cp-prompt-tag">
               <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2.5h4L10 6.5l-3.5 3.5L2.5 6.5Z" /><circle cx="4.2" cy="4.2" r="0.7" fill="currentColor" stroke="none" /></svg>
-              <span>Area selected — only it changes</span>
+              <span>{draft.selectionLabel ? `${capitalize(draft.selectionLabel)} selected — only it changes` : "Area selected — only it changes"}</span>
               <button type="button" aria-label="Clear the selected area" onClick={clearStrokes}>
                 <svg viewBox="0 0 10 10" aria-hidden="true"><path d="m2 2 6 6M8 2 2 8" /></svg>
               </button>
             </div>
           ) : (
-            <small className="cp-edit-caption">Paint, draw or click the part to change on the render.</small>
+            <small className="cp-edit-caption">Pick a tool on the render and mark the part to change.</small>
           ))}
       </section>
 

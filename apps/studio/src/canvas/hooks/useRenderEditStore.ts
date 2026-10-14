@@ -25,10 +25,16 @@ interface RenderEditState {
   /** Brush diameter in screen pixels; converted to image pixels when a stroke is drawn. */
   brushSize: number;
   strokes: RenderMaskStroke[];
+  /**
+   * What the selection is ("front door"): the words typed into Auto select, or a quick pick.
+   * Sent with the edit so the model knows which element to change. Null when untagged.
+   */
+  selectionLabel: string | null;
   /** Edit job queued from the viewer — shown in Compare once it finishes. */
   awaitingJobId: string | null;
   setTool: (tool: RenderEditTool | null) => void;
   setBrushSize: (size: number) => void;
+  setSelectionLabel: (label: string | null) => void;
   addStroke: (stroke: RenderMaskStroke) => void;
   undo: () => void;
   clearStrokes: () => void;
@@ -41,22 +47,29 @@ export const useRenderEditStore = create<RenderEditState>((set) => ({
   tool: null,
   brushSize: 36,
   strokes: [],
+  selectionLabel: null,
   awaitingJobId: null,
   setTool: (tool) => set({ tool }),
   setBrushSize: (brushSize) => set({ brushSize }),
+  setSelectionLabel: (selectionLabel) => set({ selectionLabel: selectionLabel?.trim() || null }),
   addStroke: (stroke) => {
     set((state) => ({ strokes: [...state.strokes, stroke] }));
   },
-  undo: () => set((state) => ({ strokes: state.strokes.slice(0, -1) })),
-  clearStrokes: () => set({ strokes: [] }),
+  // A tag describes the selection, so it goes when the selection does.
+  undo: () =>
+    set((state) => {
+      const strokes = state.strokes.slice(0, -1);
+      return { strokes, selectionLabel: hasSelection(strokes) ? state.selectionLabel : null };
+    }),
+  clearStrokes: () => set({ strokes: [], selectionLabel: null }),
   setAwaitingJob: (awaitingJobId) => set({ awaitingJobId }),
-  stopEditing: () => set({ targetJobId: null, strokes: [], tool: null }),
+  stopEditing: () => set({ targetJobId: null, strokes: [], selectionLabel: null, tool: null }),
 }));
 
 /** Opens a finished render full-size in edit mode and points the Edit tab at it. */
 export function startRenderEdit(jobId: string) {
   const { targetJobId } = useRenderEditStore.getState();
-  useRenderEditStore.setState(targetJobId === jobId ? {} : { targetJobId: jobId, strokes: [] });
+  useRenderEditStore.setState(targetJobId === jobId ? {} : { targetJobId: jobId, strokes: [], selectionLabel: null });
   useRenderJobsStore.getState().setPreviewJob(jobId);
   useCanvasStore.getState().setActiveTab("edit");
 }

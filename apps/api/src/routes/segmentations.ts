@@ -9,7 +9,7 @@ import { releaseBudgetReservation, reserveBudget } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
-import { runSegmentation, SAM_COST_MICROS, SAM_MODEL_ID } from "../lib/segment.js";
+import { runSegmentation, SAM_COST_MICROS, segmentationModelId } from "../lib/segment.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
 import { checkFeatures, currentStudioRevision, effectiveCreditPrices } from "../lib/studioControl.js";
@@ -91,7 +91,7 @@ segmentations.post("/", async (c) => {
       prompt: body.prompt ?? null,
       point: body.point ?? null,
       status: "pending",
-      model: mode === "mock" ? "mock" : SAM_MODEL_ID,
+      model: mode === "mock" ? "mock" : segmentationModelId(body),
       costMicros,
       configVersion: revision.version,
     });

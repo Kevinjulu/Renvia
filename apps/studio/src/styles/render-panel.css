@@ -1258,6 +1258,15 @@
 .render-preview.is-editing .render-preview-stage{background-image:none;background-color:#eceef2}
 .render-preview-footer.is-hint{background:#f7f6f3;border-top-color:#dfe5fb}
 .render-preview-footer.is-hint p{color:#2b3a8f;white-space:normal}
+.render-preview-footer.is-hint{flex-wrap:wrap}
+.render-preview-footer .render-edit-tag{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:6px}
+.render-edit-tag strong{margin-right:2px;color:#2b3a8f;font-size:11.5px;font-weight:600}
+.render-edit-tag button{border:1px solid #dfe3ea;border-radius:999px;padding:3px 10px;background:#fff;color:#2c3038;font-size:11.5px;font-weight:500;cursor:pointer}
+.render-edit-tag button:hover{border-color:#b9c3e6}
+.render-edit-tag button.is-active{border-color:#2b3a8f;background:#2b3a8f;color:#fff}
+.render-edit-tag input{width:120px;height:26px;border:1px solid #dfe3ea;border-radius:999px;padding:0 10px;background:#fff;color:#1f2329;font-size:11.5px;outline:0}
+.render-edit-tag input:focus{border-color:#b9c3e6;box-shadow:0 0 0 3px rgba(43,58,143,.12)}
+.render-edit-tag input.is-active{border-color:#2b3a8f}
 .render-edit-pending{display:inline-flex;flex:none;align-items:center;gap:6px;color:#171717;font-size:11.5px;font-weight:600}
 .render-edit-pending:before{width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;content:"";animation:render-preview-spin .8s linear infinite}
 .render-preview-waiting{border-top:1px solid #dfe5fb;background:#f7f6f3;padding:10px 14px}

@@ -3,9 +3,9 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { STUDIO_FEATURES, type AdminModel, type AdminModelsResponse, type RenderEngineMode, type RenderRoute } from "@renvia/types";
 import { modelRoutes } from "../../lib/models.js";
-import { SAM_COST_MICROS, SAM_MODEL_ID } from "../../lib/segment.js";
+import { SAM_CLICK_MODEL_ID, SAM_COST_MICROS, SAM_MODEL_ID } from "../../lib/segment.js";
 import { effectiveEngineMode, getSettings } from "../../lib/settings.js";
-import { currentStudioRevision, featureModels } from "../../lib/studioControl.js";
+import { currentStudioRevision, featureModels, type SelectionRoute } from "../../lib/studioControl.js";
 import { denyUnless } from "./permissions.js";
 import { AGGREGATES, counts, jobs, stats, type Row } from "./performance.js";
 import { MICROS_PER_USD } from "./shared.js";
@@ -17,7 +17,7 @@ export const modelsRoutes = new Hono<AdminContext>();
 interface CatalogEntry {
   id: string;
   costMicros: number;
-  serves: { mode: RenderEngineMode; route: RenderRoute | "selection" }[];
+  serves: { mode: RenderEngineMode; route: RenderRoute | SelectionRoute }[];
 }
 
 /**
@@ -31,10 +31,12 @@ function catalog(): CatalogEntry[] {
     entry.serves.push({ mode, route });
     byId.set(model.id, entry);
   }
-  const sam = byId.get(SAM_MODEL_ID) ?? { id: SAM_MODEL_ID, costMicros: SAM_COST_MICROS, serves: [] };
-  sam.serves.push({ mode: "dev", route: "selection" }, { mode: "prod", route: "selection" });
-  byId.set(SAM_MODEL_ID, sam);
-  byId.get("mock")?.serves.push({ mode: "mock", route: "selection" });
+  for (const [id, route] of [[SAM_MODEL_ID, "selection"], [SAM_CLICK_MODEL_ID, "selection-click"]] as const) {
+    const sam = byId.get(id) ?? { id, costMicros: SAM_COST_MICROS, serves: [] };
+    sam.serves.push({ mode: "dev", route }, { mode: "prod", route });
+    byId.set(id, sam);
+    byId.get("mock")?.serves.push({ mode: "mock", route });
+  }
   return [...byId.values()];
 }
 

@@ -19,7 +19,8 @@ const ROUTE_LABELS: Record<string, string> = {
   edit: "Edit",
   "edit-references": "Edit with references",
   upscale: "Upscale / 4K / 8K",
-  selection: "Auto select",
+  selection: "Auto select (typed)",
+  "selection-click": "Auto select (click)",
 };
 
 function formatMs(ms: number | null) {

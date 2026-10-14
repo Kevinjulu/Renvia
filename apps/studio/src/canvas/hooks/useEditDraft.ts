@@ -35,12 +35,19 @@ export function useEditDraft() {
   const environment = useGenerationSettingsStore((state) => state.editEnvironment);
   const targetJobId = useRenderEditStore((state) => state.targetJobId);
   const areaPainted = useRenderEditStore((state) => hasSelection(state.strokes));
+  const selectionLabel = useRenderEditStore((state) => state.selectionLabel);
   const render = useRenderJobsStore((state) => state.jobs.find((job) => job.id === targetJobId && job.resultImageUrl) ?? null);
 
   const hasArea = scope === "selection" && areaPainted;
   const prompt = method === "reference" ? "" : editPrompt.trim();
   const references = method !== "prompt" && referenceUrl ? [referenceUrl] : [];
-  const edit: RenderEditSettings = { mode: modeFor(method, hasArea), method, environment: cleanEnvironment(environment) };
+  const edit: RenderEditSettings = {
+    mode: modeFor(method, hasArea),
+    method,
+    environment: cleanEnvironment(environment),
+    // The tag only means something alongside the selection it names.
+    ...(hasArea && selectionLabel ? { selectionLabel } : {}),
+  };
   // Checks need to know a mask will be sent; the real URL only exists once it's uploaded on Apply.
   const checked: RenderEditSettings = hasArea ? { ...edit, maskImageUrl: "selection" } : edit;
 
@@ -56,6 +63,8 @@ export function useEditDraft() {
     prompt,
     references,
     hasArea,
+    /** What the selection is, when the person has said; only set with a selection. */
+    selectionLabel: hasArea ? selectionLabel : null,
     problem,
     passes: editPassCount(checked),
     /** Settings for pricing the edit (the mask placeholder included). */

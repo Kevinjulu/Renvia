@@ -37,13 +37,8 @@ function growSpan(start: number, size: number, target: number, limit: number): [
   return [begin, length];
 }
 
-/**
- * The part of the source a masked edit should send to the model: the selection's bounding
- * box plus surrounding context. A close-up gives the model far more pixels for a door or a
- * window than the whole elevation would. Null when the selection is empty or already covers
- * most of the image. Deterministic, so the result step recomputes the same rectangle.
- */
-export async function editCropFor(source: Uint8Array, mask: Uint8Array): Promise<CropRect | null> {
+/** Bounding box of the selected (white) pixels, in source pixels; null when nothing is selected. */
+export async function selectionBox(source: Uint8Array, mask: Uint8Array): Promise<{ box: CropRect; width: number; height: number } | null> {
   const { width, height } = await orientedSize(source);
   if (!width || !height) return null;
 
@@ -64,16 +59,61 @@ export async function editCropFor(source: Uint8Array, mask: Uint8Array): Promise
     }
   }
   if (maxX < 0) return null;
+  return { box: { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 }, width, height };
+}
 
-  const boxWidth = maxX - minX + 1;
-  const boxHeight = maxY - minY + 1;
-  const context = Math.round(Math.max(boxWidth, boxHeight) * CONTEXT_RATIO);
+/**
+ * The part of the source a masked edit should send to the model: the selection's bounding
+ * box plus surrounding context. A close-up gives the model far more pixels for a door or a
+ * window than the whole elevation would. Null when the selection is empty or already covers
+ * most of the image. Deterministic, so the result step recomputes the same rectangle.
+ */
+export async function editCropFor(source: Uint8Array, mask: Uint8Array): Promise<CropRect | null> {
+  const selection = await selectionBox(source, mask);
+  return selection ? cropAround(selection.box, selection.width, selection.height) : null;
+}
+
+function cropAround(box: CropRect, width: number, height: number): CropRect | null {
+  const context = Math.round(Math.max(box.width, box.height) * CONTEXT_RATIO);
   const minSide = Math.min(MIN_CROP_SIDE, width, height);
-  const [left, cropWidth] = growSpan(minX, boxWidth, Math.max(boxWidth + 2 * context, minSide), width);
-  const [top, cropHeight] = growSpan(minY, boxHeight, Math.max(boxHeight + 2 * context, minSide), height);
+  const [left, cropWidth] = growSpan(box.left, box.width, Math.max(box.width + 2 * context, minSide), width);
+  const [top, cropHeight] = growSpan(box.top, box.height, Math.max(box.height + 2 * context, minSide), height);
 
   if (cropWidth * cropHeight > MAX_CROP_AREA_SHARE * width * height) return null;
   return { left, top, width: cropWidth, height: cropHeight };
+}
+
+/** A selection spanning more than this share of the frame on both axes has no useful "where". */
+const PLACEMENT_MAX_SPAN = 0.6;
+
+/**
+ * Where the selection sits in the image the model is given (the crop, or the whole source), in
+ * words: "in the centre", "in the lower left". Null when it fills most of that image, where a
+ * position would only mislead.
+ */
+export function selectionPlacement(box: CropRect, frame: CropRect): string | null {
+  if (box.width > PLACEMENT_MAX_SPAN * frame.width && box.height > PLACEMENT_MAX_SPAN * frame.height) return null;
+  const third = (centre: number, start: number, size: number) => {
+    const share = (centre - start) / size;
+    return share < 0.36 ? 0 : share > 0.64 ? 2 : 1;
+  };
+  const column = third(box.left + box.width / 2, frame.left, frame.width);
+  const row = third(box.top + box.height / 2, frame.top, frame.height);
+  if (row === 1 && column === 1) return "in the centre";
+  const vertical = ["upper", "", "lower"][row]!;
+  const horizontal = ["left", "", "right"][column]!;
+  if (!horizontal) return row === 0 ? "at the top" : "at the bottom";
+  if (!vertical) return `on the ${horizontal}`;
+  return `in the ${vertical} ${horizontal}`;
+}
+
+/** What a selection edit needs: the crop sent to the model, and where the selection sits in it. */
+export async function selectionFraming(source: Uint8Array, mask: Uint8Array): Promise<{ crop: CropRect | null; placement: string | null }> {
+  const selection = await selectionBox(source, mask);
+  if (!selection) return { crop: null, placement: null };
+  const crop = cropAround(selection.box, selection.width, selection.height);
+  const frame = crop ?? { left: 0, top: 0, width: selection.width, height: selection.height };
+  return { crop, placement: selectionPlacement(selection.box, frame) };
 }
 
 /** The crop of the (EXIF-rotated) source that the model edits. */

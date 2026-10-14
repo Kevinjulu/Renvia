@@ -9,9 +9,20 @@ import { getObject, ownUploadKey } from "./storage.js";
 
 type SegmentationRow = typeof schema.segmentations.$inferSelect;
 
+/**
+ * Typed selection ("windows", "front door"). SAM 3 finds things by name: it returns every match
+ * of the words and ignores click points, so it can't serve a click on its own.
+ */
 export const SAM_MODEL_ID = "fal-ai/sam-3/image";
-/** fal SAM 3 is $0.005/request. */
+/** Click selection. SAM 2 returns the one object under the point (tested on renders 2026-10-14). */
+export const SAM_CLICK_MODEL_ID = "fal-ai/sam2/image";
+/** fal SAM 3 is $0.005/request; SAM 2 is billed by compute and budgeted at the same ceiling. */
 export const SAM_COST_MICROS = 5_000;
+
+/** The model a selection runs on: words go to SAM 3, a bare click to SAM 2. */
+export function segmentationModelId(request: { prompt?: string | null }): string {
+  return request.prompt?.trim() ? SAM_MODEL_ID : SAM_CLICK_MODEL_ID;
+}
 
 interface SegmentResult {
   maskDataUrl: string;
@@ -102,18 +113,42 @@ async function runSam(
 ): Promise<SegmentResult> {
   const fal = createFalClient({ credentials: env.FAL_KEY });
   const reachable = await falReachableImageUrl(env, imageUrl, origin);
-  const input = {
-    image_url: reachable,
-    apply_mask: false,
-    sync_mode: true,
-    output_format: "png" as const,
-    return_multiple_masks: true,
-    max_masks: 8,
-    ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
-    ...(point ? { point_prompts: [{ x: Math.round(point.x), y: Math.round(point.y), label: "1" as const }] } : {}),
-  };
+  const text = prompt?.trim();
 
-  const result = await fal.subscribe(SAM_MODEL_ID, { input, logs: false });
+  if (!text) {
+    if (!point) return { maskDataUrl: "", objectCount: 0 };
+    // @fal-ai/client types the label as "0" | "1", but the API rejects strings with a 422:
+    // it must be the number. Sending "1" silently broke every click selection.
+    const result = await fal.subscribe(SAM_CLICK_MODEL_ID, {
+      input: {
+        image_url: reachable,
+        prompts: [{ x: Math.round(point.x), y: Math.round(point.y), label: 1 as unknown as "1" }],
+        apply_mask: false,
+        sync_mode: true,
+        output_format: "png" as const,
+      },
+      logs: false,
+    });
+    const url = (result.data as { image?: { url?: string } }).image?.url;
+    if (!url) return { maskDataUrl: "", objectCount: 0 };
+    // An empty mask means nothing was found under the click.
+    const maskDataUrl = await combineMasks([url]);
+    return (await hasWhite(maskDataUrl)) ? { maskDataUrl, objectCount: 1 } : { maskDataUrl: "", objectCount: 0 };
+  }
+
+  // Every match of the words: "windows" should select all of them.
+  const result = await fal.subscribe(SAM_MODEL_ID, {
+    input: {
+      image_url: reachable,
+      prompt: text,
+      apply_mask: false,
+      sync_mode: true,
+      output_format: "png" as const,
+      return_multiple_masks: true,
+      max_masks: 8,
+    },
+    logs: false,
+  });
   const data = result.data as {
     masks?: { url?: string }[];
     image?: { url?: string };
@@ -122,6 +157,12 @@ async function runSam(
   if (urls.length === 0 && data.image?.url) urls.push(data.image.url);
   if (urls.length === 0) return { maskDataUrl: "", objectCount: 0 };
   return { maskDataUrl: await combineMasks(urls), objectCount: urls.length };
+}
+
+/** True when a white-on-black mask selects at least one pixel. */
+async function hasWhite(maskDataUrl: string): Promise<boolean> {
+  const { max } = (await sharp(await urlToPngBytes(maskDataUrl)).greyscale().stats()).channels[0]!;
+  return max > 127;
 }
 
 /**
