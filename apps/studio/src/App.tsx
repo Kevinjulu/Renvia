@@ -8,6 +8,7 @@ import { DashboardRoute } from "./routes/DashboardRoute";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { AppErrorHandling } from "./components/AppErrorHandling";
 import { AppLoader } from "./components/loading/AppLoader";
+import { SmallScreenNotice } from "./components/SmallScreenNotice";
 
 // The canvas pulls in Konva, so it (and the less-visited pages) load on demand.
 const CanvasRoute = lazy(() => import("./routes/CanvasRoute").then((module) => ({ default: module.CanvasRoute })));
@@ -42,6 +43,7 @@ export default function App() {
         </Route>
       </Routes>
       </Suspense>
+      <SmallScreenNotice />
       </AppErrorHandling>
     </BrowserRouter>
   );

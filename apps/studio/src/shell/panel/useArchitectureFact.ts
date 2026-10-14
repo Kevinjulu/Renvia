@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ARCHITECTURE_FACTS } from "./architectureFacts";
 
-const FACT_INTERVAL_MS = 6000;
+/** Long enough to read a two-line fact without rushing; 6s swapped them before most people finished. */
+const FACT_INTERVAL_MS = 12000;
 
 /** Rotates through architecture fun facts on a fixed interval, starting from a random one. */
 export function useArchitectureFact(active: boolean): string {
