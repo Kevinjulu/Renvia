@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useAccountStore } from "../lib/useAccountStore";
@@ -72,8 +73,9 @@ export function DownloadDialog() {
   const highRes = job?.settings?.highRes;
   const imageUrl = highRes?.imageUrl ?? job?.resultImageUrl ?? job?.sourceImageUrl ?? null;
   const me = useAccountStore((state) => state.me);
-  // Free-plan model output reaches the browser watermarked, so every download carries it too.
-  const watermarked = me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
+  const navigate = useNavigate();
+  // Downloading and copying are paid-plan features; free accounts see why instead of the options.
+  const locked = me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
 
   const [render, setRender] = useState<{ blob: Blob; bitmap: ImageBitmap } | null>(null);
   const [source, setSource] = useState<ImageBitmap | null>(null);
@@ -215,6 +217,7 @@ export function DownloadDialog() {
   })();
 
   const handleDownload = async () => {
+    if (locked) return;
     setBusy("download");
     setNotice(null);
     try {
@@ -228,7 +231,7 @@ export function DownloadDialog() {
   };
 
   const handleCopy = async () => {
-    if (!render) return;
+    if (!render || locked) return;
     setBusy("copy");
     setNotice(null);
     try {
@@ -273,13 +276,44 @@ export function DownloadDialog() {
               </svg>
             </button>
           </header>
-          {watermarked && (
-            <p className="dl-hint dl-watermark-note">
-              Free-plan downloads, including high-resolution exports, carry a Renvia watermark. Paid plans download clean files, and upgrading unlocks your earlier renders too.
-            </p>
-          )}
-
-          {loadError ? (
+          {locked ? (
+            <div className="dl-locked">
+              <span className="dl-locked-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16">
+                  <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                  <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                </svg>
+              </span>
+              <h3>Downloads come with a paid plan</h3>
+              <p>
+                On the free plan you can render, edit and compare as much as your credits allow, but renders stay in the Studio. A paid plan
+                lets you download and copy them as clean, watermark-free files.
+              </p>
+              <ul>
+                <li>JPG, PNG or WebP, at full resolution</li>
+                <li>Before & after layouts for client reviews</li>
+                <li>Every render you've already made, not just new ones</li>
+              </ul>
+              <div className="dl-actions">
+                <footer>
+                  <button type="button" className="dl-secondary" onClick={close}>
+                    Not now
+                  </button>
+                  <button
+                    ref={downloadRef}
+                    type="button"
+                    className="dl-primary"
+                    onClick={() => {
+                      close();
+                      navigate("/billing#plans");
+                    }}
+                  >
+                    See plans
+                  </button>
+                </footer>
+              </div>
+            </div>
+          ) : loadError ? (
             <p className="dl-error">Couldn't load this image. Check your connection and try again.</p>
           ) : (
             <>
