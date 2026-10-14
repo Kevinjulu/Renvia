@@ -5,6 +5,7 @@ import type { AdminOverviewResponse, RenderStatus } from "@renvia/types";
 import { getSettings, effectiveBudgetUsd, effectiveEngineMode } from "../../lib/settings.js";
 import { effectiveMaintenance } from "../../lib/studioControl.js";
 import { BYTES_PER_MB, storageUsage } from "../../lib/storage.js";
+import { falAccount } from "../../lib/falAccount.js";
 import { denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, stuckBeforeSql, selectAdminRenders, toAdminRender } from "./shared.js";
 import type { AdminContext } from "./context.js";
@@ -218,6 +219,15 @@ overviewRoutes.get("/overview", async (c) => {
   } else if (storageRatio >= 0.7) {
     alerts.push({ id: "storage_warning", severity: "warning", message: `Image storage is at ${Math.round(storageRatio * 100)}% of its ${(settings.storageCapMb / 1000).toFixed(1)} GB cap.`, href: "/settings" });
   }
+  const fal = await falAccount(c.env);
+  if (fal.status === "ok" && fal.balanceUsd !== null && fal.balanceUsd < 5) {
+    alerts.push({
+      id: "fal_balance_low",
+      severity: fal.balanceUsd < 2 ? "critical" : "warning",
+      message: `fal account balance is ${formatUsdAlert(fal.balanceUsd)} — top up before fal starts rejecting renders.`,
+      href: "/settings",
+    });
+  }
   if (mode !== "prod") {
     alerts.push({
       id: "engine_mode",
@@ -274,6 +284,7 @@ overviewRoutes.get("/overview", async (c) => {
       usedPercent: budgetUsd > 0 ? Math.min(100, Math.round(budgetRatio * 1000) / 10) : null,
       measuredAt: new Date().toISOString(),
     },
+    falAccount: fal,
     daily: dailyRows.rows.map((row) => ({
       date: row.date,
       renders: Number(row.renders),

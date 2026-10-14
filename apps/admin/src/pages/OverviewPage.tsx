@@ -294,13 +294,28 @@ function LiveCapacity({ data }: { data: AdminOverviewResponse }) {
       ? "No paid-token budget configured"
       : `${token.usedPercent}% used · ${formatUsd(token.remainingUsd)} left`;
   return <Card title="Live capacity" icon={Activity} actions={<span className="text-xs text-faint">Synced {formatRelative(token.measuredAt)} · every 30s</span>}>
-    <div className="grid gap-5 sm:grid-cols-3">
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.users.activeLast7Days)}</p><p className="mt-1 text-sm font-medium text-primary">Active customers</p><p className="mt-1 text-xs text-faint">Authenticated activity in the last 7 days</p></div>
       <div><p className="text-2xl font-bold tabular-nums text-primary">{formatNumber(data.credits.outstanding)}</p><p className="mt-1 text-sm font-medium text-primary">Customer credits available</p><p className="mt-1 text-xs text-faint">{formatNumber(data.credits.spentLast7Days)} used · {formatNumber(data.credits.grantedLast7Days)} granted this week</p></div>
       <div><p className="text-2xl font-bold tabular-nums text-primary">{token.budgetUsd > 0 ? formatUsd(token.remainingUsd) : "—"}</p><p className="mt-1 text-sm font-medium text-primary">Tracked FAL budget remaining</p><p className="mt-1 text-xs text-faint">{tokenDetail}</p></div>
+      <FalBalance account={data.falAccount} trackedSpentUsd={token.spentUsd} />
     </div>
-    <p className="mt-5 border-t border-hairline pt-3 text-xs text-faint">API budget is calculated from recorded render and segmentation costs against the configured FAL budget. It is not an unverified provider-wallet balance.</p>
+    <p className="mt-5 border-t border-hairline pt-3 text-xs text-faint">Tracked budget is calculated from recorded render and segmentation costs. fal balance is read from fal's billing API, so it also counts calls made outside the app — if the two drift apart, our price table needs updating.</p>
   </Card>;
+}
+
+function FalBalance({ account, trackedSpentUsd }: { account: AdminOverviewResponse["falAccount"]; trackedSpentUsd: number }) {
+  const [value, detail] =
+    account.status === "unconfigured"
+      ? ["—", "Set FAL_ADMIN_KEY (fal BILLING key) to show the real balance"]
+      : account.status === "error"
+        ? ["—", `Couldn't read fal billing: ${account.message}`]
+        : [
+            account.balanceUsd === null ? "—" : formatUsd(account.balanceUsd),
+            `fal billed ${formatUsd(account.spentLast30DaysUsd)} in 30 days · we tracked ${formatUsd(trackedSpentUsd)} all-time`,
+          ];
+  const low = account.status === "ok" && account.balanceUsd !== null && account.balanceUsd < 5;
+  return <div><p className={`text-2xl font-bold tabular-nums ${low ? "text-rose-700" : "text-primary"}`}>{value}</p><p className="mt-1 text-sm font-medium text-primary">fal account balance</p><p className="mt-1 text-xs text-faint">{detail}</p></div>;
 }
 
 function ActiveCustomerActivity({ data }: { data: AdminOverviewResponse }) {

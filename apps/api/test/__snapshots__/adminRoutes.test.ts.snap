@@ -806,6 +806,9 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "spentUsd": 0,
         },
       ],
+      "falAccount": {
+        "status": "unconfigured",
+      },
       "projects": {
         "activeLast7Days": 2,
         "total": 2,

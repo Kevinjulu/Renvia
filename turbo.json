@@ -16,6 +16,7 @@
         "FAL_KEY",
         "FAL_MODE",
         "FAL_BUDGET_USD",
+        "FAL_ADMIN_KEY",
         "NEON_STORAGE_ACCESS_KEY_ID",
         "NEON_STORAGE_SECRET_ACCESS_KEY",
         "NEON_STORAGE_ENDPOINT",

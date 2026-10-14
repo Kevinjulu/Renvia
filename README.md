@@ -102,6 +102,7 @@ for local work). Server-only: never give these a `VITE_` or `NEXT_PUBLIC_` prefi
 | `FAL_KEY` | fal.ai API key |
 | `FAL_MODE` | `mock` (default: free placeholder results, no fal calls), `dev` (cheapest model) or `prod`. Anything else falls back to `mock` |
 | `FAL_BUDGET_USD` | Hard cap on total estimated fal spend. Unset or `0` blocks all paid renders |
+| `FAL_ADMIN_KEY` | Optional fal key on the `BILLING` preset (read-only). Shows the real fal balance and 30-day billed spend on the admin overview |
 | `NEON_STORAGE_ACCESS_KEY_ID`, `NEON_STORAGE_SECRET_ACCESS_KEY`, `NEON_STORAGE_ENDPOINT`, `NEON_STORAGE_BUCKET`, `NEON_STORAGE_REGION` | Object storage for uploads and generated renders |
 | `STORAGE_URL_SIGNING_SECRET` | Long random secret for seven-day expiring image links. Objects are not anonymously public |
 | `CRON_SECRET` | Bearer token for the daily render sweep. Unset disables the endpoint |

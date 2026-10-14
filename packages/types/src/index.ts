@@ -903,6 +903,11 @@ export interface AdminOverviewResponse {
     usedPercent: number | null;
     measuredAt: string;
   };
+  /** The real fal wallet from fal's Platform API (FAL_ADMIN_KEY), to compare with our estimates. */
+  falAccount:
+    | { status: "unconfigured" }
+    | { status: "error"; message: string }
+    | { status: "ok"; balanceUsd: number | null; currency: string; spentLast30DaysUsd: number; measuredAt: string };
   /** Last 14 UTC days, oldest first. */
   daily: { date: string; renders: number; spentUsd: number }[];
   topUsers: { id: string; email: string; renders: number; spentUsd: number }[];
@@ -927,7 +932,7 @@ export interface AdminOverviewResponse {
   }[];
   /** Derived operator alerts from live thresholds. */
   alerts: {
-    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode" | "maintenance" | "storage_warning" | "storage_critical";
+    id: "budget_warning" | "budget_critical" | "failure_rate" | "stuck_renders" | "engine_mode" | "maintenance" | "storage_warning" | "storage_critical" | "fal_balance_low";
     severity: "warning" | "critical" | "info";
     message: string;
     href: string;
