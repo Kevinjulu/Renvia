@@ -12,7 +12,7 @@ import { buildRetryRequest } from "../../canvas/utils/retryRender";
 import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
 import { useApiClient } from "../../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
-import { friendlyRenderError } from "../../canvas/utils/renderErrors";
+import { describeRenderFailure } from "../../canvas/utils/renderErrors";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
@@ -411,10 +411,10 @@ export function RenderResultsPanel() {
             </figcaption>
           )}
           {job.status === "failed" && (
-            <figcaption className="rp-failed">
-              <strong>{job.settings?.upscale ? "High-resolution export failed" : "Render failed"}</strong>
-              <FailureReason message={job.errorMessage} />
-            </figcaption>
+            <FailureCard
+              kind={job.settings?.upscale ? "High-resolution export" : job.settings?.edit ? "Edit" : "Render"}
+              message={job.errorMessage}
+            />
           )}
         </figure>
 
@@ -433,7 +433,14 @@ export function RenderResultsPanel() {
         </div>
 
         <div className="rp-actions">
-          {job.status === "failed" ? (
+          {job.status === "failed" && !describeRenderFailure(job.errorMessage).retryable && !job.settings?.upscale ? (
+            <button type="button" className="rp-btn is-primary" onClick={handleUsePromptAndSettings} title="Load this job's prompt and settings into the panel to change them">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z" />
+              </svg>
+              Change settings and try again
+            </button>
+          ) : job.status === "failed" ? (
             <button type="button" className="rp-btn is-primary" disabled={isRetrying} onClick={() => void handleRetry()}>
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M13 8A5 5 0 1 1 11.5 4.4M13 2.5v3.5H9.5" />
@@ -584,8 +591,25 @@ export function RenderResultsPanel() {
   );
 }
 
-/** Why a render failed, in plain words; admins can hover for the engine's own message. */
-function FailureReason({ message }: { message: string | null }) {
+/** Why a render failed and what to do next, in plain words; admins also see the engine's own message. */
+function FailureCard({ kind, message }: { kind: string; message: string | null }) {
   const isAdmin = useAccountStore((state) => state.me?.role === "admin");
-  return <span title={isAdmin && message ? message : undefined}>{friendlyRenderError(message)}</span>;
+  const failure = describeRenderFailure(message);
+  return (
+    <figcaption className="rp-failed" role="status">
+      <span className="rp-failed-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="6.2" />
+          <path d="M8 4.8v3.7M8 10.9v.1" />
+        </svg>
+      </span>
+      <span className="rp-failed-body">
+        <small>{kind} didn&apos;t finish</small>
+        <strong>{failure.title}</strong>
+        <span>{failure.detail}</span>
+        {failure.refunded && <em>Credits refunded</em>}
+        {isAdmin && message && <code title={message}>{message}</code>}
+      </span>
+    </figcaption>
+  );
 }

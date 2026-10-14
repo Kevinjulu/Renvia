@@ -96,8 +96,28 @@ export type EditStyle = (typeof EDIT_STYLES)[number];
 
 /** Longest facade colour (a name or hex value) the API accepts. */
 export const MAX_FACADE_COLOR_CHARS = 40;
-/** Edits take a single reference: more than one leaves the model guessing which to follow. */
-export const MAX_EDIT_REFERENCES = 1;
+/**
+ * Most references one edit takes. Each is tagged with the part it is for (see
+ * EditReferenceTarget), so the model is told which image dresses which part rather than
+ * left guessing between them. The model itself takes ten images; one is the render.
+ */
+export const MAX_EDIT_REFERENCES = 5;
+
+/**
+ * What an edit reference is for: the whole look, or one part of the building it should dress
+ * ("a roof tile sample" → the roof). "other" carries its own words in EditReference.note.
+ */
+export const EDIT_REFERENCE_TARGETS = ["look", "roof", "walls", "windows", "doors", "paving", "columns", "railings", "garden", "other"] as const;
+export type EditReferenceTarget = (typeof EDIT_REFERENCE_TARGETS)[number];
+/** Longest note the person may add to a reference ("the grey stone, not the brick"). */
+export const MAX_EDIT_REFERENCE_NOTE_CHARS = 80;
+
+/** One edit reference's tag, in the same order as referenceImageUrls. */
+export interface EditReference {
+  target: EditReferenceTarget;
+  /** The person's own words about it; required for "other", optional otherwise. */
+  note?: string;
+}
 
 /**
  * Scene-wide changes applied over the whole result, never limited to a selected area.
@@ -141,6 +161,11 @@ export interface RenderEditSettings {
    * person's tag for it if they gave one. Tells the model what and where each area is.
    */
   selectionAreas?: EditSelectionArea[];
+  /**
+   * What each reference is for, index for index with referenceImageUrls. Edits from before
+   * references were tagged have none; each untagged reference counts as "look".
+   */
+  references?: EditReference[];
   environment?: EditEnvironment;
   /**
    * Set by the API, never the client: the selection's composited result, stored when the first
@@ -187,7 +212,10 @@ export function editRequestProblem({
   const hasPrompt = prompt.trim() !== "";
   const hasReferences = referenceCount > 0;
   const hasEnvironment = hasEnvironmentChange(edit.environment);
-  if (referenceCount > MAX_EDIT_REFERENCES) return "Edits use one reference image.";
+  if (referenceCount > MAX_EDIT_REFERENCES) return `Edits take up to ${MAX_EDIT_REFERENCES} reference images.`;
+  if ((edit.references ?? []).some((reference) => reference.target === "other" && !reference.note?.trim())) {
+    return "Say what each reference marked “Other” is for.";
+  }
   // The environment is applied over the whole result, so a selection with nothing else to do
   // inside it would be an empty first pass.
   if (edit.maskImageUrl && !hasPrompt && !hasReferences) {

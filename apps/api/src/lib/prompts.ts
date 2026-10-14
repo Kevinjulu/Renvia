@@ -1,7 +1,10 @@
 import {
   editMethodFor,
+  MAX_EDIT_REFERENCE_NOTE_CHARS,
   type EditEnvironment,
   type EditMethod,
+  type EditReference,
+  type EditReferenceTarget,
   type EditSeason,
   type EditStyle,
   type EditTimeOfDay,
@@ -197,6 +200,11 @@ export interface EditPromptOptions {
    * and where it sits in the image the model is given ("in the centre"; see selectionPlacement).
    */
   selectionAreas?: { label?: string; placement?: string }[];
+  /**
+   * What each reference is for, in image order (image 2 onward). Omitted with one reference
+   * means a single untagged one, which keeps the original single-reference wording.
+   */
+  references?: EditReference[];
   /** The style the image being edited was rendered in; omitted or "Photorealistic" needs no hint. */
   style?: string;
 }
@@ -372,6 +380,65 @@ function referenceInstruction(method: EditMethod, subject: string, hasSelection:
 }
 
 /**
+ * What each reference target dresses, and what to take from its image. A swatch of roof tiles
+ * says nothing about walls, so each reference is pointed at its own part of the building.
+ */
+const REFERENCE_TARGET_TEXT: Record<Exclude<EditReferenceTarget, "look" | "other">, { name: string; part: string; take: string }> = {
+  roof: { name: "a roof reference", part: "the roof", take: "roofing material, tile or sheet shape and pattern, colour and finish" },
+  walls: { name: "a wall reference", part: "the exterior walls", take: "material, texture, pattern, colour and finish" },
+  windows: { name: "a window reference", part: "the windows", take: "frame style, glazing pattern, material, colour and finish" },
+  doors: { name: "a door reference", part: "the doors", take: "design, panelling, material, colour, finish and hardware" },
+  paving: { name: "a paving reference", part: "the driveway, paths and paved ground", take: "paver shape, pattern, colours and laying layout" },
+  columns: { name: "a column reference", part: "the columns and pillars", take: "profile, detailing, material, colour and finish" },
+  railings: { name: "a railing reference", part: "the balcony railings and balustrades", take: "design, material, colour and finish" },
+  garden: { name: "a landscaping reference", part: "the garden and outdoor areas", take: "planting, lawn, hedges, garden features and their arrangement" },
+};
+
+/** A reference's note as safe prompt text: one line, no quotes, no trailing punctuation. */
+export function cleanReferenceNote(note: string | undefined): string {
+  return (note ?? "")
+    .replace(/["“”]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?,;:]+$/, "")
+    .slice(0, MAX_EDIT_REFERENCE_NOTE_CHARS);
+}
+
+/** One sentence naming what image `n` is for and what to take from it. */
+function taggedReferenceSentence(n: number, reference: EditReference, hasSelection: boolean): string {
+  const note = cleanReferenceNote(reference.note);
+  const said = note ? ` Note about image ${n}: ${asSentence(note)}` : "";
+  if (reference.target === "other") {
+    return `Image ${n} is a reference for ${note || "part of the building"}: apply its design, material, colour and finish there.`;
+  }
+  if (reference.target === "look") {
+    const onto = hasSelection ? "the selected elements" : "the matching surfaces of image 1";
+    return `Image ${n} shows the overall look to follow: apply its materials, finishes, colours and detailing to ${onto}.${said}`;
+  }
+  const { name, part, take } = REFERENCE_TARGET_TEXT[reference.target];
+  return `Image ${n} is ${name}: give ${part} of image 1 its ${take}.${said}`;
+}
+
+/** "Images 2 and 3 are" / "Images 2 to 4 are", for the role sentence of several references. */
+function referenceRange(count: number): string {
+  return count === 2 ? "Images 2 and 3 are references" : `Images 2 to ${count + 1} are references`;
+}
+
+/** Tagged references, or several: one sentence per image, then how to combine them. */
+function taggedReferenceInstruction(method: EditMethod, subject: string, references: EditReference[], hasSelection: boolean): string {
+  const each = references.map((reference, index) => taggedReferenceSentence(index + 2, reference, hasSelection));
+  const several = references.length > 1;
+  const combine = several
+    ? "Use each reference only for its own part, fitted to that part's current shape, size and perspective."
+    : "Fit it to that part's current shape, size and perspective.";
+  const within = hasSelection ? "Change those parts only inside the selected area." : "";
+  const ask = method === "reference-prompt" && subject
+    ? `Make this change: ${asSentence(subject)} Take from the ${several ? "references" : "reference"} only what this change asks for.`
+    : "";
+  return [ask, ...each, combine, within, `Never copy a reference's building, layout or viewpoint.`].filter(Boolean).join(" ");
+}
+
+/**
  * Composes the model prompt for an Edit-tab job's main pass. With a selection, only that area
  * of the result is composited back (see engine.ts), so the environment is left out and applied
  * over the whole result by its own pass; without one, it is part of this prompt.
@@ -383,11 +450,20 @@ export function buildEditPrompt({
   hasSelection = false,
   isCloseUp = false,
   selectionAreas,
+  references,
   style,
 }: EditPromptOptions): string {
   const subject = prompt.trim();
   const method = editMethodFor(edit, { hasReferences, hasPrompt: subject !== "" });
   const usesReference = hasReferences && method !== "prompt";
+  const tags = usesReference ? (references?.length ? references : [{ target: "look" as const }]) : [];
+  // One untagged reference keeps the original wording; tags or several images name each one's job.
+  const tagged = tags.length > 1 || tags.some((reference) => reference.target !== "look" || cleanReferenceNote(reference.note));
+  const referenceRole = !tagged
+    ? "Image 2 is the reference."
+    : tags.length === 1
+      ? "Image 2 is a reference for the part named below."
+      : `${referenceRange(tags.length)}, each for the part it is tagged with below.`;
   const environment = hasSelection ? [] : environmentSentences(edit.environment);
   const areas = hasSelection
     ? (selectionAreas ?? []).map((area) => ({ label: cleanSelectionLabel(area.label), placement: area.placement?.trim() ?? "" }))
@@ -403,9 +479,9 @@ export function buildEditPrompt({
   const roles = usesReference
     ? isCloseUp
       ? several
-        ? `Image 1 is a close-up of the selected parts of the building to edit. Image 2 is the reference. ${describe("image 1")}`
-        : `Image 1 is a close-up of the selected part of the building to edit${selectionTarget(label, placement, "image 1")} Image 2 is the reference.`
-      : `Image 1 is the building image to edit. Image 2 is the reference.${hasSelection ? ` ${describe("image 1")}` : ""}`
+        ? `Image 1 is a close-up of the selected parts of the building to edit. ${referenceRole} ${describe("image 1")}`
+        : `Image 1 is a close-up of the selected part of the building to edit${selectionTarget(label, placement, "image 1")} ${referenceRole}`
+      : `Image 1 is the building image to edit. ${referenceRole}${hasSelection ? ` ${describe("image 1")}` : ""}`
     : // Already a close-up crop of just the selected region, but saying so in words keeps the
       // model from mistaking it for the whole building.
       isCloseUp
@@ -416,7 +492,9 @@ export function buildEditPrompt({
         ? describe("the image")
         : "";
   const instruction = usesReference
-    ? referenceInstruction(method, subject, hasSelection, target || (several ? "the selected elements" : "the selected element"))
+    ? tagged
+      ? taggedReferenceInstruction(method, subject, tags, hasSelection)
+      : referenceInstruction(method, subject, hasSelection, target || (several ? "the selected elements" : "the selected element"))
     : promptInstruction(subject, edit);
   const focus =
     hasSelection && subject && !usesReference && labels.length > 0

@@ -122,7 +122,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <H2>Edit</H2>
           <P>
             Click Edit after you have a render and it opens full-size with the selection tools on top. Describe the
-            change, use one reference image, or both. Choose Selected area and paint the part to limit the change
+            change, use up to five reference images, or both. Choose Selected area and paint the part to limit the change
             to it. Environment changes such as time of day, season or facade colour apply to the whole image.
           </P>
 
@@ -168,9 +168,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
           <H2>Reference</H2>
           <P>
-            Upload one image and the render takes on its look: materials, finishes and colours. With an area
-            selected, that area takes on the matching element&apos;s design instead. The building&apos;s shape, openings
-            and camera never change. One reference works best; more would leave the edit guessing which to follow.
+            Add up to five images and tell the edit what each one is for: a house you like for the overall look, a
+            roof tile for the roof, a wall texture for the walls, a cabro pattern for the paving. Each image is applied
+            only to its own part. With an area selected, only that area changes. The building&apos;s shape, openings and
+            camera never change. Use &ldquo;Something else&rdquo; with a short note for anything not in the list.
           </P>
 
           <H2>Both</H2>

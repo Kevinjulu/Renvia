@@ -48,8 +48,11 @@ test("request: each method needs its own inputs", () => {
   assert.ok(problem({ mode: "element", method: "reference-prompt" }, "", 1));
   assert.equal(problem({ mode: "element", method: "reference-prompt" }, "match the windows", 1), null);
 
-  // One reference per edit.
-  assert.ok(problem({ mode: "building", method: "reference" }, "", 2));
+  // Up to five tagged references per edit; "Something else" needs its own words.
+  assert.equal(problem({ mode: "building", method: "reference" }, "", 5), null);
+  assert.ok(problem({ mode: "building", method: "reference" }, "", 6));
+  assert.ok(problem({ mode: "building", method: "reference", references: [{ target: "other" }] }, "", 1));
+  assert.equal(problem({ mode: "building", method: "reference", references: [{ target: "other", note: "the gate" }] }, "", 1), null);
 
   // A selection needs something to do inside it; the environment alone is a whole-image change.
   assert.ok(problem({ mode: "prompt", method: "prompt", maskImageUrl: MASK, environment: { season: "winter" } }));

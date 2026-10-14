@@ -52,7 +52,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     id: "control.tabs",
     title: "Render and Edit",
     short: "Render creates a visualization. Edit refines a finished render.",
-    body: "Render is for new images from your elevations. Edit is for a later pass: describe a change, borrow from one reference image, or both, on the whole render or one selected area, and optionally change the time of day, season, weather or facade.",
+    body: "Render is for new images from your elevations. Edit is for a later pass: describe a change, borrow from up to five tagged reference images, or both, on the whole render or one selected area, and optionally change the time of day, season, weather or facade.",
     how: "Finish a render first, then switch to Edit — or choose Edit this render from the results panel.",
     article: "regional-editing",
     legend: 7,

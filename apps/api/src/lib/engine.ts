@@ -9,6 +9,7 @@ import {
   editPassCount,
   upscaleCreditCost,
   type AspectRatio,
+  type EditReference,
   type RenderBudgetResponse,
   type RenderEditSettings,
   type RenderEngineMode,
@@ -221,14 +222,73 @@ async function readOwnUpload(env: Env, url: string, origin: string): Promise<{ b
 }
 
 /**
+ * Edit models refuse any input under 256px a side ("Image dimensions are too small"), which a
+ * thumbnail pasted from an image search, a small swatch or a close-up of a small render easily
+ * is. Below this short edge an input is enlarged first; the margin over 256 also gives the model
+ * enough pixels to read a texture's pattern from.
+ */
+export const MIN_MODEL_INPUT_EDGE = 512;
+/** The hard floor the models enforce; an extreme strip is padded out to it. */
+const MODEL_INPUT_FLOOR = 256;
+/** Enlarging never takes the long edge past this. */
+const MAX_ENLARGED_EDGE = 4_096;
+
+/**
+ * `bytes` unchanged when both sides are already MIN_MODEL_INPUT_EDGE or more; otherwise an
+ * enlarged copy (Lanczos, aspect kept), padded with its own edge pixels if a very long, thin
+ * image still falls short of the models' floor. Null when the bytes aren't a readable image.
+ */
+export async function enlargeForModel(bytes: Uint8Array): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> {
+  let width = 0;
+  let height = 0;
+  try {
+    const metadata = await sharp(bytes).metadata();
+    const swapped = (metadata.orientation ?? 1) >= 5;
+    width = (swapped ? metadata.height : metadata.width) ?? 0;
+    height = (swapped ? metadata.width : metadata.height) ?? 0;
+  } catch {
+    return null;
+  }
+  if (!width || !height) return null;
+  const shortEdge = Math.min(width, height);
+  if (shortEdge >= MIN_MODEL_INPUT_EDGE) return null;
+
+  const scale = Math.min(MIN_MODEL_INPUT_EDGE / shortEdge, MAX_ENLARGED_EDGE / Math.max(width, height));
+  const targetWidth = Math.max(1, Math.round(width * Math.max(1, scale)));
+  const targetHeight = Math.max(1, Math.round(height * Math.max(1, scale)));
+  let image = sharp(bytes).rotate().flatten({ background: "#ffffff" }).resize(targetWidth, targetHeight, { kernel: sharp.kernel.lanczos3 });
+  const padX = Math.max(0, MODEL_INPUT_FLOOR - targetWidth);
+  const padY = Math.max(0, MODEL_INPUT_FLOOR - targetHeight);
+  if (padX || padY) {
+    // extend runs after resize in sharp's pipeline, so the padding is added at the new size.
+    image = image.extend({
+      left: Math.floor(padX / 2),
+      right: Math.ceil(padX / 2),
+      top: Math.floor(padY / 2),
+      bottom: Math.ceil(padY / 2),
+      extendWith: "copy",
+    });
+  }
+  const encoded = await image.jpeg({ quality: 95, chromaSubsampling: "4:4:4" }).toBuffer();
+  return { bytes: new Uint8Array(encoded), contentType: "image/jpeg" };
+}
+
+/** Uploads image bytes to fal storage, enlarged first when they're under the models' minimum. */
+async function uploadModelInput(fal: FalClient, bytes: Uint8Array<ArrayBuffer>, contentType: string): Promise<string> {
+  const enlarged = await enlargeForModel(bytes);
+  const input = enlarged ?? { bytes, contentType };
+  return fal.storage.upload(new Blob([input.bytes], { type: input.contentType }));
+}
+
+/**
  * fal must be able to fetch every input image. Our own uploads are re-uploaded to fal
- * storage, which works even when the API origin is localhost; anything else is handed
- * to fal as-is.
+ * storage (enlarged when too small), which works even when the API origin is localhost;
+ * anything else is handed to fal as-is.
  */
 async function falReachableImageUrl(env: Env, fal: FalClient, url: string, origin: string): Promise<string> {
   const upload = await readOwnUpload(env, url, origin);
   if (!upload) return url;
-  return fal.storage.upload(new Blob([upload.bytes], { type: upload.contentType }));
+  return uploadModelInput(fal, upload.bytes, upload.contentType);
 }
 
 /**
@@ -334,6 +394,15 @@ function describeSelectionAreas(edit: RenderEditSettings, masked: MaskedEditInpu
   return areas.map((area) => ({ label: area.label, placement: selectionPlacement(area.box, frame) ?? undefined }));
 }
 
+/**
+ * Each reference's tag, one per reference image. Untagged references (edits from before tags,
+ * or a client that sends fewer) are "look", the one meaning a lone reference always had.
+ */
+export function editReferencesFor(edit: RenderEditSettings, count: number): EditReference[] {
+  const tags = edit.references ?? [];
+  return Array.from({ length: count }, (_, index) => tags[index] ?? { target: "look" });
+}
+
 /** Source, mask and crop of a selection edit; null for renders and whole-image edits. */
 async function maskedEditInputs(env: Env, render: RenderRow, origin: string): Promise<MaskedEditInputs | null> {
   const edit = render.settings?.edit;
@@ -383,7 +452,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
     const sourceInputPromise = isUpscale
       ? prepareUpscaleInput(env, fal, render.sourceImageUrl, origin, settings.upscale!.target)
       : (masked?.crop
-        ? cropSource(masked.source, masked.crop).then((bytes) => fal.storage.upload(new Blob([new Uint8Array(bytes)], { type: "image/jpeg" })).then((url) => ({ url, factor: undefined })))
+        ? cropSource(masked.source, masked.crop).then((bytes) => uploadModelInput(fal, new Uint8Array(bytes), "image/jpeg").then((url) => ({ url, factor: undefined })))
         : falReachableImageUrl(env, fal, render.sourceImageUrl, origin).then((url) => ({ url, factor: undefined })));
     const [sourceInput, ...referenceUrls] = await Promise.all([
       sourceInputPromise,
@@ -398,6 +467,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           hasSelection: Boolean(masked),
           isCloseUp: Boolean(masked?.crop),
           selectionAreas: masked ? describeSelectionAreas(settings.edit, masked) : undefined,
+          references: editReferencesFor(settings.edit, referenceImageUrls.length),
           style: render.style,
         })
       : buildEnginePrompt({

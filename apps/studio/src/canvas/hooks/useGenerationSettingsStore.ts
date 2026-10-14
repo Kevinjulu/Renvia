@@ -4,6 +4,7 @@ import {
   type AspectRatio,
   type EditEnvironment,
   type EditMethod,
+  type EditReferenceTarget,
   type FidelityMode,
   type ProtectedGeometryFeature,
   type RenderGenerationSettings,
@@ -16,6 +17,13 @@ export type EditScope = "whole" | "selection";
 
 /** Standard is the model's own size; 4K and 8K add an AI upscale to the same render job. */
 export type OutputResolution = "standard" | UpscaleTarget;
+
+/** One Edit-tab reference and what it's for (see EditReference in @renvia/types). */
+export interface EditReferenceDraft {
+  url: string;
+  target: EditReferenceTarget;
+  note: string;
+}
 
 export const STYLE_INFLUENCE_LABELS = ["Minimal", "Balanced", "Strong", "Maximum"] as const;
 
@@ -40,8 +48,8 @@ interface GenerationSettingsState {
    */
   seed: number | null;
   editMethod: EditMethod;
-  /** The Edit tab's one reference, kept apart from the Render tab's list. */
-  editReferenceUrl: string | null;
+  /** The Edit tab's references, each tagged with what it's for; kept apart from the Render tab's list. */
+  editReferences: EditReferenceDraft[];
   editScope: EditScope;
   editEnvironment: EditEnvironment;
   setPrompt: (prompt: string) => void;
@@ -58,7 +66,9 @@ interface GenerationSettingsState {
   setSeed: (seed: number | null) => void;
   setOutputResolution: (value: OutputResolution) => void;
   setEditMethod: (method: EditMethod) => void;
-  setEditReferenceUrl: (url: string | null) => void;
+  /** Keeps the tags of references still attached; a newly attached one starts as "look". */
+  setEditReferenceUrls: (urls: string[]) => void;
+  updateEditReference: (url: string, patch: Partial<Omit<EditReferenceDraft, "url">>) => void;
   setEditScope: (scope: EditScope) => void;
   /**
    * Sets one environment field from its control's option id; undefined leaves that part of the
@@ -94,7 +104,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   outputResolution: "standard",
   seed: null,
   editMethod: "reference-prompt",
-  editReferenceUrl: null,
+  editReferences: [],
   editScope: "whole",
   editEnvironment: {},
   setPrompt: (prompt) => set({ prompt }),
@@ -118,7 +128,14 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
   setSeed: (seed) => set({ seed }),
   setOutputResolution: (outputResolution) => set({ outputResolution }),
   setEditMethod: (editMethod) => set({ editMethod }),
-  setEditReferenceUrl: (editReferenceUrl) => set({ editReferenceUrl }),
+  setEditReferenceUrls: (urls) =>
+    set((state) => ({
+      editReferences: urls.map((url) => state.editReferences.find((reference) => reference.url === url) ?? { url, target: "look", note: "" }),
+    })),
+  updateEditReference: (url, patch) =>
+    set((state) => ({
+      editReferences: state.editReferences.map((reference) => (reference.url === url ? { ...reference, ...patch } : reference)),
+    })),
   setEditScope: (editScope) => set({ editScope }),
   setEditEnvironment: (key, value) =>
     set((state) => {
@@ -133,12 +150,17 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>((set) 
       const shared = { style, aspectRatio: (aspectRatio as AspectRatio) || "auto", seed: null };
       // Edit jobs restore into the Edit tab's fields and leave the Render tab's alone.
       if (settings?.edit) {
-        const editReferenceUrl = settings.referenceImageUrls?.[0] ?? null;
+        const tags = settings.edit.references ?? [];
+        const editReferences = (settings.referenceImageUrls ?? []).map((url, index) => ({
+          url,
+          target: tags[index]?.target ?? ("look" as const),
+          note: tags[index]?.note ?? "",
+        }));
         return {
           ...shared,
           editPrompt: prompt,
-          editMethod: editMethodFor(settings.edit, { hasReferences: editReferenceUrl !== null, hasPrompt: prompt.trim() !== "" }),
-          editReferenceUrl,
+          editMethod: editMethodFor(settings.edit, { hasReferences: editReferences.length > 0, hasPrompt: prompt.trim() !== "" }),
+          editReferences,
           editScope: settings.edit.maskImageUrl ? "selection" : "whole",
           editEnvironment: settings.edit.environment ?? {},
           editInfluence: settings.editInfluence ?? state.editInfluence,

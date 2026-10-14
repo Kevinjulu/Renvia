@@ -5,6 +5,7 @@ import {
   type EditEnvironment,
   type EditMethod,
   type EditMode,
+  type EditReference,
   type RenderEditSettings,
 } from "@renvia/types";
 import { useGenerationSettingsStore } from "./useGenerationSettingsStore";
@@ -31,7 +32,7 @@ function cleanEnvironment(environment: EditEnvironment): EditEnvironment | undef
 export function useEditDraft() {
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const method = useGenerationSettingsStore((state) => state.editMethod);
-  const referenceUrl = useGenerationSettingsStore((state) => state.editReferenceUrl);
+  const editReferences = useGenerationSettingsStore((state) => state.editReferences);
   const scope = useGenerationSettingsStore((state) => state.editScope);
   const environment = useGenerationSettingsStore((state) => state.editEnvironment);
   const targetJobId = useRenderEditStore((state) => state.targetJobId);
@@ -41,11 +42,17 @@ export function useEditDraft() {
 
   const hasArea = scope === "selection" && areaPainted;
   const prompt = method === "reference" ? "" : editPrompt.trim();
-  const references = method !== "prompt" && referenceUrl ? [referenceUrl] : [];
+  const attached = method !== "prompt" ? editReferences : [];
+  const references = attached.map((reference) => reference.url);
+  // Sent only when one carries more than the default meaning, so a lone untagged reference
+  // records exactly what edits always did.
+  const tags: EditReference[] = attached.map(({ target, note }) => (note.trim() ? { target, note: note.trim() } : { target }));
+  const tagged = tags.some((tag) => tag.target !== "look" || tag.note);
   const edit: RenderEditSettings = {
     mode: modeFor(method, hasArea),
     method,
     environment: cleanEnvironment(environment),
+    ...(tagged ? { references: tags } : {}),
     // Areas and their tags only mean something alongside the selection they describe.
     ...(hasArea && areas.length > 0 ? { selectionAreas: areasForRequest(areas) } : {}),
   };
@@ -63,6 +70,8 @@ export function useEditDraft() {
     edit,
     prompt,
     references,
+    /** The attached references with their tags, in image order. */
+    referenceTags: tags,
     hasArea,
     /** What the selected areas are, as tagged, without repeats; empty without a selection. */
     selectionLabels: hasArea ? [...new Set(areas.flatMap((area) => (area.label ? [area.label] : [])))] : [],

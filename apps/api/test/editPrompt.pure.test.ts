@@ -176,6 +176,64 @@ describe("buildEditPrompt", () => {
   });
 });
 
+describe("buildEditPrompt with several tagged references", () => {
+  const references = [{ target: "roof" as const }, { target: "walls" as const }, { target: "paving" as const }];
+
+  it("names each reference's part, in image order", () => {
+    const prompt = buildEditPrompt({ prompt: "", edit: { mode: "building", method: "reference" }, hasReferences: true, references });
+    expect(prompt).toContain("Image 1 is the building image to edit. Images 2 to 4 are references, each for the part it is tagged with below.");
+    expect(prompt).toContain("Image 2 is a roof reference: give the roof of image 1");
+    expect(prompt).toContain("Image 3 is a wall reference: give the exterior walls of image 1");
+    expect(prompt).toContain("Image 4 is a paving reference: give the driveway, paths and paved ground of image 1");
+    expect(prompt).toContain("Use each reference only for its own part");
+    expect(prompt).toContain("Never copy a reference's building");
+    expect(prompt).toContain("Keep the building's geometry");
+  });
+
+  it("puts the person's instruction first and limits what is taken", () => {
+    const prompt = buildEditPrompt({
+      prompt: "brick on the ground floor only",
+      edit: { mode: "building", method: "reference-prompt" },
+      hasReferences: true,
+      references: references.slice(1),
+    });
+    expect(prompt).toContain("Images 2 and 3 are references");
+    expect(prompt).toContain("Make this change: Brick on the ground floor only. Take from the references only what this change asks for.");
+  });
+
+  it("carries a note, and an 'other' reference's own words", () => {
+    const prompt = buildEditPrompt({
+      prompt: "",
+      edit: { mode: "building", method: "reference" },
+      hasReferences: true,
+      references: [{ target: "roof", note: "only the grey “tiles”." }, { target: "other", note: "the front gate" }],
+    });
+    expect(prompt).toContain("Note about image 2: Only the grey tiles.");
+    expect(prompt).toContain("Image 3 is a reference for the front gate: apply its design");
+  });
+
+  it("keeps a tagged reference inside a selection", () => {
+    const prompt = buildEditPrompt({
+      prompt: "",
+      edit: { mode: "element", method: "reference" },
+      hasReferences: true,
+      hasSelection: true,
+      isCloseUp: true,
+      selectionAreas: [{ label: "roof", placement: "at the top" }],
+      references: [{ target: "roof" }],
+    });
+    expect(prompt).toContain("Image 2 is a reference for the part named below.");
+    expect(prompt).toContain("Change those parts only inside the selected area.");
+  });
+
+  it("keeps the original wording for one untagged reference", () => {
+    const untagged = buildEditPrompt({ prompt: "", edit: { mode: "building", method: "reference" }, hasReferences: true });
+    const look = buildEditPrompt({ prompt: "", edit: { mode: "building", method: "reference" }, hasReferences: true, references: [{ target: "look" }] });
+    expect(look).toBe(untagged);
+    expect(look).toContain("Image 2 is the reference.");
+  });
+});
+
 describe("buildEnvironmentPrompt", () => {
   it("describes only the environment, with the form lock", () => {
     const prompt = buildEnvironmentPrompt({ environment: { style: "scandinavian", weather: "overcast" } });

@@ -13,6 +13,9 @@ import {
   EDIT_SEASONS,
   EDIT_STYLES,
   EDIT_TIMES_OF_DAY,
+  EDIT_REFERENCE_TARGETS,
+  MAX_EDIT_REFERENCE_NOTE_CHARS,
+  MAX_EDIT_REFERENCES,
   EDIT_WEATHER,
   editPassCount,
   editRequestProblem,
@@ -95,6 +98,15 @@ const createRenderSchema = z.object({
               }),
             )
             .max(8)
+            .optional(),
+          references: z
+            .array(
+              z.object({
+                target: z.enum(EDIT_REFERENCE_TARGETS),
+                note: z.string().trim().max(MAX_EDIT_REFERENCE_NOTE_CHARS).optional(),
+              }),
+            )
+            .max(MAX_EDIT_REFERENCES)
             .optional(),
           environment: z
             .object({

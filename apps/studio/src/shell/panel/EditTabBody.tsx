@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { EditMethod } from "@renvia/types";
+import { MAX_EDIT_REFERENCE_NOTE_CHARS, MAX_EDIT_REFERENCES, type EditMethod, type EditReference, type EditReferenceTarget } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { AdvancedSection } from "./AdvancedSection";
 import { ENVIRONMENT_CONTROLS, environmentLabels } from "./editEnvironmentOptions";
@@ -13,9 +13,34 @@ const DEFAULT_MAX_PROMPT_CHARS = 2000;
 
 const METHODS: { id: EditMethod; label: string; hint: string }[] = [
   { id: "prompt", label: "Describe", hint: "Type the change you want." },
-  { id: "reference", label: "Reference", hint: "The render takes on the look of one image." },
-  { id: "reference-prompt", label: "Both", hint: "A reference, plus what to take from it." },
+  { id: "reference", label: "Reference", hint: "The render takes on the look of your reference images." },
+  { id: "reference-prompt", label: "Both", hint: "References, plus what to take from them." },
 ];
+
+/** What a reference can be for, in the order people reach for them most. */
+const REFERENCE_TARGETS: { id: EditReferenceTarget; label: string; part: string }[] = [
+  { id: "look", label: "Overall look", part: "the overall look" },
+  { id: "roof", label: "Roof", part: "the roof" },
+  { id: "walls", label: "Walls", part: "the walls" },
+  { id: "paving", label: "Paving / cabro", part: "the paving" },
+  { id: "windows", label: "Windows", part: "the windows" },
+  { id: "doors", label: "Doors", part: "the doors" },
+  { id: "columns", label: "Pillars", part: "the pillars" },
+  { id: "railings", label: "Railings", part: "the railings" },
+  { id: "garden", label: "Garden", part: "the garden" },
+  { id: "other", label: "Something else", part: "" },
+];
+
+/** "the roof", "the paving", or the person's own words for "Something else". */
+function referencePart(reference: EditReference): string {
+  if (reference.target === "other") return reference.note?.trim() || "something else";
+  return REFERENCE_TARGETS.find((item) => item.id === reference.target)?.part ?? "the overall look";
+}
+
+/** True when the references say more than "one image, its whole look". */
+function isTagged(references: EditReference[]): boolean {
+  return references.length > 1 || references.some((reference) => reference.target !== "look");
+}
 
 const SCOPES: { id: EditScope; label: string }[] = [
   { id: "whole", label: "Whole image" },
@@ -61,18 +86,32 @@ function selectionBadge(labels: string[], areaCount: number): string {
 }
 
 /** What Apply will do, in plain words, so nobody has to work it out from the controls. */
-function summaryLines(method: EditMethod, prompt: string, hasArea: boolean, environment: string[], labels: string[], areaCount: number): string[] {
+function summaryLines(
+  method: EditMethod,
+  prompt: string,
+  hasArea: boolean,
+  environment: string[],
+  labels: string[],
+  areaCount: number,
+  references: EditReference[],
+): string[] {
   const named = namedSelection(labels);
   const several = areaCount > 1;
   const where = hasArea ? (named ? ` on ${named} only` : several ? " in the selected areas" : " in the selected area") : "";
+  const parts = [...new Set(references.map(referencePart))];
+  const tagged = isTagged(references);
   const main = (() => {
+    if (method === "reference" && tagged) {
+      return `Each reference is applied to its own part: ${joinList(parts)}${where}.`;
+    }
     if (method === "reference") {
       if (!hasArea) return "The render takes on the reference's materials and colours.";
       const subject = named ? capitalize(named) : several ? "The selected areas" : "The selected area";
       return `${subject} ${several ? "take" : "takes"} on the reference's design.`;
     }
     if (!prompt) return null;
-    return method === "reference-prompt" ? `${quoted(prompt)}, using the reference${where}.` : `${quoted(prompt)}${where}.`;
+    if (method !== "reference-prompt") return `${quoted(prompt)}${where}.`;
+    return tagged ? `${quoted(prompt)}, using the references for ${joinList(parts)}${where}.` : `${quoted(prompt)}, using the reference${where}.`;
   })();
   const scene = environment.length > 0 ? `${main ? "Then, over" : "Over"} the whole image: ${environment.join(", ").toLowerCase()}.` : null;
   return [main, scene].filter((line): line is string => line !== null);
@@ -88,8 +127,9 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
   const setMethod = useGenerationSettingsStore((state) => state.setEditMethod);
   const editPrompt = useGenerationSettingsStore((state) => state.editPrompt);
   const setEditPrompt = useGenerationSettingsStore((state) => state.setEditPrompt);
-  const referenceUrl = useGenerationSettingsStore((state) => state.editReferenceUrl);
-  const setReferenceUrl = useGenerationSettingsStore((state) => state.setEditReferenceUrl);
+  const editReferences = useGenerationSettingsStore((state) => state.editReferences);
+  const setReferenceUrls = useGenerationSettingsStore((state) => state.setEditReferenceUrls);
+  const updateReference = useGenerationSettingsStore((state) => state.updateEditReference);
   const scope = useGenerationSettingsStore((state) => state.editScope);
   const setScope = useGenerationSettingsStore((state) => state.setEditScope);
   const environment = useGenerationSettingsStore((state) => state.editEnvironment);
@@ -127,7 +167,9 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
 
   const maxChars = me?.limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const environmentPicked = environmentLabels(environment);
-  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked, draft.selectionLabels, draft.areaCount);
+  const summary = summaryLines(method, draft.prompt, draft.hasArea, environmentPicked, draft.selectionLabels, draft.areaCount, draft.referenceTags);
+  // The plan's own reference limit, never past what an edit can take.
+  const maxReferences = Math.max(1, Math.min(MAX_EDIT_REFERENCES, me?.limits.maxReferenceImages ?? MAX_EDIT_REFERENCES));
   const showPrompt = method !== "reference";
 
   return (
@@ -153,22 +195,64 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
       {method !== "prompt" && (
         <section className="cp-card cp-references">
           <div className="cp-card-head">
-            <strong>Reference image</strong>
-            <span>One image works best — its look guides the edit</span>
+            <strong>Reference images</strong>
+            <span>
+              {maxReferences > 1
+                ? `Up to ${maxReferences}: a house you like, a roof tile, a wall texture, a cabro pattern…`
+                : "One image: its look guides the edit"}
+            </span>
           </div>
           <ReferenceBar
-            urls={referenceUrl ? [referenceUrl] : []}
-            onChange={(urls) => setReferenceUrl(urls[0] ?? null)}
-            maxReferences={1}
-            atCapHint="Edits use one reference — remove it to pick another"
+            urls={editReferences.map((reference) => reference.url)}
+            onChange={setReferenceUrls}
+            maxReferences={maxReferences}
+            atCapHint={`Edits take up to ${maxReferences} ${maxReferences === 1 ? "reference" : "references"}. Remove one to add another`}
           />
+          {editReferences.length > 0 && (
+            <div className="cp-ref-tags" role="group" aria-label="What each reference is for">
+              <span className="cp-ref-tags-title">What is each one for?</span>
+              {editReferences.map((reference, index) => (
+                <div key={reference.url} className="cp-ref-tag">
+                  <img src={reference.url} alt="" />
+                  <div className="cp-ref-tag-fields">
+                    <select
+                      aria-label={`Reference ${index + 1} is for`}
+                      value={reference.target}
+                      onChange={(event) => updateReference(reference.url, { target: event.target.value as EditReferenceTarget })}
+                    >
+                      {REFERENCE_TARGETS.map((target) => (
+                        <option key={target.id} value={target.id}>
+                          {target.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      aria-label={`Note for reference ${index + 1}`}
+                      value={reference.note}
+                      maxLength={MAX_EDIT_REFERENCE_NOTE_CHARS}
+                      onChange={(event) => updateReference(reference.url, { note: event.target.value })}
+                      placeholder={reference.target === "other" ? "What is it for? e.g. the gate" : "Optional note, e.g. only the grey tiles"}
+                      aria-invalid={reference.target === "other" && !reference.note.trim()}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
       {showPrompt && (
         <div className="cp-prompt">
           <div className="cp-prompt-head">
-            <label htmlFor="edit-prompt">{method === "reference-prompt" ? "What should it take from the reference?" : "Describe the change"}</label>
+            <label htmlFor="edit-prompt">
+              {method === "reference-prompt"
+                ? editReferences.length > 1
+                  ? "What should it take from the references?"
+                  : "What should it take from the reference?"
+                : "Describe the change"}
+            </label>
             <span>
               {editPrompt.length}/{maxChars}
             </span>
