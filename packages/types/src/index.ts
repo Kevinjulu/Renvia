@@ -575,6 +575,8 @@ export interface BillingPlan {
   currency: string;
   priceCents: number;
   interval: "none" | "month";
+  /** Price of a year paid up front; null when the plan isn't sold yearly. */
+  yearlyPriceCents: number | null;
   monthlyCredits: number;
   /** Included subscription credits that may survive renewal; currently 0 on every plan. */
   rolloverCredits: number;
@@ -590,6 +592,12 @@ export interface BillingEntitlement {
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  /** How the paid subscription is billed; null on the Free plan. */
+  billingInterval: BillingInterval | null;
+  /** Who bills the subscription; null or "manual" when nobody does. */
+  provider: BillingProvider | "manual" | null;
+  /** True when the provider will charge again at period end without the customer acting. */
+  autoRenews: boolean;
   /** Unspent monthly plan credits; they are part of creditBalance and are spent first. */
   monthlyCreditsRemaining: number;
   /** Credits the current plan grants each period. */
@@ -617,15 +625,66 @@ export interface BillingCheckout {
   currency: string;
   amountCents: number;
   creditPackSku: string | null;
+  /** For a subscription checkout: the plan and period it pays for. */
+  planName: string | null;
+  billingInterval: BillingInterval | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Customer-facing billing state. `paypalCheckoutAvailable` is false until all server credentials are configured. */
+export type BillingInterval = "month" | "year";
+
+/** How a customer pays: PayPal, or card / M-Pesa through Paystack. */
+export type PaymentMethod = "paypal" | "card" | "mpesa";
+
+/** A plan as offered on the billing page. Server-priced; the browser never supplies a price. */
+export interface BillingPlanOffer {
+  slug: string;
+  name: string;
+  description: string;
+  currency: string;
+  priceCents: number;
+  yearlyPriceCents: number | null;
+  monthlyCredits: number;
+  dailyRenderLimit: number | null;
+  maxProjects: number | null;
+  concurrentRenderLimit: number | null;
+  /** The billing periods each payment method can sell right now; empty when it can't sell this plan. */
+  payable: Record<PaymentMethod, BillingInterval[]>;
+  /** Whether a card payment renews automatically (a Paystack plan code is set for that period). */
+  cardAutoRenews: Record<BillingInterval, boolean>;
+}
+
+/** Customer-facing billing state. A payment method is false until its server credentials are configured. */
 export interface BillingCatalogResponse {
+  plans: BillingPlanOffer[];
   creditPacks: CreditPack[];
   recentCheckouts: BillingCheckout[];
   paypalCheckoutAvailable: boolean;
+  paymentMethods: Record<PaymentMethod, boolean>;
+  /** M-Pesa is charged in Kenyan shillings at this many KES per USD; null when M-Pesa is unavailable. */
+  kesPerUsd: number | null;
+  /** The currency card payments are charged in; null when cards are unavailable. */
+  cardCurrency: "KES" | "USD" | null;
+  /** Where the Enterprise "Contact us" goes; null uses the website's contact page. */
+  salesContactEmail: string | null;
+}
+
+export interface CreateCheckoutRequest {
+  kind: "credit_pack" | "subscription";
+  /** Credit pack SKU or plan slug. */
+  product: string;
+  /** Required for a subscription. */
+  interval?: BillingInterval;
+  method: PaymentMethod;
+  idempotencyKey: string;
+}
+
+export interface CreateCheckoutResponse {
+  checkoutId: string;
+  status: BillingCheckout["status"];
+  /** Where to send the browser to pay. */
+  approvalUrl: string | null;
 }
 
 export interface Project {
@@ -1740,6 +1799,8 @@ export interface AdminPlanTerms {
   currency: string;
   priceCents: number;
   interval: "none" | "month";
+  /** Absent in versions recorded before yearly billing existed. */
+  yearlyPriceCents?: number | null;
   monthlyCredits: number;
   dailyRenderLimit: number | null;
   monthlyRenderLimit: number | null;
@@ -1747,6 +1808,9 @@ export interface AdminPlanTerms {
   concurrentRenderLimit: number | null;
   isActive: boolean;
   paypalPlanId: string | null;
+  paypalYearlyPlanId?: string | null;
+  paystackPlanCode?: string | null;
+  paystackYearlyPlanCode?: string | null;
 }
 
 export interface AdminPlanVersion {

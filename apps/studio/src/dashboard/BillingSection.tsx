@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BillingCatalogResponse, BillingCheckout, CreditPack, MeResponse } from "@renvia/types";
+import type { BillingCatalogResponse, BillingCheckout, CreateCheckoutRequest, CreateCheckoutResponse, CreditPack, MeResponse, PaymentMethod } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { packOutcome } from "./billingPresentation";
 import { creditPricesFor } from "../lib/creditPrices";
+import { CheckoutDialog, formatPrice, type CheckoutItem } from "./CheckoutDialog";
+import { PlansSection } from "./PlansSection";
 import { CreditIcon, RefundIcon, SparkleIcon } from "./icons";
 
 type StudioApi = {
   getMe: () => Promise<MeResponse>;
   getBillingCatalog: () => Promise<BillingCatalogResponse>;
-  createPaypalCheckout: (body: { kind: "credit_pack"; product: string; idempotencyKey: string }) => Promise<{ approvalUrl: string | null }>;
-  capturePaypalCheckout: (id: string) => Promise<{ checkoutId: string; status: "paid" }>;
+  createCheckout: (body: CreateCheckoutRequest) => Promise<CreateCheckoutResponse>;
+  confirmCheckout: (id: string) => Promise<{ checkoutId: string; status: BillingCheckout["status"] }>;
+  cancelCheckout: (id: string) => Promise<{ status: "canceled" }>;
+  cancelSubscription: () => Promise<{ status: "cancellation_requested"; endsAt: string | null }>;
 };
 
 const CHECKOUT_LABEL: Record<BillingCheckout["status"], string> = {
@@ -22,12 +26,18 @@ const CHECKOUT_LABEL: Record<BillingCheckout["status"], string> = {
   failed: "Failed",
 };
 
-function price(cents: number, currency: string) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(cents / 100);
-}
+const PROVIDER_LABEL: Record<string, string> = { paypal: "PayPal", paystack: "Paystack" };
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatDay(value: string) {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function errorText(reason: unknown, fallback: string) {
+  return reason instanceof ApiError ? reason.detail ?? fallback : fallback;
 }
 
 function BillingSkeleton() {
@@ -43,50 +53,75 @@ function BillingSkeleton() {
   );
 }
 
-/** Customer billing surfaces only server-priced packs and verified checkout state. */
+/** What the current plan does next, in one line. */
+function renewalLine(me: MeResponse | null): string | null {
+  const entitlement = me?.entitlement;
+  if (!entitlement || entitlement.plan.interval === "none") return null;
+  if (entitlement.complimentary) return null;
+  const end = entitlement.currentPeriodEnd ? formatDay(entitlement.currentPeriodEnd) : null;
+  const billed = entitlement.billingInterval === "year" ? "Billed yearly" : "Billed monthly";
+  if (entitlement.status === "past_due") return `${billed} · the last payment failed. Update it with your payment provider${end ? ` before ${end}` : ""}.`;
+  if (entitlement.autoRenews) return `${billed} · renews ${end ?? "automatically"}`;
+  return end ? `${billed} · ends ${end} unless you renew` : billed;
+}
+
+/** Customer billing surfaces only server-priced plans and packs, and verified checkout state. */
 export function BillingSection({ api }: { api: StudioApi }) {
   const me = useAccountStore((state) => state.me);
   const [catalog, setCatalog] = useState<BillingCatalogResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [starting, setStarting] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<CheckoutItem | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const bestValueSku = useMemo(() => {
     if (!catalog || catalog.creditPacks.length < 2) return null;
     return catalog.creditPacks.reduce((best, pack) => (pack.priceCents / pack.credits < best.priceCents / best.credits ? pack : best)).sku;
   }, [catalog]);
   const packNames = useMemo(() => new Map(catalog?.creditPacks.map((pack) => [pack.sku, pack.name]) ?? []), [catalog]);
+  const packMethods = useMemo(
+    () => (catalog ? (Object.keys(catalog.paymentMethods) as PaymentMethod[]).filter((method) => catalog.paymentMethods[method]) : []),
+    [catalog],
+  );
 
   const loadCatalog = useCallback(async () => setCatalog(await api.getBillingCatalog()), [api]);
-  const buy = async (pack: CreditPack) => {
-    setStarting(pack.sku);
-    setError(null);
-    try {
-      const checkout = await api.createPaypalCheckout({ kind: "credit_pack", product: pack.sku, idempotencyKey: crypto.randomUUID() });
-      if (!checkout.approvalUrl) throw new Error("Checkout approval is unavailable");
-      window.location.assign(checkout.approvalUrl);
-    } catch (reason) {
-      setError(reason instanceof ApiError ? reason.detail ?? "Could not start checkout." : "Could not start checkout.");
-      setStarting(null);
-    }
-  };
 
+  // Back from a payment page: settle what can be settled now, then show the result.
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams(window.location.search);
     const checkoutId = params.get("checkout");
-    const paypalResult = params.get("paypal");
+    const cancelled = params.get("paypal") === "cancel" || params.get("cancelled") === "1";
     const settle = async () => {
-      if (checkoutId && paypalResult === "return") {
-        await api.capturePaypalCheckout(checkoutId);
+      if (checkoutId && cancelled) {
+        await api.cancelCheckout(checkoutId).catch(() => undefined);
+        if (active) setNotice("Checkout was cancelled. No payment was taken.");
+      } else if (checkoutId) {
+        const result = await api.confirmCheckout(checkoutId);
         await refreshAccount(api.getMe);
-        if (active) setNotice("Payment confirmed. Your credit balance has been updated.");
-      } else if (checkoutId && paypalResult === "cancel" && active) setNotice("Checkout was cancelled. No payment was taken.");
+        if (!active) return;
+        if (result.status === "paid") setNotice("Payment confirmed. Your plan and credits are up to date.");
+        else if (result.status === "pending") {
+          setNotice("Payment received. It can take a minute for your provider to confirm it; this page updates when it does.");
+          // PayPal subscriptions start from PayPal's own confirmation, a moment after the return.
+          for (const delay of [4000, 8000, 15000]) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            if (!active) return;
+            await refreshAccount(api.getMe);
+            if (useAccountStore.getState().me?.entitlement.plan.interval !== "none") {
+              setNotice("Payment confirmed. Your plan is active.");
+              break;
+            }
+          }
+        } else setNotice("That payment didn't go through, and nothing was charged. You can try again.");
+      }
       await loadCatalog();
     };
     void settle().catch((reason: unknown) => {
       if (!active) return;
-      setError(reason instanceof ApiError ? reason.detail ?? "Could not confirm or load billing." : "Could not confirm or load billing.");
+      setError(errorText(reason, "Could not confirm or load billing."));
+      void loadCatalog().catch(() => undefined);
     });
     if (checkoutId) window.history.replaceState({}, "", window.location.pathname);
     return () => {
@@ -94,12 +129,39 @@ export function BillingSection({ api }: { api: StudioApi }) {
     };
   }, [api, loadCatalog]);
 
+  // Links to /billing#plans (from the download lock, for one) land on the plans once they've loaded.
+  const loaded = catalog !== null;
+  useEffect(() => {
+    if (loaded && window.location.hash === "#plans") document.getElementById("plans")?.scrollIntoView({ block: "start" });
+  }, [loaded]);
+
+  const cancelRenewal = async () => {
+    setCancelling(true);
+    setError(null);
+    try {
+      const result = await api.cancelSubscription();
+      await refreshAccount(api.getMe);
+      setNotice(result.endsAt ? `Your plan won't renew. You keep it until ${formatDay(result.endsAt)}.` : "Your plan won't renew.");
+      setConfirmingCancel(false);
+    } catch (reason) {
+      setError(errorText(reason, "Couldn't cancel. Try again, or contact support."));
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const buyPack = (pack: CreditPack) => setCheckout({ kind: "credit_pack", product: pack.sku, name: pack.name, usdCents: pack.priceCents, methods: packMethods });
+
   const prices = creditPricesFor(me);
   const standardCost = prices.render;
-  const planName = me?.entitlement.plan.name ?? "Your plan";
-  const planStatus = me?.entitlement.status ?? "active";
-  const complimentary = me?.entitlement.complimentary ?? null;
+  const entitlement = me?.entitlement ?? null;
+  const planName = entitlement?.plan.name ?? "Your plan";
+  const planStatus = entitlement?.status ?? "active";
+  const complimentary = entitlement?.complimentary ?? null;
   const balanceOutcome = packOutcome(me?.creditBalance ?? 0, standardCost);
+  const renewal = renewalLine(me);
+  const onFree = !entitlement || entitlement.plan.interval === "none";
+  const anyMethod = packMethods.length > 0;
 
   if (!catalog && error) {
     return (
@@ -134,16 +196,42 @@ export function BillingSection({ api }: { api: StudioApi }) {
           </div>
           {complimentary && (
             <small className="billing-plan-note">
-              Complimentary{complimentary.endsAt ? ` until ${new Date(complimentary.endsAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : ""}
+              Complimentary{complimentary.endsAt ? ` until ${formatDay(complimentary.endsAt)}` : ""}
             </small>
+          )}
+          {renewal && <small className="billing-plan-note">{renewal}</small>}
+          {onFree && !complimentary && <small className="billing-plan-note">Upgrade to download clean files and get monthly credits.</small>}
+          {!onFree && !complimentary && entitlement?.autoRenews && (
+            confirmingCancel ? (
+              <div className="billing-plan-confirm">
+                <p>Stop renewing? You keep {planName} until {entitlement.currentPeriodEnd ? formatDay(entitlement.currentPeriodEnd) : "the end of this period"}, then move to Free.</p>
+                <div>
+                  <button type="button" onClick={() => setConfirmingCancel(false)} disabled={cancelling}>Keep plan</button>
+                  <button type="button" className="is-danger" onClick={() => void cancelRenewal()} disabled={cancelling}>{cancelling ? "Cancelling…" : "Stop renewing"}</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="billing-plan-link" onClick={() => setConfirmingCancel(true)}>Cancel renewal</button>
+            )
+          )}
+          {!onFree && !complimentary && !entitlement?.autoRenews && (
+            <a className="billing-plan-link" href="#plans">Renew or change plan</a>
           )}
         </div>
       </section>
 
+      {!anyMethod && (
+        <div className="billing-notice is-neutral" role="status">
+          <b>Checkout is being prepared.</b> You can review plans and packs now; paying unlocks once card, M-Pesa and PayPal payments are switched on.
+        </div>
+      )}
+
+      <PlansSection catalog={catalog} me={me} onChoose={setCheckout} />
+
       <section className="billing-card" aria-labelledby="billing-cost-title">
         <header>
           <h2 id="billing-cost-title">How credits work</h2>
-          <p>Credits are spent per image, at the rate shown below.</p>
+          <p>Credits are spent per image, at the rate shown below. Plan credits refresh monthly and are used first; credits you buy never expire.</p>
         </header>
         <div className="billing-cost-row">
           <span className="billing-cost-icon"><CreditIcon size={14} /></span>
@@ -174,13 +262,8 @@ export function BillingSection({ api }: { api: StudioApi }) {
       <section className="billing-section" aria-labelledby="credit-packs-title">
         <header className="billing-section-heading">
           <h2 id="credit-packs-title">Top up credits</h2>
-          <p>One-time purchases through PayPal. Credits are added only after payment is confirmed.</p>
+          <p>One-time purchases by card, M-Pesa or PayPal. Credits are added once payment is confirmed and never expire.</p>
         </header>
-        {!catalog.paypalCheckoutAvailable && (
-          <div className="billing-notice is-neutral" role="status">
-            <b>Checkout is being prepared.</b> You can review the packs now; purchasing unlocks once PayPal is connected.
-          </div>
-        )}
         {catalog.creditPacks.length === 0 ? (
           <div className="billing-empty">
             <p className="billing-empty-title">No credit packs available yet</p>
@@ -196,15 +279,15 @@ export function BillingSection({ api }: { api: StudioApi }) {
                   {isBestValue && <span className="billing-pack-badge">Best value</span>}
                   <h3>{pack.name}</h3>
                   <div className="billing-pack-price">
-                    <strong>{price(pack.priceCents, pack.currency)}</strong>
+                    <strong>{formatPrice(pack.priceCents, pack.currency)}</strong>
                     <span>{pack.credits} credits</span>
                   </div>
                   <p className="billing-pack-detail">
                     {outcome.renders === null ? "Standard renders currently require no credits." : `Up to ${outcome.renderLabel}.`} {outcome.guidance}
                   </p>
-                  <p className="billing-pack-unit">{price(pack.priceCents / pack.credits, pack.currency)} per credit</p>
-                  <button type="button" disabled={!catalog.paypalCheckoutAvailable || starting !== null} onClick={() => void buy(pack)}>
-                    {starting === pack.sku ? "Opening PayPal…" : catalog.paypalCheckoutAvailable ? "Buy with PayPal" : "Checkout coming soon"}
+                  <p className="billing-pack-unit">{formatPrice(Math.round(pack.priceCents / pack.credits), pack.currency)} per credit</p>
+                  <button type="button" disabled={!anyMethod} onClick={() => buyPack(pack)}>
+                    {anyMethod ? "Buy credits" : "Checkout coming soon"}
                   </button>
                 </article>
               );
@@ -221,26 +304,32 @@ export function BillingSection({ api }: { api: StudioApi }) {
         {catalog.recentCheckouts.length === 0 ? (
           <div className="billing-empty">
             <p className="billing-empty-title">No payments yet</p>
-            <p>When you top up credits, the purchase and its status will show up here.</p>
+            <p>When you subscribe or top up credits, the payment and its status will show up here.</p>
           </div>
         ) : (
           <div className="billing-history">
-            {catalog.recentCheckouts.map((checkout) => (
-              <article key={checkout.id}>
-                <span className={`billing-history-mark is-${checkout.status}`} aria-hidden="true">
-                  {checkout.status === "paid" ? "✓" : "·"}
+            {catalog.recentCheckouts.map((item) => (
+              <article key={item.id}>
+                <span className={`billing-history-mark is-${item.status}`} aria-hidden="true">
+                  {item.status === "paid" ? "✓" : "·"}
                 </span>
                 <div>
-                  <strong>{(checkout.creditPackSku && packNames.get(checkout.creditPackSku)) ?? "Credit purchase"}</strong>
-                  <small>{formatDate(checkout.updatedAt)} · PayPal</small>
+                  <strong>
+                    {item.kind === "subscription"
+                      ? `${item.planName ?? "Plan"} · ${item.billingInterval === "year" ? "Yearly" : "Monthly"}`
+                      : (item.creditPackSku && packNames.get(item.creditPackSku)) ?? "Credit purchase"}
+                  </strong>
+                  <small>{formatDate(item.updatedAt)} · {PROVIDER_LABEL[item.provider] ?? item.provider}</small>
                 </div>
-                <b>{price(checkout.amountCents, checkout.currency)}</b>
-                <em className={`billing-history-status is-${checkout.status}`}>{CHECKOUT_LABEL[checkout.status] ?? checkout.status}</em>
+                <b>{formatPrice(item.amountCents, item.currency)}</b>
+                <em className={`billing-history-status is-${item.status}`}>{CHECKOUT_LABEL[item.status] ?? item.status}</em>
               </article>
             ))}
           </div>
         )}
       </section>
+
+      {checkout && <CheckoutDialog item={checkout} catalog={catalog} createCheckout={api.createCheckout} onClose={() => setCheckout(null)} />}
     </div>
   );
 }

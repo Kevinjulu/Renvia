@@ -6,6 +6,7 @@ import type { AdminBillingResponse, AdminFinancialsResponse, AdminOperationsQueu
 import { getSettings, effectiveBudgetUsd } from "../../lib/settings.js";
 import { resolveIncidentsForSource } from "../../lib/incidents.js";
 import { replayVerifiedPaypalEvent } from "../webhooks/paypal.js";
+import { replayVerifiedPaystackEvent } from "../webhooks/paystack.js";
 import { hasPermission, denyUnless } from "./permissions.js";
 import { MICROS_PER_USD, recordAdminEvent } from "./shared.js";
 import { governance, requestApproval } from "./governance.js";
@@ -154,12 +155,13 @@ billingRoutes.post("/billing/webhooks/:id/replay", async (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));
   const [event] = await db.select().from(schema.billingWebhookEvents).where(eq(schema.billingWebhookEvents.id, id)).limit(1);
   if (!event) return c.json({ error: "Webhook event not found" }, 404);
-  if (event.provider !== "paypal" || event.verificationStatus !== "verified") return c.json({ error: "Only previously verified PayPal events can be replayed" }, 409);
+  if ((event.provider !== "paypal" && event.provider !== "paystack") || event.verificationStatus !== "verified") return c.json({ error: "Only previously verified PayPal or Paystack events can be replayed" }, 409);
   try {
-    await replayVerifiedPaypalEvent(db, event.payload);
+    if (event.provider === "paystack") await replayVerifiedPaystackEvent(c.env, db, event.payload);
+    else await replayVerifiedPaypalEvent(c.env, db, event.payload);
     await db.update(schema.billingWebhookEvents).set({ processedAt: new Date(), failedAt: null, failureMessage: null, attempts: sql`${schema.billingWebhookEvents.attempts} + 1`, lastAttemptAt: new Date() }).where(eq(schema.billingWebhookEvents.id, event.id));
     await resolveIncidentsForSource(db, "webhook", event.id, c.get("admin").id, "Verified webhook replay completed successfully");
-    await recordAdminEvent(db, { actorId: c.get("admin").id, action: "billing.webhook", targetType: "billing_webhook", targetId: event.id, summary: `Replayed PayPal event ${event.eventType}`, detail: { providerEventId: event.providerEventId } });
+    await recordAdminEvent(db, { actorId: c.get("admin").id, action: "billing.webhook", targetType: "billing_webhook", targetId: event.id, summary: `Replayed ${event.provider === "paystack" ? "Paystack" : "PayPal"} event ${event.eventType}`, detail: { providerEventId: event.providerEventId } });
     return c.json({ id: event.id, status: "processed" });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Webhook replay failed";

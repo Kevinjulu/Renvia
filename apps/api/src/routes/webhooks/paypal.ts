@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { Env } from "../../index.js";
 import { reversePaypalPurchaseCredits, settlePaypalCapture } from "../../lib/paypalSettlement.js";
-import { addMonthsClamped, startPaidPeriod } from "../../lib/planCredits.js";
+import { settlePlanPayment } from "../../lib/subscriptions.js";
 
 export const paypalWebhook = new Hono<{ Bindings: Env }>();
 
@@ -87,6 +87,10 @@ async function settleCaptureEvent(db: ReturnType<typeof createDb>, event: Paypal
   await settlePaypalCapture(db, { eventId: event.id, captureId, orderId, amountCents: amountValue, currency });
 }
 
+/**
+ * PayPal approved the subscription. Nothing is granted yet: the plan starts with its first
+ * payment (settleSubscriptionPayment). This only keeps the subscription ID on the checkout.
+ */
 async function activateSubscription(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
   const subscriptionId = resourceString(event.resource, "id");
   if (!subscriptionId) throw new Error("PayPal subscription event has no subscription ID");
@@ -96,49 +100,43 @@ async function activateSubscription(db: ReturnType<typeof createDb>, event: Payp
     : and(eq(schema.billingCheckouts.provider, "paypal"), eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)),
   ).limit(1);
   if (!checkout || !checkout.planId) throw new Error("No Renvia subscription checkout matches this PayPal subscription");
-  const info = event.resource.billing_info;
-  const periodEnd = info && typeof info === "object" ? asDate((info as Record<string, unknown>).next_billing_time) : null;
-  await db.batch([
-    db.update(schema.billingCheckouts).set({ providerCheckoutId: subscriptionId, status: "pending", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id)),
-    db.update(schema.userEntitlements).set({ planId: checkout.planId, status: "active", provider: "paypal", providerSubscriptionId: subscriptionId, currentPeriodStart: asDate(event.create_time) ?? new Date(), currentPeriodEnd: periodEnd, nextCreditGrantAt: periodEnd, cancelAtPeriodEnd: false, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, checkout.userId)),
-  ]);
+  if (checkout.status !== "paid") {
+    await db.update(schema.billingCheckouts).set({ providerCheckoutId: subscriptionId, status: "pending", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id));
+  }
 }
 
-async function settleSubscriptionPayment(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
+/** A subscription payment, first or renewal: starts, renews or extends the plan it was bought for. */
+async function settleSubscriptionPayment(env: Env, db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
   const paymentId = resourceString(event.resource, "id");
   const subscriptionId = linkedId(event.resource, "subscription_id") ?? resourceString(event.resource, "billing_agreement_id");
   const amount = event.resource.amount;
-  const amountCents = amount && typeof amount === "object" ? cents((amount as Record<string, unknown>).value) : null;
-  const currency = amount && typeof amount === "object" ? resourceString(amount as Record<string, unknown>, "currency_code") : null;
+  const amountCents = amount && typeof amount === "object" ? cents((amount as Record<string, unknown>).value ?? (amount as Record<string, unknown>).total) : null;
+  const currency = amount && typeof amount === "object" ? resourceString(amount as Record<string, unknown>, "currency_code") ?? resourceString(amount as Record<string, unknown>, "currency") : null;
   if (!paymentId || !subscriptionId || amountCents === null || !currency) throw new Error("PayPal subscription payment is incomplete");
-  const [existing] = await db.select({ id: schema.billingPayments.id, paidAt: schema.billingPayments.paidAt }).from(schema.billingPayments).where(and(eq(schema.billingPayments.provider, "paypal"), eq(schema.billingPayments.providerPaymentId, paymentId))).limit(1);
-  const [entitlement] = await db.select().from(schema.userEntitlements).where(and(eq(schema.userEntitlements.provider, "paypal"), eq(schema.userEntitlements.providerSubscriptionId, subscriptionId))).limit(1);
-  if (!entitlement) throw new Error("No active Renvia entitlement matches this PayPal subscription");
-  const [plan] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, entitlement.planId)).limit(1);
-  if (!plan || plan.currency !== currency || plan.priceCents !== amountCents) throw new Error("PayPal subscription payment does not match the Renvia plan");
-  // The payment starts the next credit period: unspent plan credits expire and the allowance is
-  // granted once. Keyed by the payment time, so a replayed event (including one retried after
-  // the payment was recorded but before the credits landed) grants nothing extra.
-  const startPeriod = (paidAt: Date) => startPaidPeriod(db, {
-    userId: entitlement.userId,
-    allowance: plan.monthlyCredits,
-    start: paidAt,
-    next: entitlement.currentPeriodEnd && entitlement.currentPeriodEnd > paidAt ? entitlement.currentPeriodEnd : addMonthsClamped(paidAt, 1),
+  const [checkout] = await db.select().from(schema.billingCheckouts).where(and(
+    eq(schema.billingCheckouts.provider, "paypal"),
+    eq(schema.billingCheckouts.kind, "subscription"),
+    eq(schema.billingCheckouts.providerCheckoutId, subscriptionId),
+  )).limit(1);
+  if (!checkout?.planId) throw new Error("No Renvia subscription checkout matches this PayPal subscription");
+  const [plan] = await db.select().from(schema.billingPlans).where(eq(schema.billingPlans.id, checkout.planId)).limit(1);
+  if (!plan) throw new Error("PayPal subscription references a missing plan");
+  // PayPal keeps charging the price the customer agreed to, even after the plan's price changes.
+  if (checkout.currency !== currency || checkout.amountCents !== amountCents) throw new Error("PayPal subscription payment does not match the Renvia plan");
+  await settlePlanPayment(env, db, {
+    userId: checkout.userId,
+    plan,
+    interval: checkout.billingInterval ?? "month",
+    provider: "paypal",
+    providerPaymentId: paymentId,
+    amountCents,
+    currency,
+    checkoutId: checkout.id,
+    paidAt: asDate(event.create_time) ?? new Date(),
+    providerSubscriptionId: subscriptionId,
+    autoRenews: true,
+    eventId: event.id,
   });
-  if (existing) {
-    if (existing.paidAt) await startPeriod(existing.paidAt);
-    return;
-  }
-  const paidAt = new Date();
-  const [checkout] = await db.select().from(schema.billingCheckouts).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)).limit(1);
-  const recordId = crypto.randomUUID();
-  await db.batch([
-    db.insert(schema.billingPayments).values({ id: recordId, checkoutId: checkout?.id ?? null, userId: entitlement.userId, provider: "paypal", providerPaymentId: paymentId, status: "paid", currency, amountCents, paidAt, providerMetadata: { subscriptionId, eventId: event.id } }),
-    db.insert(schema.billingInvoices).values({ userId: entitlement.userId, paymentId: recordId, provider: "paypal", providerInvoiceId: paymentId, number: `PAYPAL-${paymentId}`, status: "paid", currency, amountCents }),
-    db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.providerCheckoutId, subscriptionId)),
-    db.update(schema.userEntitlements).set({ status: "active", updatedAt: new Date() }).where(eq(schema.userEntitlements.id, entitlement.id)),
-  ]);
-  await startPeriod(paidAt);
 }
 
 async function updateSubscriptionStatus(db: ReturnType<typeof createDb>, event: PaypalEvent, status: "past_due" | "canceled" | "expired"): Promise<void> {
@@ -147,12 +145,12 @@ async function updateSubscriptionStatus(db: ReturnType<typeof createDb>, event: 
   await db.update(schema.userEntitlements).set({ status, cancelAtPeriodEnd: status === "canceled", updatedAt: new Date() }).where(and(eq(schema.userEntitlements.provider, "paypal"), eq(schema.userEntitlements.providerSubscriptionId, subscriptionId)));
 }
 
-async function processEvent(db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
+async function processEvent(env: Env, db: ReturnType<typeof createDb>, event: PaypalEvent): Promise<void> {
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {
-    if (linkedId(event.resource, "subscription_id")) return settleSubscriptionPayment(db, event);
+    if (linkedId(event.resource, "subscription_id")) return settleSubscriptionPayment(env, db, event);
     return settleCaptureEvent(db, event);
   }
-  if (event.event_type === "PAYMENT.SALE.COMPLETED") return settleSubscriptionPayment(db, event);
+  if (event.event_type === "PAYMENT.SALE.COMPLETED") return settleSubscriptionPayment(env, db, event);
   if (event.event_type === "PAYMENT.CAPTURE.REFUNDED") {
     const captureId = linkedId(event.resource, "capture_id");
     const refundId = resourceString(event.resource, "id");
@@ -169,10 +167,10 @@ async function processEvent(db: ReturnType<typeof createDb>, event: PaypalEvent)
 }
 
 /** Reprocesses an already signature-verified, persisted event during operator recovery. */
-export async function replayVerifiedPaypalEvent(db: ReturnType<typeof createDb>, payload: unknown): Promise<void> {
+export async function replayVerifiedPaypalEvent(env: Env, db: ReturnType<typeof createDb>, payload: unknown): Promise<void> {
   const parsed = eventSchema.safeParse(payload);
   if (!parsed.success) throw new Error("Stored PayPal event payload is invalid");
-  await processEvent(db, parsed.data);
+  await processEvent(env, db, parsed.data);
 }
 
 paypalWebhook.post("/", async (c) => {
@@ -196,7 +194,7 @@ paypalWebhook.post("/", async (c) => {
     await db.update(schema.billingWebhookEvents).set({ attempts: sql`${schema.billingWebhookEvents.attempts} + 1`, lastAttemptAt: new Date(), verificationStatus: "verified", failedAt: null, failureMessage: null }).where(eq(schema.billingWebhookEvents.id, known.id));
   }
   try {
-    await processEvent(db, parsed.data);
+    await processEvent(c.env, db, parsed.data);
     await db.update(schema.billingWebhookEvents).set({ processedAt: new Date(), failedAt: null, failureMessage: null }).where(and(eq(schema.billingWebhookEvents.provider, "paypal"), eq(schema.billingWebhookEvents.providerEventId, parsed.data.id)));
     return c.json({ received: true });
   } catch (error) {

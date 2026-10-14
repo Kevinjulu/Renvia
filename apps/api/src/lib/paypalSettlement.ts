@@ -24,48 +24,76 @@ export async function settlePaypalCapture(db: ReturnType<typeof createDb>, captu
   if (checkout.currency !== capture.currency || checkout.amountCents !== capture.amountCents) {
     throw new Error("PayPal capture amount does not match the Renvia checkout");
   }
+  await settleCreditPack(db, checkout, {
+    provider: "paypal",
+    providerPaymentId: capture.captureId,
+    amountCents: capture.amountCents,
+    currency: capture.currency,
+    metadata: { orderId: capture.orderId, eventId: capture.eventId },
+    note: `PayPal capture ${capture.captureId}`,
+  });
+}
+
+type CheckoutRow = typeof schema.billingCheckouts.$inferSelect;
+
+/**
+ * Records a paid credit-pack checkout and grants its credits exactly once, whichever provider
+ * took the money. The provider payment ID is unique and every write is batched together, so a
+ * return flow and a webhook can race safely. The caller checks the amount against the checkout.
+ */
+export async function settleCreditPack(
+  db: ReturnType<typeof createDb>,
+  checkout: CheckoutRow,
+  payment: { provider: "paypal" | "paystack"; providerPaymentId: string; amountCents: number; currency: string; metadata: Record<string, unknown>; note: string },
+): Promise<void> {
+  if (checkout.kind !== "credit_pack" || !checkout.creditPackId) throw new Error("Only a credit-pack checkout can be settled as a credit purchase");
   const [existing] = await db.select({ id: schema.billingPayments.id }).from(schema.billingPayments).where(and(
-    eq(schema.billingPayments.provider, "paypal"),
-    eq(schema.billingPayments.providerPaymentId, capture.captureId),
+    eq(schema.billingPayments.provider, payment.provider),
+    eq(schema.billingPayments.providerPaymentId, payment.providerPaymentId),
   )).limit(1);
   if (existing) return;
-  const [pack] = await db.select().from(schema.creditPacks).where(eq(schema.creditPacks.id, checkout.creditPackId!)).limit(1);
-  if (!pack) throw new Error("PayPal checkout references a missing credit pack");
+  const [pack] = await db.select().from(schema.creditPacks).where(eq(schema.creditPacks.id, checkout.creditPackId)).limit(1);
+  if (!pack) throw new Error("Checkout references a missing credit pack");
 
   const paymentId = crypto.randomUUID();
-  await db.batch([
-    db.insert(schema.billingPayments).values({
-      id: paymentId,
-      checkoutId: checkout.id,
-      userId: checkout.userId,
-      provider: "paypal",
-      providerPaymentId: capture.captureId,
-      status: "paid",
-      currency: capture.currency,
-      amountCents: capture.amountCents,
-      paidAt: new Date(),
-      providerMetadata: { orderId: capture.orderId, eventId: capture.eventId },
-    }),
-    db.insert(schema.billingInvoices).values({
-      userId: checkout.userId,
-      paymentId,
-      provider: "paypal",
-      providerInvoiceId: capture.captureId,
-      number: `PAYPAL-${capture.captureId}`,
-      status: "paid",
-      currency: capture.currency,
-      amountCents: capture.amountCents,
-    }),
-    db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id)),
-    db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${pack.credits}` }).where(eq(schema.users.id, checkout.userId)),
-    db.insert(schema.creditLedger).values({
-      userId: checkout.userId,
-      paymentId,
-      amount: pack.credits,
-      reason: "purchase",
-      note: `PayPal capture ${capture.captureId}`,
-    }),
-  ]);
+  try {
+    await db.batch([
+      db.insert(schema.billingPayments).values({
+        id: paymentId,
+        checkoutId: checkout.id,
+        userId: checkout.userId,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        status: "paid",
+        currency: payment.currency,
+        amountCents: payment.amountCents,
+        paidAt: new Date(),
+        providerMetadata: payment.metadata,
+      }),
+      db.insert(schema.billingInvoices).values({
+        userId: checkout.userId,
+        paymentId,
+        provider: payment.provider,
+        providerInvoiceId: payment.providerPaymentId,
+        number: `${payment.provider.toUpperCase()}-${payment.providerPaymentId}`,
+        status: "paid",
+        currency: payment.currency,
+        amountCents: payment.amountCents,
+      }),
+      db.update(schema.billingCheckouts).set({ status: "paid", updatedAt: new Date() }).where(eq(schema.billingCheckouts.id, checkout.id)),
+      db.update(schema.users).set({ creditBalance: sql`${schema.users.creditBalance} + ${pack.credits}` }).where(eq(schema.users.id, checkout.userId)),
+      db.insert(schema.creditLedger).values({
+        userId: checkout.userId,
+        paymentId,
+        amount: pack.credits,
+        reason: "purchase",
+        note: payment.note,
+      }),
+    ]);
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") return;
+    throw error;
+  }
 }
 
 /** Refunds are only permitted while the credits purchased by that payment remain unused. */

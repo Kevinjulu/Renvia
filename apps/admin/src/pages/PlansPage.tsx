@@ -132,7 +132,7 @@ function NullableNumber({ label, value, onChange, disabled }: { label: string; v
 
 function PlanEditor({ plan, canManage, onChanged }: { plan: AdminPlan; canManage: boolean; onChanged: () => void }) {
   const api = useAdminApi();
-  const initial = { name: plan.name, description: plan.description, priceCents: plan.priceCents, monthlyCredits: plan.monthlyCredits, dailyRenderLimit: plan.dailyRenderLimit, monthlyRenderLimit: plan.monthlyRenderLimit, maxProjects: plan.maxProjects, concurrentRenderLimit: plan.concurrentRenderLimit, isActive: plan.isActive, paypalPlanId: plan.paypalPlanId };
+  const initial = { name: plan.name, description: plan.description, priceCents: plan.priceCents, monthlyCredits: plan.monthlyCredits, dailyRenderLimit: plan.dailyRenderLimit, monthlyRenderLimit: plan.monthlyRenderLimit, maxProjects: plan.maxProjects, concurrentRenderLimit: plan.concurrentRenderLimit, isActive: plan.isActive, paypalPlanId: plan.paypalPlanId, yearlyPriceCents: plan.yearlyPriceCents ?? null, paypalYearlyPlanId: plan.paypalYearlyPlanId ?? null, paystackPlanCode: plan.paystackPlanCode ?? null, paystackYearlyPlanCode: plan.paystackYearlyPlanCode ?? null };
   const [terms, setTerms] = useState(initial);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -162,7 +162,7 @@ function PlanEditor({ plan, canManage, onChanged }: { plan: AdminPlan; canManage
         <h3 className="text-sm font-semibold text-primary">{plan.name}</h3>
         <span className="text-xs text-faint">{plan.slug}</span>
         <Pill tone={plan.isActive ? "emerald" : "neutral"}>{plan.isActive ? "Active" : "Retired"}</Pill>
-        <span className="text-xs text-muted">{formatNumber(plan.subscribers)} on it · {plan.interval === "month" ? `${cents(plan.priceCents, plan.currency)} / month` : "Free"}{plan.version ? ` · v${plan.version}` : ""}</span>
+        <span className="text-xs text-muted">{formatNumber(plan.subscribers)} on it · {plan.interval === "month" ? `${cents(plan.priceCents, plan.currency)} / month${plan.yearlyPriceCents ? ` · ${cents(plan.yearlyPriceCents, plan.currency)} / year` : ""}` : "Free"}{plan.version ? ` · v${plan.version}` : ""}</span>
       </div>
       <p className="mt-1 text-xs text-faint">
         Studio features: {plan.features.filter((feature) => feature.available).length} of {plan.features.length}
@@ -178,7 +178,11 @@ function PlanEditor({ plan, canManage, onChanged }: { plan: AdminPlan; canManage
         {plan.interval === "month" && (
           <>
             <label className="text-xs text-muted">Price (cents)<input type="number" min={0} value={terms.priceCents} onChange={(event) => set({ priceCents: Math.max(0, Math.round(Number(event.target.value) || 0)) })} className={inputClass()} /></label>
-            <label className="text-xs text-muted">PayPal plan ID<input value={terms.paypalPlanId ?? ""} onChange={(event) => set({ paypalPlanId: event.target.value.trim() || null })} className={inputClass()} /></label>
+            <label className="text-xs text-muted">Yearly price (cents)<input type="number" min={0} placeholder="Not sold yearly" value={terms.yearlyPriceCents ?? ""} onChange={(event) => set({ yearlyPriceCents: event.target.value === "" ? null : Math.max(0, Math.round(Number(event.target.value) || 0)) })} className={inputClass()} /></label>
+            <label className="text-xs text-muted">PayPal plan ID (monthly)<input value={terms.paypalPlanId ?? ""} onChange={(event) => set({ paypalPlanId: event.target.value.trim() || null })} className={inputClass()} /></label>
+            <label className="text-xs text-muted">PayPal plan ID (yearly)<input value={terms.paypalYearlyPlanId ?? ""} onChange={(event) => set({ paypalYearlyPlanId: event.target.value.trim() || null })} className={inputClass()} /></label>
+            <label className="text-xs text-muted" title="Optional. With a Paystack plan code, card payments renew automatically; without one, each card or M-Pesa payment buys one period.">Paystack plan code (monthly)<input placeholder="PLN_… (optional)" value={terms.paystackPlanCode ?? ""} onChange={(event) => set({ paystackPlanCode: event.target.value.trim() || null })} className={inputClass()} /></label>
+            <label className="text-xs text-muted" title="Optional. With a Paystack plan code, card payments renew automatically; without one, each card or M-Pesa payment buys one period.">Paystack plan code (yearly)<input placeholder="PLN_… (optional)" value={terms.paystackYearlyPlanCode ?? ""} onChange={(event) => set({ paystackYearlyPlanCode: event.target.value.trim() || null })} className={inputClass()} /></label>
           </>
         )}
         <label className="text-xs text-muted sm:col-span-2 lg:col-span-3">Description<input value={terms.description} maxLength={500} onChange={(event) => set({ description: event.target.value })} className={inputClass()} /></label>

@@ -6,6 +6,7 @@ import { segmentations } from "./routes/segmentations.js";
 import { uploads } from "./routes/uploads.js";
 import { falWebhook } from "./routes/webhooks/fal.js";
 import { paypalWebhook } from "./routes/webhooks/paypal.js";
+import { paystackWebhook } from "./routes/webhooks/paystack.js";
 import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
@@ -53,6 +54,17 @@ export interface Env {
   PAYPAL_WEBHOOK_ID?: string;
   /** Defaults to live. Set `sandbox` only for the PayPal sandbox application. */
   PAYPAL_ENV?: "sandbox" | "live";
+  /**
+   * Paystack secret key (sk_live_… or sk_test_…): card and M-Pesa payments. Server-only; it also
+   * verifies Paystack's webhook signatures, so there is no separate webhook secret.
+   */
+  PAYSTACK_SECRET_KEY?: string;
+  /** Kenyan shillings per US dollar for Paystack charges, e.g. "129". M-Pesa is unavailable until set. */
+  PAYSTACK_KES_PER_USD?: string;
+  /** Currency Paystack charges cards in: KES (default) or USD, if USD is enabled on the Paystack account. */
+  PAYSTACK_CARD_CURRENCY?: "KES" | "USD";
+  /** Where the Enterprise "Contact us" on the billing page sends people. Optional. */
+  SALES_CONTACT_EMAIL?: string;
   /** Optional server-only HTTPS endpoint for operational incident notifications. */
   OPS_NOTIFICATION_WEBHOOK_URL?: string;
 }
@@ -116,6 +128,7 @@ app.route("/segmentations", segmentations);
 app.route("/uploads", uploads);
 app.route("/webhooks/fal", falWebhook);
 app.route("/webhooks/paypal", paypalWebhook);
+app.route("/webhooks/paystack", paystackWebhook);
 app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);

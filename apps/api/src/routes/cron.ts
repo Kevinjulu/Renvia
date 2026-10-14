@@ -4,6 +4,7 @@ import type { Env } from "../index.js";
 import { sweepStaleRenders } from "../lib/engine.js";
 import { syncOperationalIncidents } from "../lib/incidents.js";
 import { renewDueCreditPeriods } from "../lib/planCredits.js";
+import { endLapsedSubscriptions } from "../lib/subscriptions.js";
 import { OPERATIONS_SYNC_JOB, runScheduledJob } from "../lib/scheduledJobs.js";
 
 export const cron = new Hono<{ Bindings: Env }>();
@@ -46,6 +47,8 @@ cron.get("/sweep-renders", async (c) => {
   if (!authorized(c)) return c.json({ error: "Unauthorized" }, 401);
   const db = createDb(c.env.DATABASE_URL);
   const operations = await runOperationsSync(c.env, db, new URL(c.req.url).origin);
+  // Lapsed paid plans move to Free first, so their accounts renew on the Free schedule.
+  const subscriptions = await endLapsedSubscriptions(db);
   const credits = await renewDueCreditPeriods(db);
-  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), credits });
+  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), subscriptions, credits });
 });

@@ -325,6 +325,13 @@ export const billingPlans = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     /** PayPal subscription plan ID. Null keeps the plan unavailable for recurring checkout. */
     paypalPlanId: text("paypal_plan_id").unique(),
+    /** Price of a year up front; null means the plan isn't sold yearly. */
+    yearlyPriceCents: integer("yearly_price_cents"),
+    /** PayPal plan billing yearlyPriceCents once a year. */
+    paypalYearlyPlanId: text("paypal_yearly_plan_id").unique(),
+    /** Paystack plan codes. With one, card payments renew automatically; without, each payment buys one period. */
+    paystackPlanCode: text("paystack_plan_code"),
+    paystackYearlyPlanCode: text("paystack_yearly_plan_code"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -350,6 +357,10 @@ export const userEntitlements = pgTable(
     provider: text("provider", { enum: ["manual", "paypal", "stripe", "paystack", "flutterwave", "mpesa"] }),
     providerCustomerId: text("provider_customer_id"),
     providerSubscriptionId: text("provider_subscription_id"),
+    /** How the current subscription is billed; null on the Free plan. */
+    billingInterval: text("billing_interval", { enum: ["month", "year"] }),
+    /** Provider references needed to manage the subscription later, such as Paystack's email token. */
+    providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>(),
     currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
@@ -414,6 +425,8 @@ export const billingCheckouts = pgTable(
     providerCheckoutId: text("provider_checkout_id").unique(),
     /** Client-generated key makes a retried checkout request safe before a provider order exists. */
     idempotencyKey: text("idempotency_key"),
+    /** For a subscription checkout: the billing period it pays for. */
+    billingInterval: text("billing_interval", { enum: ["month", "year"] }),
     status: text("status", { enum: ["created", "pending", "paid", "expired", "canceled", "failed"] }).notNull().default("created"),
     currency: text("currency").notNull(),
     amountCents: integer("amount_cents").notNull(),

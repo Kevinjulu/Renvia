@@ -2,32 +2,42 @@ import { SIGNUP_URL } from "@/lib/config";
 
 const TIERS = [
   {
-    name: "Starter",
+    name: "Free",
     description: "Explore the workflow and bring your first ideas to life.",
     price: "$0",
     period: "",
     billing: "20 free credits every month · no card required",
-    features: ["Up to 5 render jobs per day", "Standard renders: 1 credit", "Strict source fidelity: 2 credits", "2 active projects"],
+    features: ["Up to 5 render jobs per day", "Standard renders: 1 credit", "2 active projects", "Renders stay in the Studio, watermarked"],
     cta: "Start with 20 free credits",
     emphasized: false,
   },
   {
-    name: "Studio",
-    description: "The planned professional workspace for architects producing every day.",
+    name: "Pro",
+    description: "For quickly visualising your designs.",
     price: "$29",
     period: "/month",
-    billing: "Coming soon — billing is not live yet",
-    features: ["200 flexible monthly credits", "4K export: 1 credit · 8K: 2 credits", "Strict fidelity uses 2 credits", "Unlimited projects when available"],
-    cta: "Start free for now",
+    billing: "or $290 a year · card, M-Pesa or PayPal",
+    features: ["300 credits every month", "Clean, watermark-free downloads", "Standard and 4K output", "Up to 50 projects"],
+    cta: "Get Pro",
+    emphasized: false,
+  },
+  {
+    name: "Premium",
+    description: "For professional visualisations at volume.",
+    price: "$79",
+    period: "/month",
+    billing: "or $790 a year · card, M-Pesa or PayPal",
+    features: ["1,000 credits every month", "Clean, watermark-free downloads", "Standard, 4K and 8K output", "8 renders at once", "Up to 500 projects"],
+    cta: "Get Premium",
     emphasized: true,
   },
   {
     name: "Enterprise",
-    description: "Planned scale, control, and support for ambitious teams.",
+    description: "Scale, control, and support for studios and teams of five or more.",
     price: "Let’s talk",
     period: "",
     billing: "Custom pricing",
-    features: ["Custom render volume", "Team collaboration when available", "Private storage roadmap", "Dedicated support", "SLA & security planning"],
+    features: ["Everything in Premium", "Credit volume sized to your team", "Centralised billing", "Onboarding and training", "Dedicated support"],
     cta: "Talk to us",
     emphasized: false,
   },
@@ -49,13 +59,13 @@ export function Pricing() {
           <div className="lg:justify-self-end"><p className="max-w-[440px] text-sm leading-7 text-white/55 sm:text-[15px]">Simple plans for first experiments, daily professional practice, and teams producing at scale.</p><p className="mt-4 text-[10px] font-medium uppercase tracking-[.15em] text-white/30">Choose the plan that fits how you create</p></div>
         </div>
 
-        <div className="mt-14 grid items-stretch gap-3 lg:grid-cols-[.82fr_1.18fr_.82fr] lg:gap-4">
+        <div className="mt-14 grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4 lg:gap-4">
           {TIERS.map((tier) => {
             const highlighted = tier.emphasized;
             return (
               <article key={tier.name} className={`relative flex min-h-[520px] flex-col overflow-hidden rounded-[22px] border p-6 sm:p-8 ${highlighted ? "border-white bg-[#f7f6f2] text-primary shadow-[0_35px_90px_-38px_rgba(0,0,0,.8)] lg:-translate-y-4" : "border-white/10 bg-white/[.035] text-white"}`}>
                 {highlighted && <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#2f6fed] via-[#76a0ff] to-[#2f6fed]" />}
-                <div className="flex items-center justify-between"><p className={`text-[10px] font-semibold uppercase tracking-[.16em] ${highlighted ? "text-primary" : "text-white/65"}`}>{tier.name}</p>{highlighted && <span className="rounded-full bg-primary px-3 py-1.5 text-[8px] font-semibold uppercase tracking-[.13em] text-white">Recommended</span>}</div>
+                <div className="flex items-center justify-between"><p className={`text-[10px] font-semibold uppercase tracking-[.16em] ${highlighted ? "text-primary" : "text-white/65"}`}>{tier.name}</p>{highlighted && <span className="rounded-full bg-primary px-3 py-1.5 text-[8px] font-semibold uppercase tracking-[.13em] text-white">Best value</span>}</div>
                 <p className={`mt-5 max-w-[320px] text-xs leading-5 ${highlighted ? "text-muted" : "text-white/45"}`}>{tier.description}</p>
 
                 <div className="mt-10 flex items-end gap-2"><span className={`font-display font-semibold leading-none tracking-[-.055em] ${tier.name === "Enterprise" ? "text-[42px]" : "text-[58px] sm:text-[66px]"}`}>{tier.price}</span>{tier.period && <span className={`mb-1.5 text-xs ${highlighted ? "text-faint" : "text-white/35"}`}>{tier.period}</span>}</div>
@@ -74,7 +84,7 @@ export function Pricing() {
         <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-3">
           <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">01</span> Start with 25 real rendering credits</div>
           <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">02</span> See every action’s credit cost before you run it</div>
-          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">03</span> Paid plans launch with billing and entitlements, not promises</div>
+          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">03</span> Yearly billing gets you two months free</div>
         </div>
       </div>
     </section>

@@ -285,14 +285,12 @@ export function LimitDialog({
 
         <div className="mt-5 flex justify-end gap-2.5">
           {outOfCredits && (
-            <button
-              type="button"
-              disabled
-              title="Paid plans are coming soon"
-              className="mr-auto cursor-not-allowed rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-faint"
+            <a
+              href="/billing#plans"
+              className="mr-auto rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-secondary transition-colors hover:bg-surface-muted"
             >
-              Upgrade · coming soon
-            </button>
+              See plans
+            </a>
           )}
           {showCredits && (
             <button

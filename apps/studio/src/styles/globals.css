@@ -478,6 +478,83 @@ button { color: inherit; }
 .billing-skeleton::after{position:absolute;inset:0;content:"";transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);animation:dashboard-skeleton-shimmer 1.5s ease-in-out infinite}
 @media(max-width:760px){.billing-card{padding:22px}.billing-summary{flex-direction:column;align-items:stretch}.billing-plan{border-top:1px solid #eeeae4;border-left:0;padding:16px 0 0}.billing-history article{grid-template-columns:34px minmax(0,1fr) auto}.billing-history-status{grid-column:2/4;justify-self:start}.billing-pack-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.billing-pack,.billing-pack button{transition:none}.billing-skeleton::after{animation:none}}
+/* Plans: interval toggle, tier cards and Enterprise */
+.plans-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
+.plans-interval{display:inline-flex;flex:none;gap:3px;border:1px solid #e2dfda;border-radius:999px;padding:3px;background:#fff}
+.plans-interval button{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:999px;padding:8px 16px;background:transparent;color:#77736e;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s ease,color .15s ease}
+.plans-interval button:hover{color:#171717}
+.plans-interval button.is-active{background:#171717;color:#fff}
+.plans-interval button:focus-visible{outline:2px solid #171717;outline-offset:2px}
+.plans-interval em{border-radius:999px;padding:2px 7px;background:#e9f6ee;color:#1f6b3d;font-size:10px;font-style:normal;font-weight:600}
+.plans-interval button.is-active em{background:rgba(255,255,255,.16);color:#fff}
+.plans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:stretch}
+.plan-card{position:relative;display:flex;flex-direction:column;border:1px solid #e2dfda;border-radius:18px;padding:24px 22px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
+.plan-card:hover{border-color:#c9c5be}
+.plan-card.is-featured{border-color:#171717;background:#f7f6f3;box-shadow:0 0 0 1px #171717,0 24px 48px -30px rgba(23,23,23,.45)}
+.plan-card.is-current:not(.is-featured){border-color:#b9b5ae}
+.plan-card.is-enterprise{background:#fbfaf8}
+.plan-card h3{margin:0;font-family:var(--font-general-sans);font-size:19px}
+.plan-description{min-height:38px;margin:8px 0 0;color:#77736e;font-size:12.5px;line-height:1.5}
+.plan-price{display:flex;align-items:baseline;gap:7px;margin-top:18px}
+.plan-price strong{font-family:var(--font-general-sans);font-size:36px;line-height:1;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.plan-price span{color:#8b8883;font-size:12px;font-weight:600}
+.plan-billing{min-height:17px;margin:8px 0 18px;color:#8b8883;font-size:11.5px}
+.plan-action{display:flex;width:100%;align-items:center;justify-content:center;border:1px solid #dcd9d4;border-radius:10px;padding:12px 16px;background:#fff;color:#171717;font:inherit;font-size:12.5px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.plan-action:hover:not(:disabled){border-color:#b9b5ae}
+.plan-action:focus-visible{outline:2px solid #171717;outline-offset:2px}
+.plan-action:disabled{background:#f4f2ee;color:#8b8883;cursor:default}
+.plan-card.is-featured .plan-action:not(:disabled){border-color:#171717;background:#171717;color:#fff}
+.plan-card.is-featured .plan-action:not(:disabled):hover{background:#333}
+.plan-includes{margin:22px 0 10px;color:#3a3733;font-size:11.5px;font-weight:600}
+.plan-card ul{display:flex;flex-direction:column;gap:9px;margin:0;padding:0;list-style:none}
+.plan-card li{display:flex;align-items:flex-start;gap:9px;color:#3a3733;font-size:12.5px;line-height:1.4}
+.plan-card li svg{width:14px;height:14px;flex:none;margin-top:1px;border-radius:50%;padding:2px;background:#e9f6ee;fill:none;stroke:#1f6b3d;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.billing-plan-link{align-self:flex-start;border:0;padding:0;background:none;color:#3a3733;font:inherit;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.billing-plan-link:hover{color:#171717}
+.billing-plan-confirm{border:1px solid #e2dfda;border-radius:12px;padding:12px;background:#fbfaf8}
+.billing-plan-confirm p{margin:0 0 10px;color:#3a3733;font-size:12px;line-height:1.5}
+.billing-plan-confirm div{display:flex;justify-content:flex-end;gap:8px}
+.billing-plan-confirm button{border:1px solid #dcd9d4;border-radius:8px;padding:7px 12px;background:#fff;color:#171717;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.billing-plan-confirm button.is-danger{border-color:#a34a3f;background:#a34a3f;color:#fff}
+.billing-plan-confirm button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:1180px){.plans-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.plans-heading{flex-direction:column;align-items:flex-start}.plans-grid{grid-template-columns:1fr}.plan-description{min-height:0}}
+
+/* Checkout: choose how to pay before leaving for the provider */
+.checkout-backdrop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:16px;background:rgba(23,23,23,.42);backdrop-filter:blur(6px)}
+.checkout-dialog{display:flex;width:min(460px,100%);max-height:calc(100vh - 32px);flex-direction:column;gap:14px;overflow-y:auto;border-radius:20px;padding:24px;background:#fff;box-shadow:0 40px 90px -30px rgba(16,24,40,.5)}
+.checkout-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.checkout-eyebrow{margin:0;color:#8b8883;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.checkout-dialog h2{margin:4px 0 0;font-family:var(--font-general-sans);font-size:20px}
+.checkout-price{display:flex;align-items:baseline;gap:4px;margin:8px 0 0}
+.checkout-price strong{font-family:var(--font-general-sans);font-size:26px;letter-spacing:-.04em}
+.checkout-price span{color:#8b8883;font-size:12.5px;font-weight:600}
+.checkout-close{display:grid;width:32px;height:32px;flex:none;place-items:center;border:1px solid #e2dfda;border-radius:10px;background:#fff;color:#77736e;cursor:pointer}
+.checkout-close svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round}
+.checkout-label{margin:4px 0 -4px;color:#77736e;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.checkout-methods{display:flex;flex-direction:column;gap:8px}
+.checkout-methods button{display:flex;align-items:center;gap:12px;border:1px solid #e2dfda;border-radius:13px;padding:12px 14px;background:#fff;text-align:left;font:inherit;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.checkout-methods button:hover:not(:disabled){border-color:#b9b5ae}
+.checkout-methods button.is-active{border-color:#171717;background:#f7f6f3;box-shadow:0 0 0 1px #171717}
+.checkout-methods button:focus-visible{outline:2px solid #171717;outline-offset:2px}
+.checkout-method-mark{display:grid;width:34px;height:34px;flex:none;place-items:center;border-radius:10px;background:#f4f2ee;color:#171717;font-size:14px;font-weight:700}
+.checkout-method-mark.is-mpesa{background:#e9f6ee;color:#1f6b3d}
+.checkout-method-mark.is-paypal{background:#eaf1fb;color:#1d4f91}
+.checkout-method-text{display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}
+.checkout-method-text strong{color:#171717;font-size:13.5px;font-weight:600}
+.checkout-method-text small{color:#8b8883;font-size:11.5px}
+.checkout-methods b{color:#171717;font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.checkout-note{margin:0;color:#3a3733;font-size:12.5px;line-height:1.5}
+.checkout-note.is-quiet{color:#8b8883;font-size:11.5px}
+.checkout-empty{margin:0;border:1px dashed #dcd9d4;border-radius:12px;padding:18px;color:#77736e;font-size:12.5px;text-align:center}
+.checkout-error{margin:0;border-radius:10px;padding:9px 12px;background:#fdf4f2;color:#a34a3f;font-size:12.5px}
+.checkout-dialog>footer{display:grid;grid-template-columns:1fr 1.6fr;gap:8px;margin-top:4px}
+.checkout-dialog>footer button{height:44px;border-radius:11px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.checkout-secondary{border:1px solid #e2dfda;background:#fff;color:#171717}
+.checkout-primary{border:0;background:#171717;color:#fff}
+.checkout-primary:hover:not(:disabled){background:#333}
+.checkout-dialog>footer button:disabled{opacity:.5;cursor:not-allowed}
+@media(prefers-reduced-motion:reduce){.plan-card,.plan-action,.plans-interval button,.checkout-methods button{transition:none}}
 
 /* Shared dashboard + studio tokens; the billing and settings surfaces are the reference. */
 :root{--ink:#171717;--line:#e2dfda;--muted:#77736e;--faint:#8b8883;--divider:#eeeae4;--chip:#f4f2ee;--focus:#171717;--success:#1f6b3d;--success-bg:#f1faf4;--error:#a34a3f;--error-bg:#fdf4f2;--error-line:#efd3ce}

@@ -38,6 +38,7 @@ function planTerms(row: PlanRow): AdminPlanTerms {
     currency: row.currency,
     priceCents: row.priceCents,
     interval: row.interval,
+    yearlyPriceCents: row.yearlyPriceCents,
     monthlyCredits: row.monthlyCredits,
     dailyRenderLimit: row.dailyRenderLimit,
     monthlyRenderLimit: row.monthlyRenderLimit,
@@ -45,6 +46,9 @@ function planTerms(row: PlanRow): AdminPlanTerms {
     concurrentRenderLimit: row.concurrentRenderLimit,
     isActive: row.isActive,
     paypalPlanId: row.paypalPlanId,
+    paypalYearlyPlanId: row.paypalYearlyPlanId,
+    paystackPlanCode: row.paystackPlanCode,
+    paystackYearlyPlanCode: row.paystackYearlyPlanCode,
   };
 }
 
@@ -113,6 +117,7 @@ const planTermsSchema = z
     name: z.string().trim().min(1).max(60),
     description: z.string().trim().min(1).max(500),
     priceCents: z.number().int().min(0).max(10_000_000),
+    yearlyPriceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
     monthlyCredits: z.number().int().min(0).max(100_000),
     dailyRenderLimit: nullableLimit(10_000),
     monthlyRenderLimit: nullableLimit(100_000),
@@ -120,6 +125,9 @@ const planTermsSchema = z
     concurrentRenderLimit: z.number().int().min(1).max(100).nullable(),
     isActive: z.boolean(),
     paypalPlanId: z.string().trim().min(1).max(100).nullable(),
+    paypalYearlyPlanId: z.string().trim().min(1).max(100).nullable().optional(),
+    paystackPlanCode: z.string().trim().regex(/^PLN_[A-Za-z0-9]+$/, "A Paystack plan code looks like PLN_…").nullable().optional(),
+    paystackYearlyPlanCode: z.string().trim().regex(/^PLN_[A-Za-z0-9]+$/, "A Paystack plan code looks like PLN_…").nullable().optional(),
   })
   .strict();
 
@@ -141,7 +149,11 @@ function planProblem(plan: PlanRow, next: z.infer<typeof planTermsSchema>): stri
   if (plan.paypalPlanId && next.priceCents !== plan.priceCents && next.paypalPlanId === plan.paypalPlanId) {
     return "PayPal bills subscribers the price set on the PayPal plan. Create a PayPal plan at the new price and enter its ID with the new price.";
   }
-  if (plan.interval === "month" && next.isActive && next.priceCents > 0 && !next.paypalPlanId) return "An active paid plan needs a PayPal plan ID";
+  if (plan.paypalYearlyPlanId && next.yearlyPriceCents !== undefined && next.yearlyPriceCents !== plan.yearlyPriceCents && next.paypalYearlyPlanId === plan.paypalYearlyPlanId) {
+    return "PayPal bills yearly subscribers the price set on the yearly PayPal plan. Create a PayPal plan at the new yearly price and enter its ID with it.";
+  }
+  if (plan.slug === STARTER_PLAN_SLUG && next.yearlyPriceCents) return "The Free plan has no yearly price";
+  // Card and M-Pesa through Paystack need no plan setup, so a paid plan no longer requires a PayPal plan ID.
   return null;
 }
 

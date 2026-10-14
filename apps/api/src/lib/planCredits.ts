@@ -42,12 +42,23 @@ export function periodKey(start: Date): string {
 }
 
 /**
- * Whether Renvia grants this user's monthly credits on their signup anniversary. A paid
- * subscription is renewed by its provider's payment instead, unless an admin-granted plan
- * sits on top of it.
+ * When Renvia itself grants this user's monthly credits, and from what date. The Free plan and
+ * admin-granted plans renew on the signup anniversary. A yearly plan, or one paid a period at a
+ * time, renews monthly from when it started, until its paid period ends. A monthly subscription
+ * that renews itself gets its credits with each payment instead (null here).
  */
-export function grantsMonthlyCredits(billing: BillingEntitlement): boolean {
-  return billing.override !== null || billing.basePlan.interval === "none";
+export function creditSchedule(billing: BillingEntitlement, now = new Date()): "signup" | { anchor: Date; until: Date } | null {
+  if (billing.override !== null || billing.basePlan.interval === "none") return "signup";
+  const { entitlement } = billing;
+  if (!entitlement.currentPeriodStart || !entitlement.currentPeriodEnd || entitlement.currentPeriodEnd <= now) return null;
+  if (entitlement.billingInterval === "year" || !entitlement.providerSubscriptionId) {
+    return { anchor: entitlement.currentPeriodStart, until: entitlement.currentPeriodEnd };
+  }
+  return null;
+}
+
+export function grantsMonthlyCredits(billing: BillingEntitlement, now = new Date()): boolean {
+  return creditSchedule(billing, now) !== null;
 }
 
 /** Credits that never expire: purchases (net of refunds) and admin grants (net of removals). */
@@ -136,10 +147,13 @@ async function renewPeriod(db: Database, period: PeriodStart): Promise<void> {
  * only reads what `billing` already holds. Returns true when it changed the user's balance.
  */
 export async function ensureCreditPeriod(db: Database, userId: string, signup: Date, billing: BillingEntitlement, now = new Date()): Promise<boolean> {
-  if (!grantsMonthlyCredits(billing)) return false;
+  const schedule = creditSchedule(billing, now);
+  if (!schedule) return false;
   const { entitlement } = billing;
   if (entitlement.creditPeriodStart && entitlement.nextCreditGrantAt && entitlement.nextCreditGrantAt > now) return false;
-  const { start, next } = creditPeriodFor(signup, now);
+  const { start, next } = creditPeriodFor(schedule === "signup" ? signup : schedule.anchor, now);
+  // A paid period that has ended earns no further month; the lapse sweep moves it to Free.
+  if (schedule !== "signup" && start >= schedule.until) return false;
   const period = { userId, allowance: billing.plan.monthlyCredits, start, next };
   if (entitlement.creditPeriodStart) await renewPeriod(db, period);
   else await startFirstPeriod(db, period);

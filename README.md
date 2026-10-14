@@ -107,6 +107,8 @@ for local work). Server-only: never give these a `VITE_` or `NEXT_PUBLIC_` prefi
 | `STORAGE_URL_SIGNING_SECRET` | Long random secret for seven-day expiring image links. Objects are not anonymously public |
 | `CRON_SECRET` | Bearer token for the daily render sweep. Unset disables the endpoint |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_ENV` | PayPal. Optional: see [PayPal](#paypal) |
+| `PAYSTACK_SECRET_KEY`, `PAYSTACK_KES_PER_USD`, `PAYSTACK_CARD_CURRENCY` | Card and M-Pesa through Paystack. Optional: see [Paystack](#paystack-card-and-m-pesa) |
+| `SALES_CONTACT_EMAIL` | Optional address behind the Enterprise "Contact us" on the billing page |
 | `OPS_NOTIFICATION_WEBHOOK_URL` | Optional HTTPS endpoint for incident notifications |
 
 `FAL_MODE` and `FAL_BUDGET_USD` can be overridden at runtime from the admin
@@ -225,6 +227,35 @@ delivery with PayPal server-to-server before recording or settling it. Browser
 redirects and unverified callbacks never grant credits or an entitlement. The
 admin Billing page shows delivery failures without exposing provider payloads and
 can replay a failed event.
+
+For yearly billing, create a second PayPal plan at the yearly price and enter both
+IDs on the admin Plans & Pricing page. A plan starts with its first payment
+(`PAYMENT.SALE.COMPLETED`), not when PayPal reports the subscription active.
+
+### Paystack (card and M-Pesa)
+
+Card and M-Pesa payments go through Paystack and stay **off until you add the
+secret key**. Add to the **API project**:
+
+- `PAYSTACK_SECRET_KEY`: `sk_test_…` or `sk_live_…`
+- `PAYSTACK_KES_PER_USD`: the shilling rate for charges, e.g. `129`. M-Pesa is
+  charged in whole shillings, and cards too unless `PAYSTACK_CARD_CURRENCY=USD`
+
+In the Paystack dashboard, set the webhook URL to the deployed HTTPS URL ending in
+`/api/webhooks/paystack`. Every delivery is checked against its HMAC signature
+before anything is recorded.
+
+M-Pesa can't charge automatically, so an M-Pesa payment buys one month or one
+year, and the customer renews from Billing. Cards do the same unless the plan has
+a Paystack plan code (create the plan in Paystack, in KES, and enter its `PLN_…`
+code on the admin Plans & Pricing page); then card payments renew automatically.
+
+**Plans.** Free, Pro and Premium (slugs `starter`, `studio`, `team`). A monthly
+subscription that renews itself gets its credits with each payment. Yearly plans
+and pay-per-period plans get them monthly from the day they started. When a paid
+period ends without a renewal (a week's grace for auto-renewing ones), the daily
+cron moves the account back to Free and removes its unspent plan credits.
+Purchased credits are always kept.
 
 ## Admin console
 
