@@ -179,6 +179,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
     { label: "Operations", paths: ["/renders", "/segmentations", "/incidents", "/performance"] },
     { label: "Customers", paths: ["/users", "/projects", "/credits"] },
     { label: "Commerce", paths: ["/billing", "/financials", "/plans"] },
+    { label: "Beta", paths: ["/beta", "/beta-feedback"] },
     { label: "Platform", paths: ["/studio-control", "/models", "/settings"] },
     { label: "Governance", paths: ["/approvals", "/audit"] },
   ].map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) })).filter((group) => group.items.length > 0);
