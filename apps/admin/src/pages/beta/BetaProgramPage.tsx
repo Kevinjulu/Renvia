@@ -8,6 +8,7 @@ import { formatUsd } from "../../lib/format";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
+import { InviteAccounts } from "./InviteAccounts";
 import { confirmAction, ROUTINE_REASON, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
 
 type Detail = AdminBetaProgramDetailResponse;
@@ -184,7 +185,7 @@ function TestersTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
 
 function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; run: Run; reload: () => void }) {
   const api = useAdminApi();
-  const [mode, setMode] = useState<"email" | "bulk" | "link">("email");
+  const [mode, setMode] = useState<"accounts" | "email" | "bulk" | "link">("accounts");
   const [email, setEmail] = useState("");
   const [emails, setEmails] = useState("");
   const [places, setPlaces] = useState(1);
@@ -230,11 +231,11 @@ function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; ru
       {can.manageTesters && data.program.status !== "ended" && (
         <Card title={`Invite testers · ${data.program.capacity.free} places free`}>
           <div className="mb-3 flex gap-2">
-            {(["email", "bulk", "link"] as const).map((item) => (
-              <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-full px-3 py-1 text-xs font-medium ${mode === item ? "bg-primary text-white" : "bg-surface-muted text-secondary"}`}>{item === "email" ? "One person" : item === "bulk" ? "Several emails" : "Shareable link"}</button>
+            {(["accounts", "email", "bulk", "link"] as const).map((item) => (
+              <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-full px-3 py-1 text-xs font-medium ${mode === item ? "bg-primary text-white" : "bg-surface-muted text-secondary"}`}>{item === "accounts" ? "Registered users" : item === "email" ? "One email" : item === "bulk" ? "Several emails" : "Shareable link"}</button>
             ))}
           </div>
-          <form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2">
+          {mode === "accounts" ? <InviteAccounts data={data} onInvited={reload} /> : <form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2">
             {mode === "email" && <label className="text-sm text-primary md:col-span-2">Email<input type="email" required className={inputClass()} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="architect@studio.com" /></label>}
             {mode === "bulk" && <label className="text-sm text-primary md:col-span-2">Emails (one per line, or separated by commas)<textarea required rows={4} className={inputClass()} value={emails} onChange={(event) => setEmails(event.target.value)} /></label>}
             {mode === "link" && <label className="text-sm text-primary">Places on this link<input type="number" min={1} max={100} className={inputClass()} value={places} onChange={(event) => setPlaces(Number(event.target.value))} /></label>}
@@ -243,8 +244,8 @@ function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; ru
             <p className="text-xs text-faint md:col-span-2">An address that already has a Renvia account is invited to that account and accepts in the Studio; nobody gets a second account. Each invitation holds a place until it's used, revoked or expires.</p>
             {error && <p className="text-sm text-rose-600 md:col-span-2">{error}</p>}
             <div className="md:col-span-2"><Button type="submit" variant="primary" disabled={busy}>{busy ? "Inviting…" : "Create invitation"}</Button></div>
-          </form>
-          {created.length > 0 && (
+          </form>}
+          {mode !== "accounts" && created.length > 0 && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
               <p className="font-medium text-amber-900">Copy these links now — they won't be shown again.</p>
               {created.some((item) => item.link.startsWith("/")) && <p className="text-xs text-amber-800">Put your Studio address in front of each link (set STUDIO_URL on the API to get full links and invitation emails).</p>}

@@ -102,6 +102,9 @@ async function pendingFor(db: Database, user: UserRow): Promise<BetaPendingInvit
     credits: invitation.creditsOverride ?? program.creditsPerTester,
     expiresAt: invitation.expiresAt.toISOString(),
     endsAt: program.endsAt.toISOString(),
+    downloadsUnlocked: program.downloadsUnlocked,
+    featureGrants: program.featureGrants as StudioFeatureKey[],
+    invitedAt: invitation.createdAt.toISOString(),
   }));
 }
 

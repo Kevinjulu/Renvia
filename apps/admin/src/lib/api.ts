@@ -11,6 +11,7 @@ import type {
   AdminBetaProgram,
   AdminBetaProgramDetailResponse,
   AdminBetaProgramsResponse,
+  AdminUserBetaStatus,
   BetaMissionRule,
   AdminCommercialChangeResponse,
   AdminCreditPackTerms,
@@ -150,8 +151,9 @@ export function useAdminApi() {
         request<AdminBetaProgram | { pendingApproval: true; approvalId: string }>(getToken, `/admin/beta/programs/${id}/budget`, { method: "POST", body: JSON.stringify({ budgetUsd, reason }) }),
       inviteBetaTester: (programId: string, body: Record<string, unknown>) =>
         request<AdminBetaInvitationCreated>(getToken, `/admin/beta/programs/${programId}/invitations`, { method: "POST", body: JSON.stringify(body) }),
-      inviteBetaTestersBulk: (programId: string, body: { emails: string[]; sendEmail: boolean; cohort?: string | null }) =>
-        request<{ results: ({ email: string; ok: true } & AdminBetaInvitationCreated | { email: string; ok: false; error: string; code: string })[] }>(getToken, `/admin/beta/programs/${programId}/invitations/bulk`, { method: "POST", body: JSON.stringify(body) }),
+      inviteBetaTestersBulk: (programId: string, body: { emails?: string[]; userIds?: string[]; sendEmail: boolean; cohort?: string | null; creditsOverride?: number | null; expiresInDays?: number }) =>
+        request<{ results: ({ email: string; userId?: string; ok: true } & AdminBetaInvitationCreated | { email: string; userId?: string; ok: false; error: string; code: string })[] }>(getToken, `/admin/beta/programs/${programId}/invitations/bulk`, { method: "POST", body: JSON.stringify(body) }),
+      getUserBetaStatus: (userId: string) => request<AdminUserBetaStatus>(getToken, `/admin/beta/users/${userId}`),
       revokeBetaInvitation: (id: string, reason: string) => request<AdminBetaInvitation>(getToken, `/admin/beta/invitations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }),
       setBetaEnrollmentStatus: (id: string, status: "active" | "suspended" | "completed" | "revoked", reason: string) =>
         request<AdminBetaEnrollment>(getToken, `/admin/beta/enrollments/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),

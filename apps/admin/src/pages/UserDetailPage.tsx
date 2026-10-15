@@ -11,6 +11,7 @@ import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/
 import { useLoad } from "../lib/useLoad";
 import { useAdmin } from "../lib/useAdmin";
 import { PlanPanel } from "./users/PlanPanel";
+import { UserBetaPanel } from "./users/UserBetaPanel";
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
@@ -148,6 +149,8 @@ export function UserDetailPage() {
       <Card title="Plan" icon={CreditCard} className="mt-6">
         <PlanPanel userId={user.id} email={user.email} entitlement={entitlement} plans={plans} canManage={me.role === "admin"} onDone={reload} />
       </Card>
+
+      <UserBetaPanel user={user} projectCount={projects.length} />
 
       <Card title="Limits & overrides" icon={Gauge} className="mt-6">
         <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />

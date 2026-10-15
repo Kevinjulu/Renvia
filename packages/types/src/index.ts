@@ -2060,6 +2060,21 @@ export interface AdminBetaInvitation {
   state: BetaInvitationState;
 }
 
+/** One account's beta history, for its page in the admin. */
+export interface AdminUserBetaStatus {
+  enrollments: {
+    id: string;
+    programId: string;
+    programName: string;
+    status: BetaEnrollmentStatus;
+    cohort: string | null;
+    creditsGranted: number;
+    enrolledAt: string;
+    endsAt: string;
+  }[];
+  invitations: (AdminBetaInvitation & { programName: string })[];
+}
+
 export interface AdminBetaProgramsResponse {
   programs: AdminBetaProgram[];
 }
@@ -2331,6 +2346,11 @@ export interface BetaPendingInvitation {
   credits: number;
   expiresAt: string;
   endsAt: string;
+  /** Full-resolution downloads are unlocked for the program's testers. */
+  downloadsUnlocked: boolean;
+  /** Studio features the program unlocks for its testers. */
+  featureGrants: StudioFeatureKey[];
+  invitedAt: string;
 }
 
 /** Who pays for a charged job from an active tester: their beta credits, or (by explicit choice) their own. */

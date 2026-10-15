@@ -13,6 +13,7 @@ import {
   type AdminBetaProgram,
   type AdminBetaProgramDetailResponse,
   type AdminBetaProgramsResponse,
+  type AdminUserBetaStatus,
   type StudioFeatureKey,
 } from "@renvia/types";
 import type { Env } from "../../index.js";
@@ -540,15 +541,68 @@ betaRoutes.post("/beta/programs/:id/invitations/bulk", async (c) => {
   const program = await findProgram(db, z.string().uuid().parse(c.req.param("id")));
   if (!program) return c.json({ error: "Not found" }, 404);
   const body = z
-    .object({ emails: z.array(z.string().trim().email().max(254)).min(1).max(100), sendEmail: z.boolean().default(true), ...invitationCommon })
+    .object({
+      emails: z.array(z.string().trim().email().max(254)).max(100).default([]),
+      /** Registered accounts, invited to the account itself and accepted in the Studio. */
+      userIds: z.array(z.string().uuid()).max(100).default([]),
+      sendEmail: z.boolean().default(true),
+      ...invitationCommon,
+    })
+    .refine((value) => value.emails.length + value.userIds.length >= 1 && value.emails.length + value.userIds.length <= 100, "Invite between 1 and 100 people at a time")
     .parse(await c.req.json());
   const canGrantExtra = !denyUnless(c, "beta.credits.manage");
+  const common = { creditsOverride: body.creditsOverride, cohort: body.cohort, expiresInDays: body.expiresInDays };
   const results = [];
+  const userIds = [...new Set(body.userIds)];
+  const accounts = userIds.length ? await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
+  const emailOf = new Map(accounts.map((account) => [account.id, account.email]));
+  for (const userId of userIds) {
+    const email = emailOf.get(userId) ?? userId;
+    const outcome = await inviteOne(c.env, db, c.get("admin"), canGrantExtra, program, { kind: "existing_user", userId, ...common });
+    results.push(outcome.ok ? { email, userId, ok: true, ...outcome.created } : { email, userId, ok: false, error: outcome.error, code: outcome.code });
+  }
   for (const email of [...new Set(body.emails.map((address) => address.toLowerCase()))]) {
-    const outcome = await inviteOne(c.env, db, c.get("admin"), canGrantExtra, program, { kind: "email", email, sendEmail: body.sendEmail, creditsOverride: body.creditsOverride, cohort: body.cohort, expiresInDays: body.expiresInDays });
+    const outcome = await inviteOne(c.env, db, c.get("admin"), canGrantExtra, program, { kind: "email", email, sendEmail: body.sendEmail, ...common });
     results.push(outcome.ok ? { email, ok: true, ...outcome.created } : { email, ok: false, error: outcome.error, code: outcome.code });
   }
   return c.json({ results });
+});
+
+/** One account's beta history: every enrollment and every invitation addressed to it, newest first. */
+betaRoutes.get("/beta/users/:id", async (c) => {
+  const denied = denyUnless(c, "beta.read"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const userId = z.string().uuid().parse(c.req.param("id"));
+  const [account] = await db.select({ id: schema.users.id, email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId));
+  if (!account) return c.json({ error: "Not found" }, 404);
+  const enrollments = await db
+    .select({ enrollment: schema.betaEnrollments, program: schema.betaPrograms })
+    .from(schema.betaEnrollments)
+    .innerJoin(schema.betaPrograms, eq(schema.betaPrograms.id, schema.betaEnrollments.programId))
+    .where(eq(schema.betaEnrollments.userId, userId))
+    .orderBy(desc(schema.betaEnrollments.enrolledAt));
+  const invitations = await db
+    .select({ invitation: schema.betaInvitations, programName: schema.betaPrograms.name })
+    .from(schema.betaInvitations)
+    .innerJoin(schema.betaPrograms, eq(schema.betaPrograms.id, schema.betaInvitations.programId))
+    .where(or(eq(schema.betaInvitations.userId, userId), sql`lower(${schema.betaInvitations.email}) = ${account.email.toLowerCase()}`))
+    .orderBy(desc(schema.betaInvitations.createdAt))
+    .limit(50);
+  const presented = await presentInvitations(db, invitations.map((row) => row.invitation));
+  const response: AdminUserBetaStatus = {
+    enrollments: enrollments.map(({ enrollment, program }) => ({
+      id: enrollment.id,
+      programId: program.id,
+      programName: program.name,
+      status: enrollment.status,
+      cohort: enrollment.cohort,
+      creditsGranted: enrollment.creditsGranted,
+      enrolledAt: enrollment.enrolledAt.toISOString(),
+      endsAt: effectiveEndsAt(program, enrollment).toISOString(),
+    })),
+    invitations: presented.map((invitation, index) => ({ ...invitation, programName: invitations[index]!.programName })),
+  };
+  return c.json(response);
 });
 
 betaRoutes.post("/beta/invitations/:id/revoke", async (c) => {
