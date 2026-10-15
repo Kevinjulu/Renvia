@@ -20,27 +20,6 @@ function Check() {
   );
 }
 
-/** Drag to compare: the elevation drawing on the left, the Renvia render on the right. */
-function BeforeAfter() {
-  const [split, setSplit] = useState(52);
-  return (
-    <div className="relative h-full min-h-[220px] w-full select-none overflow-hidden bg-neutral-900">
-      <img src="/hero/elevation-render.jpg" alt="A photoreal render of a house elevation" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-      <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}>
-        <img src="/hero/elevation-sketch.jpg" alt="The line drawing it was rendered from" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-      </div>
-      <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow-[0_0_12px_rgba(0,0,0,.35)]" style={{ left: `${split}%` }}>
-        <span className="absolute left-1/2 top-1/2 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-primary shadow-lg">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round"><path d="M6 4 2 8l4 4M10 4l4 4-4 4" /></svg>
-        </span>
-      </div>
-      <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">Drawing</span>
-      <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">Renvia render</span>
-      <input type="range" min={5} max={95} value={split} onChange={(event) => setSplit(Number(event.target.value))} aria-label="Compare the drawing and the render" className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0" />
-    </div>
-  );
-}
-
 /**
  * The invitation, for someone who already has a Renvia account: what the program gives them,
  * that nothing they have changes, and one click to join. "Not now" leaves it on the dashboard.
@@ -111,8 +90,10 @@ export function BetaInvitationModal({ invitation }: { invitation: BetaPendingInv
         onClick={(event) => event.stopPropagation()}
         className="grid w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl outline-none md:grid-cols-[1.05fr_1fr]"
       >
-        <div className="relative h-56 md:h-auto">
-          <BeforeAfter />
+        <div className="relative h-56 overflow-hidden bg-neutral-900 md:h-auto md:min-h-[560px]">
+          <img src="/beta/invite-brick.jpg" alt="A brick and render house with a circular window, rendered in Renvia" className="absolute inset-0 h-full w-full object-cover object-[center_35%]" />
+          <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
+          <p className="pointer-events-none absolute bottom-4 left-4 right-4 text-sm font-medium text-white/95 drop-shadow">From elevation to photoreal render, in minutes.</p>
           <span className="pointer-events-none absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-blueprint shadow">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blueprint" /> Private beta
           </span>
