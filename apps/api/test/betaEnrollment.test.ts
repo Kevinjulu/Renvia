@@ -92,6 +92,36 @@ describe("programs", () => {
     expect((await callAdmin("admin", "PATCH", `/beta/programs/${running.id}`, { endsAt: new Date(running.endsAt.getTime() + 3 * DAY).toISOString(), reason: "more time" })).status).toBe(200);
   });
 
+  it("can be deleted once ended (or as an unused draft), keeping credit history, renders and the audit trail", async () => {
+    const program = await makeBetaProgram();
+    const tester = await makeUser({ clerkId: "tester", email: "tester@example.test", creditBalance: 5 });
+    await accept("tester", (await inviteLink(program.id)).token);
+    const project = await db.insert(schema.projects).values({ ownerId: tester.id, name: "P" }).returning();
+    const [render] = await db.insert(schema.renders).values({ projectId: project[0]!.id, sourceImageUrl: "https://example.test/s.png", prompt: "x", status: "succeeded", betaProgramId: program.id }).returning();
+
+    expect((await callAdmin("admin", "DELETE", `/beta/programs/${program.id}`)).status).toBe(409);
+    expect((await callAdmin("support", "DELETE", `/beta/programs/${program.id}`)).status).toBe(403);
+    await callAdmin("admin", "POST", `/beta/programs/${program.id}/status`, { status: "ended", reason: "done" });
+
+    const res = await callAdmin("admin", "DELETE", `/beta/programs/${program.id}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ deleted: true, testers: 1 });
+    expect(await db.select().from(schema.betaPrograms).where(eq(schema.betaPrograms.id, program.id))).toHaveLength(0);
+    expect(await db.select().from(schema.betaEnrollments)).toHaveLength(0);
+    const ledger = await db.select().from(schema.creditLedger).where(eq(schema.creditLedger.userId, tester.id));
+    expect(ledger.map((row) => row.reason).sort()).toEqual(["beta_expiry", "beta_grant"]);
+    expect(ledger.every((row) => row.betaEnrollmentId === null)).toBe(true);
+    const [kept] = await db.select().from(schema.renders).where(eq(schema.renders.id, render!.id));
+    expect(kept).toMatchObject({ betaProgramId: null, status: "succeeded" });
+    expect(await bucketsOf(tester.id)).toEqual({ balance: 5, plan: 0, beta: 0 });
+    const events = await db.select().from(schema.adminEvents).where(eq(schema.adminEvents.targetId, program.id));
+    expect(events.some((event) => event.summary.startsWith("Deleted beta program"))).toBe(true);
+
+    const draft = await makeBetaProgram({ status: "draft" });
+    expect((await callAdmin("admin", "DELETE", `/beta/programs/${draft.id}`)).status).toBe(200);
+  });
+
   it("are managed by admins only, and readable by every operator", async () => {
     const program = await makeBetaProgram();
     for (const role of ["support", "billing", "analyst"]) {

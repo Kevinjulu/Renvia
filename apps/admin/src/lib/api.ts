@@ -141,6 +141,8 @@ export function useAdminApi() {
       listBetaPrograms: () => request<AdminBetaProgramsResponse>(getToken, "/admin/beta/programs"),
       getBetaProgram: (id: string) => request<AdminBetaProgramDetailResponse>(getToken, `/admin/beta/programs/${id}`),
       createBetaProgram: (body: Record<string, unknown>) => request<AdminBetaProgram>(getToken, "/admin/beta/programs", { method: "POST", body: JSON.stringify(body) }),
+      deleteBetaProgram: (id: string) =>
+        request<{ deleted: true; testers: number; reports: number; screenshotsDeleted: number }>(getToken, `/admin/beta/programs/${id}`, { method: "DELETE" }),
       updateBetaProgram: (id: string, body: Record<string, unknown>) => request<AdminBetaProgram>(getToken, `/admin/beta/programs/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
       setBetaProgramStatus: (id: string, status: "active" | "paused" | "ended", reason: string) =>
         request<AdminBetaProgram>(getToken, `/admin/beta/programs/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),

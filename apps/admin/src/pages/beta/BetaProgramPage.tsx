@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Copy, Users } from "lucide-react";
 import { STUDIO_FEATURES, type AdminBetaProgramDetailResponse, type AdminBetaInvitationCreated, type BetaMissionRule, type StudioFeatureKey } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton, StatCard, Table } from "../../components/ui";
@@ -8,7 +8,7 @@ import { formatUsd } from "../../lib/format";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
-import { askReason, ROUTINE_REASON, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
+import { confirmAction, ROUTINE_REASON, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
 
 type Detail = AdminBetaProgramDetailResponse;
 type Tab = "testers" | "invitations" | "missions" | "announcements" | "settings" | "insights";
@@ -24,6 +24,7 @@ const TABS: { key: Tab; label: string }[] = [
 /** One program: capacity, spend, testers, invitations, missions, announcements and settings. */
 export function BetaProgramPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const api = useAdminApi();
   const can = betaCan(useAdmin());
   const { data, error, reload } = useLoad(() => api.getBetaProgram(id), [api, id]);
@@ -49,7 +50,7 @@ export function BetaProgramPage() {
 
   const changeStatus = (next: "active" | "paused" | "ended", verb: string) => {
     // Ending can't be undone, so it alone asks why; starting, pausing and resuming just happen.
-    const reason = next === "ended" ? askReason(`Why ${verb} ${program.name}? Every tester is completed and their beta credits expire. This can't be undone.`) : ROUTINE_REASON;
+    const reason = next === "ended" ? confirmAction(`End ${program.name}? Every tester is completed and their beta credits expire. This can't be undone.`) : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaProgramStatus(program.id, next, reason), `Program ${next === "active" ? "running" : next}.`);
   };
   const changeBudget = () => {
@@ -57,8 +58,7 @@ export function BetaProgramPage() {
     if (value === null) return;
     const budgetUsd = Number(value);
     if (!Number.isFinite(budgetUsd) || budgetUsd < 0) return setStatus({ tone: "error", text: "Enter a dollar amount" });
-    const reason = askReason("Why change the budget?");
-    if (reason) void run(() => api.setBetaBudget(program.id, Math.round(budgetUsd * 100) / 100, reason), `Budget set to ${formatUsd(budgetUsd)}.`);
+    void run(() => api.setBetaBudget(program.id, Math.round(budgetUsd * 100) / 100, ROUTINE_REASON), `Budget set to ${formatUsd(budgetUsd)}.`);
   };
 
   return (
@@ -77,6 +77,18 @@ export function BetaProgramPage() {
             <Button onClick={() => setTab("settings")}>Change dates</Button>
             <Button variant="danger" onClick={() => changeStatus("ended", "end")}>End</Button>
           </div>
+        )}
+        {can.managePrograms && (program.status === "ended" || (program.status === "draft" && data.enrollments.length === 0)) && (
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (!window.confirm(`Delete ${program.name} permanently? Its testers' enrollments, invitations, missions, announcements, reports and screenshots are removed. Credit history, renders and the audit log are kept. This can't be undone.`)) return;
+              setStatus(null);
+              api.deleteBetaProgram(program.id).then(() => navigate("/beta", { replace: true })).catch((reason: unknown) => setStatus({ tone: "error", text: errorText(reason, "Couldn't delete the program") }));
+            }}
+          >
+            Delete program
+          </Button>
         )}
       </div>
 
@@ -118,7 +130,7 @@ function TestersTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
 
   const lifecycle = (id: string, email: string, status: "active" | "suspended" | "completed" | "revoked", verb: string) => {
     // Completing or revoking ends their access and expires their credits; suspend/reactivate are reversible.
-    const reason = status === "completed" || status === "revoked" ? askReason(`Why ${verb} ${email}? Their beta credits expire; their own credits are untouched.`) : ROUTINE_REASON;
+    const reason = status === "completed" || status === "revoked" ? confirmAction(`${verb[0]!.toUpperCase()}${verb.slice(1)} ${email}? Their beta credits expire; their own credits, plan and projects are untouched.`) : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaEnrollmentStatus(id, status, reason), `${email}: ${status}.`);
   };
   const extend = (id: string, email: string, current: string) => {
@@ -131,8 +143,8 @@ function TestersTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
     if (!value) return;
     const amount = Number(value);
     if (!Number.isInteger(amount) || amount < 1) return;
-    const note = askReason("Note for the ledger");
-    if (note) void run(() => api.grantBetaCredits(data.program.id, { enrollmentIds: ids, amount, note, idempotencyKey: crypto.randomUUID() }), `Granted ${amount} credits.`);
+    const note = "Beta credit top-up";
+    void run(() => api.grantBetaCredits(data.program.id, { enrollmentIds: ids, amount, note, idempotencyKey: crypto.randomUUID() }), `Granted ${amount} credits.`);
   };
 
   if (data.enrollments.length === 0) return <EmptyState icon={Users}>No testers yet. Invite people from the Invitations tab.</EmptyState>;

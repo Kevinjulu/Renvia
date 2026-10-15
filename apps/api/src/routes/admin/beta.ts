@@ -19,6 +19,7 @@ import type { Env } from "../../index.js";
 import { effectiveEndsAt, expireBetaCredits, grantBetaCredits, programSpendMicros, type BetaProgramRow, type GrantResult } from "../../lib/beta.js";
 import { completeProgramEnrollments, createInvitation, invitationState, programCapacity, type BetaInvitationRow } from "../../lib/betaEnrollment.js";
 import { missionRuleSchema } from "../../lib/betaMissions.js";
+import { deleteObject } from "../../lib/storage.js";
 import { denyUnless } from "./permissions.js";
 import { governance, requestApproval } from "./governance.js";
 import { adminEventInsert, MICROS_PER_USD } from "./shared.js";
@@ -290,6 +291,65 @@ const STATUS_FROM: Record<"active" | "paused" | "ended", BetaProgramRow["status"
   paused: ["active"],
   ended: ["draft", "active", "paused"],
 };
+
+/**
+ * Deletes a finished program: one that has ended, or a draft that never had a tester. Its
+ * enrollments, invitations, missions, announcements, reports and screenshots go; credit ledger
+ * entries, renders and the audit trail stay (they only lose their link to the program). A program
+ * with anyone still active or suspended can't be deleted, so no live beta credits are orphaned.
+ */
+betaRoutes.delete("/beta/programs/:id", async (c) => {
+  const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const actor = c.get("admin");
+  const program = await findProgram(db, z.string().uuid().parse(c.req.param("id")));
+  if (!program) return c.json({ error: "Not found" }, 404);
+  const enrollments = await db
+    .select({ id: schema.betaEnrollments.id, status: schema.betaEnrollments.status })
+    .from(schema.betaEnrollments)
+    .where(eq(schema.betaEnrollments.programId, program.id));
+  const deletable = program.status === "ended" || (program.status === "draft" && enrollments.length === 0);
+  if (!deletable) return c.json({ error: "Only ended programs, or drafts nobody has joined, can be deleted. End it first.", code: "not_deletable" }, 409);
+  if (enrollments.some((row) => row.status === "active" || row.status === "suspended")) {
+    return c.json({ error: "Someone is still active in this program; end or revoke them first.", code: "not_deletable" }, 409);
+  }
+
+  // Screenshots first: if storage can't delete one, nothing in the database has changed yet.
+  const attachments = await db
+    .select({ key: schema.betaFeedback.attachmentKey })
+    .from(schema.betaFeedback)
+    .where(and(eq(schema.betaFeedback.programId, program.id), sql`${schema.betaFeedback.attachmentKey} is not null`));
+  try {
+    for (const { key } of attachments) await deleteObject(c.env, key!);
+  } catch (error) {
+    return c.json({ error: `A screenshot couldn't be removed from storage; try again. (${error instanceof Error ? error.message : "storage error"})`, code: "storage_error" }, 502);
+  }
+
+  const enrollmentIds = enrollments.map((row) => row.id);
+  const counts = { testers: enrollments.length, reports: 0 };
+  const [reports] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.betaFeedback).where(eq(schema.betaFeedback.programId, program.id));
+  counts.reports = Number(reports?.n ?? 0);
+  // One transaction: unlink what is kept, remove what belongs only to the program, record it.
+  await db.batch([
+    db.update(schema.renders).set({ betaProgramId: null }).where(eq(schema.renders.betaProgramId, program.id)),
+    ...(enrollmentIds.length
+      ? [db.update(schema.creditLedger).set({ betaEnrollmentId: null }).where(inArray(schema.creditLedger.betaEnrollmentId, enrollmentIds))]
+      : []),
+    db.update(schema.segmentations).set({ betaProgramId: null }).where(eq(schema.segmentations.betaProgramId, program.id)),
+    db.delete(schema.budgetReservations).where(eq(schema.budgetReservations.betaProgramId, program.id)),
+    db.delete(schema.betaFeedback).where(eq(schema.betaFeedback.programId, program.id)),
+    db.delete(schema.betaEnrollments).where(eq(schema.betaEnrollments.programId, program.id)),
+    db.delete(schema.betaInvitations).where(eq(schema.betaInvitations.programId, program.id)),
+    // Missions, their progress and announcements cascade with the program.
+    db.delete(schema.betaPrograms).where(eq(schema.betaPrograms.id, program.id)),
+    adminEventInsert(db, {
+      actorId: actor.id, action: "beta.update", targetType: "beta_program", targetId: program.id,
+      summary: `Deleted beta program ${program.name} (${counts.testers} testers, ${counts.reports} reports)`,
+      detail: { name: program.name, slug: program.slug, status: program.status, startsAt: program.startsAt.toISOString(), endsAt: program.endsAt.toISOString(), budgetUsd: Number(program.budgetUsd), ...counts, screenshotsDeleted: attachments.length },
+    }),
+  ]);
+  return c.json({ deleted: true, ...counts, screenshotsDeleted: attachments.length });
+});
 
 betaRoutes.post("/beta/programs/:id/status", async (c) => {
   const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
