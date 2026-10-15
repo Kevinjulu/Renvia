@@ -16,6 +16,8 @@ export const CREDIT_REASON_LABELS: Partial<Record<CreditLedgerReason, string>> =
   plan_grant: "Monthly plan credits",
   plan_expiry: "Unused plan credits expired",
   promo_expiry: "Signup credits replaced by plan credits",
+  beta_grant: "Beta credits granted",
+  beta_expiry: "Unused beta credits expired",
 };
 
 export function formatCreditReason(reason: CreditLedgerReason): string {

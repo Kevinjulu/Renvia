@@ -29,6 +29,8 @@ export const REASON_TONE: Partial<Record<CreditLedgerReason, "emerald" | "red" |
   plan_grant: "emerald",
   plan_expiry: "amber",
   promo_expiry: "amber",
+  beta_grant: "emerald",
+  beta_expiry: "amber",
   render: "red",
   segment: "red",
   render_refund: "amber",

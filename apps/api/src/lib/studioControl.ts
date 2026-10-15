@@ -160,15 +160,30 @@ function labelFor(key: StudioFeatureKey): string {
   return STUDIO_FEATURES.find((feature) => feature.key === key)?.label ?? key;
 }
 
-/** What /me reports: each feature and whether this user can use it now. */
-export function featureAvailability(config: StudioConfig, user: UserRow, planSlug: string, mode: RenderEngineMode): Record<StudioFeatureKey, StudioFeatureAvailability> {
+/** True when the plan has the feature, or a running beta program grants it. */
+function inPlanOrGranted(planSlug: string, key: StudioFeatureKey, betaGrants: readonly string[]): boolean {
+  return planIncludesFeature(planSlug, key) || betaGrants.includes(key);
+}
+
+/**
+ * What /me reports: each feature and whether this user can use it now. `betaGrants` are the
+ * features a running beta program unlocks beyond the plan; operator switches and model pauses
+ * still apply to them.
+ */
+export function featureAvailability(
+  config: StudioConfig,
+  user: UserRow,
+  planSlug: string,
+  mode: RenderEngineMode,
+  betaGrants: readonly string[] = [],
+): Record<StudioFeatureKey, StudioFeatureAvailability> {
   return Object.fromEntries(
     FEATURE_KEYS.map((key) => {
       const paused = bypasses(user) ? null : pausedModel(config, mode, key);
       if (paused) return [key, { available: false, reason: "paused", message: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)) }];
-      if (!bypasses(user) && !planIncludesFeature(planSlug, key)) return [key, { available: false, reason: "plan", message: PLAN_MESSAGE(labelFor(key)) }];
+      if (!bypasses(user) && !inPlanOrGranted(planSlug, key, betaGrants)) return [key, { available: false, reason: "plan", message: PLAN_MESSAGE(labelFor(key)) }];
       const rule = config.features[key];
-      const denial = bypasses(user) ? null : featureDenial(rule, { id: user.id, planSlug }, key);
+      const denial = bypasses(user) ? null : featureDenial(rule, { id: user.id, planSlug, betaFeatureGrants: betaGrants }, key);
       // An observe-mode rule never refuses, so the feature is available.
       if (!denial || rule.enforcement === "observe") return [key, { available: true, reason: null, message: null }];
       return [key, { available: false, reason: denial, message: rule.message ?? DEFAULT_MESSAGES[denial](labelFor(key)) }];
@@ -196,6 +211,7 @@ export async function checkFeatures(
   planSlug: string,
   keys: StudioFeatureKey[],
   mode: RenderEngineMode,
+  betaGrants: readonly string[] = [],
 ): Promise<FeatureRefusal | null> {
   if (bypasses(user)) return null;
   // A paused model stops every request that would use it; there is no observe mode for that.
@@ -203,15 +219,15 @@ export async function checkFeatures(
     const paused = pausedModel(revision.config, mode, key);
     if (paused) return { code: "feature_disabled", error: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)), status: 403, feature: key, reason: "paused" };
   }
-  // Nor is there for a feature the user's plan doesn't include.
+  // Nor is there for a feature the user's plan doesn't include (unless a running beta grants it).
   for (const key of keys) {
-    if (!planIncludesFeature(planSlug, key)) return { code: "feature_disabled", error: PLAN_MESSAGE(labelFor(key)), status: 403, feature: key, reason: "plan" };
+    if (!inPlanOrGranted(planSlug, key, betaGrants)) return { code: "feature_disabled", error: PLAN_MESSAGE(labelFor(key)), status: 403, feature: key, reason: "plan" };
   }
   const observed: { featureKey: StudioFeatureKey; reason: Exclude<StudioFeatureDenial, "paused"> }[] = [];
   let refusal: FeatureRefusal | null = null;
   for (const key of keys) {
     const rule = revision.config.features[key];
-    const denial = featureDenial(rule, { id: user.id, planSlug }, key);
+    const denial = featureDenial(rule, { id: user.id, planSlug, betaFeatureGrants: betaGrants }, key);
     if (!denial) continue;
     if (rule.enforcement === "observe") {
       observed.push({ featureKey: key, reason: denial });

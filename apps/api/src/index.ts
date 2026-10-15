@@ -16,6 +16,7 @@ import { cron } from "./routes/cron.js";
 import { billing } from "./routes/billing.js";
 import { allowedOrigins } from "./lib/origins.js";
 import { clientErrors } from "./routes/clientErrors.js";
+import { beta } from "./routes/beta.js";
 
 export interface Env {
   DATABASE_URL: string;
@@ -67,6 +68,11 @@ export interface Env {
   SALES_CONTACT_EMAIL?: string;
   /** Optional server-only HTTPS endpoint for operational incident notifications. */
   OPS_NOTIFICATION_WEBHOOK_URL?: string;
+  /**
+   * The Studio's public address, e.g. https://studio.renvia.app. Beta invitation links are built
+   * from it, and Clerk invitation emails are sent only when it is set.
+   */
+  STUDIO_URL?: string;
 }
 
 export interface AuthVariables {
@@ -137,6 +143,7 @@ app.route("/billing", billing);
 app.route("/admin", admin);
 app.route("/cron", cron);
 app.route("/errors", clientErrors);
+app.route("/beta", beta);
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

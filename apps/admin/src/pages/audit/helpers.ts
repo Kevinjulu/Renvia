@@ -21,6 +21,7 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "studio.publish", label: "Studio Control" },
   { value: "maintenance.window", label: "Maintenance windows" },
   { value: "plan.update", label: "Plans & pricing" },
+  { value: "beta.update", label: "Beta program" },
 ];
 
 export const RANGES: { value: RangeFilter; label: string }[] = [
@@ -70,6 +71,7 @@ export const ACTION_META: Record<
   "studio.publish": { label: "Studio Control", tone: "amber", icon: Settings, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "maintenance.window": { label: "Maintenance window", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "plan.update": { label: "Plans & pricing", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
+  "beta.update": { label: "Beta program", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
 };
 
 export function groupByDay(events: AdminAuditEvent[]) {

@@ -6,7 +6,8 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
-import { createChargedRender, InsufficientCreditsError, isUniqueViolation } from "../lib/credits.js";
+import { createChargedRender, InsufficientBetaCreditsError, InsufficientCreditsError, isUniqueViolation } from "../lib/credits.js";
+import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
 import { findOwnedProject } from "../lib/projects.js";
 import {
   creditsForRender,
@@ -27,7 +28,18 @@ import {
 } from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
-import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, refuseStorage, resolveLimits } from "../lib/limits.js";
+import {
+  checkAllowance,
+  refuseBetaBudget,
+  refuseBetaCredits,
+  refuseBetaUnavailable,
+  refuseBudget,
+  refuseCredits,
+  refuseDisabled,
+  refuseInput,
+  refuseStorage,
+  resolveLimits,
+} from "../lib/limits.js";
 import { modelFor, upscaleCostMicros } from "../lib/models.js";
 import { detectSourceType } from "../lib/sourceKind.js";
 import { ownUploadKey, storageWouldExceed } from "../lib/storage.js";
@@ -129,6 +141,8 @@ const createRenderSchema = z.object({
       highRes: z.object({ target: z.enum(["4k", "8k"]) }).optional(),
     })
     .optional(),
+  /** Who pays when the caller is a beta tester; "account" only on their explicit choice. */
+  funding: z.enum(["beta", "account"]).optional(),
 });
 
 const repairPromptSchema = z.object({
@@ -144,7 +158,7 @@ renders.post("/repair-prompt", async (c) => {
   return c.json(repairReferencePrompt(body.prompt));
 });
 
-const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]), idempotencyKey: z.string().uuid().optional() });
+const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]), idempotencyKey: z.string().uuid().optional(), funding: z.enum(["beta", "account"]).optional() });
 
 async function presentRender(c: Context<AppContext>, job: typeof schema.renders.$inferSelect) {
   const origin = new URL(c.req.url).origin;
@@ -221,6 +235,9 @@ renders.post("/", async (c) => {
   const replay = () => replayResponse(c, db, body.projectId, body.idempotencyKey);
   const earlier = await replay();
   if (earlier) return earlier;
+  // A running beta program's limits and feature grants apply; one past its end is closed here.
+  const { context: beta } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  const betaProgram = beta?.running ? beta.program : null;
 
   const settings = body.generationSettings ?? {};
   const suggestedEditPart = !settings.edit ? suggestedEditPartForPrompt(body.prompt) : null;
@@ -261,7 +278,7 @@ renders.post("/", async (c) => {
   }
 
   const isAdmin = user.role === "admin";
-  const limits = resolveLimits(user, appSettings, billing.plan);
+  const limits = resolveLimits(user, appSettings, billing.plan, betaProgram);
 
   if (body.prompt.length > limits.maxPromptChars) {
     const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxPromptChars, body.prompt.length);
@@ -277,10 +294,10 @@ renders.post("/", async (c) => {
   // stamped on the job.
   const revision = await currentStudioRevision(db);
   const engineMode = effectiveEngineMode(c.env, appSettings);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode, betaProgram?.featureGrants);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
 
-  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
+  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan, betaProgram);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
   if (await storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes(settings))) {
     const refusal = refuseStorage(appSettings);
@@ -311,7 +328,15 @@ renders.post("/", async (c) => {
   // Admins aren't charged; their renders still count toward the global fal budget. Prices come
   // from the same revision as the feature check (Settings' multipliers until prices are published).
   const credits = isAdmin ? 0 : creditsForRender(generationSettings, effectiveCreditPrices(revision.config, appSettings));
+  let programHold: string | null = null;
   try {
+    // Testers pay from beta credits within the program budget; never silently from their own.
+    const funding = await fundJob(c.env, db, beta, body.funding, credits, costMicros);
+    if (!funding.ok) {
+      const refusal = funding.code === "beta_unavailable" ? refuseBetaUnavailable(appSettings) : refuseBetaBudget(appSettings);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
+    programHold = funding.hold;
     let created;
     try {
       created = await createChargedRender(db, user.id, credits, {
@@ -328,8 +353,12 @@ renders.post("/", async (c) => {
         settings: generationSettings,
         idempotencyKey: body.idempotencyKey,
         configVersion: revision.version,
-      });
+      }, funding.charge);
     } catch (error) {
+      if (error instanceof InsufficientBetaCreditsError) {
+        const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
+        return (await replay()) ?? c.json(refusal, refusal.status);
+      }
       if (error instanceof InsufficientCreditsError) {
         const refusal = refuseCredits(appSettings, user.creditBalance, credits);
         return (await replay()) ?? c.json(refusal, refusal.status);
@@ -342,17 +371,19 @@ renders.post("/", async (c) => {
       }
       throw error;
     }
+    if (funding.program) await reportProgramSpend(c.env, db, funding.program);
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } finally {
     await releaseBudgetReservation(db, reservation);
+    await releaseBudgetReservation(db, programHold);
   }
 });
 
 /** Queues a faithful high-resolution export from a finished render. */
 renders.post("/:id/upscale", async (c) => {
   const { clerkId } = c.get("auth");
-  const { target, idempotencyKey } = createUpscaleSchema.parse(await c.req.json());
+  const { target, idempotencyKey, funding: requestedFunding } = createUpscaleSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, clerkId);
   const billing = await ensureEntitlement(db, user.id);
@@ -373,11 +404,13 @@ renders.post("/:id/upscale", async (c) => {
   const replay = () => replayResponse(c, db, parent.projectId, idempotencyKey);
   const earlier = await replay();
   if (earlier) return earlier;
+  const { context: beta } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  const betaProgram = beta?.running ? beta.program : null;
   const revision = await currentStudioRevision(db);
   const engineMode = effectiveEngineMode(c.env, appSettings);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender({ upscale: { target, parentRenderId: parent.id } }), engineMode);
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender({ upscale: { target, parentRenderId: parent.id } }), engineMode, betaProgram?.featureGrants);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
-  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan);
+  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan, betaProgram);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
   if (await storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes({ upscale: { target } }))) {
     const refusal = refuseStorage(appSettings);
@@ -393,7 +426,14 @@ renders.post("/:id/upscale", async (c) => {
   }
 
   const credits = user.role === "admin" ? 0 : creditsForRender({ upscale: { target, parentRenderId: parent.id } }, effectiveCreditPrices(revision.config, appSettings));
+  let programHold: string | null = null;
   try {
+    const funding = await fundJob(c.env, db, beta, requestedFunding, credits, costMicros);
+    if (!funding.ok) {
+      const refusal = funding.code === "beta_unavailable" ? refuseBetaUnavailable(appSettings) : refuseBetaBudget(appSettings);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
+    programHold = funding.hold;
     const created = await createChargedRender(db, user.id, credits, {
       projectId: parent.projectId,
       sourceImageUrl: parent.resultImageUrl,
@@ -408,10 +448,15 @@ renders.post("/:id/upscale", async (c) => {
       settings: { upscale: { target, parentRenderId: parent.id } },
       idempotencyKey,
       configVersion: revision.version,
-    });
+    }, funding.charge);
+    if (funding.program) await reportProgramSpend(c.env, db, funding.program);
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } catch (error) {
+    if (error instanceof InsufficientBetaCreditsError) {
+      const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
     if (error instanceof InsufficientCreditsError) {
       const refusal = refuseCredits(appSettings, user.creditBalance, credits);
       return (await replay()) ?? c.json(refusal, refusal.status);
@@ -424,6 +469,7 @@ renders.post("/:id/upscale", async (c) => {
     throw error;
   } finally {
     await releaseBudgetReservation(db, reservation);
+    await releaseBudgetReservation(db, programHold);
   }
 });
 

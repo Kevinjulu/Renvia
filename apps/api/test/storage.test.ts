@@ -83,7 +83,7 @@ describe("the storage ledger", () => {
     // Rewriting a key replaces its size rather than adding to it.
     await putObject(env, "renders/r1.jpg", buffer(4 * MB), "image/jpeg");
 
-    expect(await storageUsage(db)).toEqual({ usedBytes: 8 * MB, objects: 3, byKind: { upload: 3 * MB, render: 4 * MB, watermark: 1 * MB } });
+    expect(await storageUsage(db)).toEqual({ usedBytes: 8 * MB, objects: 3, byKind: { upload: 3 * MB, render: 4 * MB, watermark: 1 * MB, feedback: 0 } });
 
     await deleteObject(env, "renders/r1.jpg");
     expect((await storageUsage(db)).usedBytes).toBe(4 * MB);

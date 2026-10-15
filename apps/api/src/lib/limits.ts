@@ -7,6 +7,9 @@ import { effectiveMaintenance } from "./studioControl.js";
 type UserRow = typeof schema.users.$inferSelect;
 type BillingPlanRow = typeof schema.billingPlans.$inferSelect;
 
+/** A running beta program's render limits; each non-null one replaces the plan's while enrolled. */
+export type BetaLimits = Pick<typeof schema.betaPrograms.$inferSelect, "dailyRenderLimit" | "monthlyRenderLimit" | "concurrentRenderLimit">;
+
 /** Start of the current UTC day / month, as the same expression the render counters already use. */
 const UTC_DAY_START = sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`;
 const UTC_MONTH_START = sql`date_trunc('month', now() at time zone 'utc') at time zone 'utc'`;
@@ -21,14 +24,14 @@ function resolveCap(override: number | null, global: number | null, exempt: bool
   return override ?? global;
 }
 
-export function resolveLimits(user: UserRow, settings: AppSettingsRow, plan?: BillingPlanRow): UserLimits {
+export function resolveLimits(user: UserRow, settings: AppSettingsRow, plan?: BillingPlanRow, beta?: BetaLimits | null): UserLimits {
   const exempt = user.role === "admin" || user.limitsExempt;
   return {
-    dailyRenders: resolveCap(user.dailyRenderLimitOverride, plan?.dailyRenderLimit ?? settings.dailyRenderLimit, exempt),
+    dailyRenders: resolveCap(user.dailyRenderLimitOverride, beta?.dailyRenderLimit ?? plan?.dailyRenderLimit ?? settings.dailyRenderLimit, exempt),
     dailySegments: resolveCap(user.dailySegmentLimitOverride, settings.dailySegmentLimit, exempt),
-    monthlyRenders: resolveCap(user.monthlyRenderLimitOverride, plan?.monthlyRenderLimit ?? settings.monthlyRenderLimit, exempt),
+    monthlyRenders: resolveCap(user.monthlyRenderLimitOverride, beta?.monthlyRenderLimit ?? plan?.monthlyRenderLimit ?? settings.monthlyRenderLimit, exempt),
     monthlySegments: resolveCap(user.monthlySegmentLimitOverride, settings.monthlySegmentLimit, exempt),
-    concurrentRenders: exempt ? null : (plan?.concurrentRenderLimit ?? 1),
+    concurrentRenders: exempt ? null : (beta?.concurrentRenderLimit ?? plan?.concurrentRenderLimit ?? 1),
     maxProjects: exempt ? null : (plan?.maxProjects ?? settings.maxProjectsPerUser),
     maxCreditBalance: settings.maxCreditBalance,
     maxUploadMb: settings.maxUploadMb,
@@ -137,6 +140,9 @@ const DEFAULTS: Record<LimitCode, string> = {
   upload_too_large: "Image is too large",
   feature_disabled: "This feature isn't available",
   storage_full: "Image storage is full. Your existing work is safe, but nothing new can be saved right now.",
+  beta_credits_exhausted: "You've used your beta credits. You can use your own credits for this instead.",
+  beta_budget_exhausted: "Beta rendering is paused because the shared testing budget has been reached. Your projects and feedback are still available.",
+  beta_unavailable: "Beta credits can't be used right now.",
 };
 
 function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["status"], extra: Partial<Refusal> = {}): Refusal {
@@ -156,8 +162,9 @@ export async function checkAllowance(
   settings: AppSettingsRow,
   kind: Kind,
   plan?: BillingPlanRow,
+  beta?: BetaLimits | null,
 ): Promise<Refusal | null> {
-  const limits = resolveLimits(user, settings, plan);
+  const limits = resolveLimits(user, settings, plan, beta);
   if (limits.exempt) return null;
 
   // The Settings switches and any scheduled window that is running now.
@@ -197,6 +204,22 @@ export function refuseCredits(settings: AppSettingsRow, balance: number, cost: n
 
 export function refuseBudget(settings: AppSettingsRow): Refusal {
   return refuse(settings, "budget_exhausted", 402);
+}
+
+/**
+ * Refusals for beta-funded jobs. None of these fall back to the tester's own credits: the Studio
+ * asks them first and resends with funding "account".
+ */
+export function refuseBetaCredits(settings: AppSettingsRow, betaCredits: number, cost: number): Refusal {
+  return refuse(settings, "beta_credits_exhausted", 402, { limit: cost, used: betaCredits });
+}
+
+export function refuseBetaBudget(settings: AppSettingsRow): Refusal {
+  return refuse(settings, "beta_budget_exhausted", 402);
+}
+
+export function refuseBetaUnavailable(settings: AppSettingsRow): Refusal {
+  return refuse(settings, "beta_unavailable", 403);
 }
 
 export function refuseStorage(settings: AppSettingsRow): Refusal {

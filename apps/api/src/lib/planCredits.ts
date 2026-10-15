@@ -102,8 +102,9 @@ function removedCreditsRow(db: Database, { userId, start }: PeriodStart, grantId
 }
 
 /**
- * The first period. Credits that never expire are kept; anything else still in the balance
- * (signup or starting credits) is replaced by the first allowance, recorded as promo_expiry.
+ * The first period. Credits that never expire are kept, and so are beta credits (a beta program
+ * expires its own); anything else still in the balance (signup or starting credits) is replaced
+ * by the first allowance, recorded as promo_expiry.
  */
 async function startFirstPeriod(db: Database, period: PeriodStart): Promise<void> {
   const keep = await permanentCredits(db, period.userId);
@@ -114,8 +115,8 @@ async function startFirstPeriod(db: Database, period: PeriodStart): Promise<void
       .update(users)
       .set({
         // SET expressions all read the row as it was, so last_plan_debit gets the old balance.
-        lastPlanDebit: sql`${users.creditBalance} - least(${users.creditBalance}, ${keep})`,
-        creditBalance: sql`least(${users.creditBalance}, ${keep}) + ${period.allowance}`,
+        lastPlanDebit: sql`(${users.creditBalance} - ${users.betaCredits}) - least(${users.creditBalance} - ${users.betaCredits}, ${keep})`,
+        creditBalance: sql`least(${users.creditBalance} - ${users.betaCredits}, ${keep}) + ${users.betaCredits} + ${period.allowance}`,
         planCredits: period.allowance,
       })
       .where(and(eq(users.id, period.userId), startedHere(grantId))),

@@ -470,7 +470,11 @@ export type CreditLedgerReason =
   /** Unspent monthly plan credits removed when the next period starts. */
   | "plan_expiry"
   /** Unspent signup or starting credits replaced by the first monthly allowance. */
-  | "promo_expiry";
+  | "promo_expiry"
+  /** Beta credits granted by a beta program, on enrollment or as a top-up. */
+  | "beta_grant"
+  /** Unspent beta credits removed when the tester's enrollment ended. */
+  | "beta_expiry";
 
 export interface CreditLedgerEntry {
   id: string;
@@ -520,7 +524,13 @@ export type LimitCode =
   /** An operator switched this Studio feature off, or it isn't available on the user's plan. */
   | "feature_disabled"
   /** Stored images reached the operator's storage cap; nothing new can be saved. */
-  | "storage_full";
+  | "storage_full"
+  /** A beta-funded job needs more beta credits than the tester has left. */
+  | "beta_credits_exhausted"
+  /** The beta program's shared provider budget can't cover this job. */
+  | "beta_budget_exhausted"
+  /** Beta funding was asked for, but the caller has no running enrollment (paused, suspended, ended or none). */
+  | "beta_unavailable";
 
 /** Everything the caller is allowed, after per-user overrides and global settings. */
 export interface UserLimits {
@@ -587,8 +597,26 @@ export interface MeResponse {
   usage: UserUsage;
   /** Operator-authored refusal copy; a null entry means use the studio's built-in wording. */
   limitMessages: Partial<Record<LimitCode, string | null>>;
+  /** The part of creditBalance granted by a beta program; only beta-funded jobs spend it. */
+  betaCredits: number;
+  /** The caller's live beta enrollment; null when they aren't a tester. */
+  beta: MeBeta | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A tester's program as /me reports it. */
+export interface MeBeta {
+  programId: string;
+  programName: string;
+  /** The enrollment's status: active or suspended (ended enrollments aren't reported). */
+  status: "active" | "suspended";
+  /** True when beta-funded jobs are accepted now: enrollment and program active, inside the dates. */
+  running: boolean;
+  /** When this tester's access ends, including any per-tester extension. */
+  endsAt: string;
+  downloadsUnlocked: boolean;
+  featureGrants: StudioFeatureKey[];
 }
 
 export type BillingProvider = "paypal" | "stripe" | "paystack" | "flutterwave" | "mpesa";
@@ -1067,7 +1095,7 @@ export interface AdminSettings {
   /** New uploads and renders are refused once stored images reach this (MB of 10^6 bytes). */
   storageCapMb: number;
   /** Stored images, from the storage ledger. */
-  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number } };
+  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number } };
   maintenanceRenders: boolean;
   maintenanceSegments: boolean;
   maintenanceMessage: string | null;
@@ -1283,7 +1311,9 @@ export type AdminAuditAction =
   | "audit.export"
   | "studio.publish"
   | "maintenance.window"
-  | "plan.update";
+  | "plan.update"
+  /** Beta program changes: programs, invitations, enrollments, grants and budgets (see targetType). */
+  | "beta.update";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -1329,7 +1359,7 @@ export interface AdminFinancialsResponse {
   daily: { day: string; revenueUsd: number; estimatedCostUsd: number; refundsUsd: number; failedPayments: number }[];
 }
 
-export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance" | "studio_change" | "maintenance_window" | "plan_change";
+export type ApprovalAction = "bulk_credits" | "refund" | "role_change" | "maintenance" | "studio_change" | "maintenance_window" | "plan_change" | "beta_grant" | "beta_budget";
 
 /** When each high-risk action needs a second admin. 0 turns that gate off. */
 export interface AdminGovernanceThresholds {
@@ -1655,9 +1685,14 @@ export function planIncludesFeature(planSlug: string, key: StudioFeatureKey): bo
 export type StudioFeatureDenial = "disabled" | "plan" | "rollout" | "paused";
 
 /** Why a rule refuses this user, or null when it allows them. Ignores the enforcement mode. */
-export function featureDenial(rule: StudioFeatureRule, user: { id: string; planSlug: string }, key: StudioFeatureKey): Exclude<StudioFeatureDenial, "paused"> | null {
+export function featureDenial(
+  rule: StudioFeatureRule,
+  user: { id: string; planSlug: string; betaFeatureGrants?: readonly string[] },
+  key: StudioFeatureKey,
+): Exclude<StudioFeatureDenial, "paused"> | null {
   if (!rule.enabled) return "disabled";
-  if (rule.allowedPlans && !rule.allowedPlans.includes(user.planSlug)) return "plan";
+  // A running beta program can grant a feature beyond the plan; an operator switch still wins.
+  if (rule.allowedPlans && !rule.allowedPlans.includes(user.planSlug) && !user.betaFeatureGrants?.includes(key)) return "plan";
   if (rule.rolloutPercent < 100 && rolloutBucket(user.id, key) >= rule.rolloutPercent) return "rollout";
   return null;
 }
@@ -1930,4 +1965,181 @@ export interface AdminPricingSimulationResponse {
   /** Revenue minus provider cost only: payment fees, refunds, tax and infrastructure are left out. */
   contributionUsd: number;
   notes: string[];
+}
+
+// ── Beta program ──────────────────────────────────────────────────────────────────
+
+export type BetaProgramStatus = "draft" | "active" | "paused" | "ended";
+export type BetaEnrollmentStatus = "active" | "suspended" | "completed" | "revoked";
+export type BetaInvitationKind = "email" | "link" | "existing_user";
+/** Derived: redeemed once every redemption is used, expired past its date, revoked by an operator. */
+export type BetaInvitationState = "pending" | "redeemed" | "expired" | "revoked";
+
+/** Occupied slots: active and suspended testers plus open invitation slots never exceed maxTesters. */
+export interface BetaProgramCapacity {
+  maxTesters: number;
+  active: number;
+  suspended: number;
+  /** Unused redemptions of invitations that are neither revoked nor expired. */
+  pendingSlots: number;
+  free: number;
+}
+
+export interface AdminBetaProgram {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  status: BetaProgramStatus;
+  startsAt: string;
+  endsAt: string;
+  maxTesters: number;
+  creditsPerTester: number;
+  maxCreditsPerTester: number;
+  creditPool: number | null;
+  budgetUsd: number;
+  budgetWarningPercent: number;
+  dailyRenderLimit: number | null;
+  monthlyRenderLimit: number | null;
+  concurrentRenderLimit: number | null;
+  featureGrants: StudioFeatureKey[];
+  downloadsUnlocked: boolean;
+  welcome: BetaWelcome | null;
+  attachmentBudgetMb: number;
+  createdAt: string;
+  updatedAt: string;
+  capacity: BetaProgramCapacity;
+  /** Budgeted fal cost of the program's beta-funded jobs that haven't failed. */
+  spentUsd: number;
+  creditsGranted: number;
+}
+
+export interface AdminBetaEnrollment {
+  id: string;
+  programId: string;
+  userId: string;
+  email: string;
+  status: BetaEnrollmentStatus;
+  cohort: string | null;
+  profession: string | null;
+  creditsGranted: number;
+  /** The user's beta credits now; 0 once the enrollment has ended. */
+  betaCredits: number;
+  /** Effective end: the tester's own extension, else the program's end. */
+  endsAt: string;
+  /** Set when this tester was extended individually. */
+  endsAtOverride: string | null;
+  enrolledAt: string;
+  endedAt: string | null;
+  endedReason: string | null;
+  welcomeSeenAt: string | null;
+  tourCompletedAt: string | null;
+}
+
+export interface AdminBetaInvitation {
+  id: string;
+  programId: string;
+  kind: BetaInvitationKind;
+  email: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  maxRedemptions: number;
+  redemptions: number;
+  creditsOverride: number | null;
+  cohort: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  createdAt: string;
+  createdByEmail: string | null;
+  state: BetaInvitationState;
+}
+
+export interface AdminBetaProgramsResponse {
+  programs: AdminBetaProgram[];
+}
+
+export interface AdminBetaProgramDetailResponse {
+  program: AdminBetaProgram;
+  enrollments: AdminBetaEnrollment[];
+  invitations: AdminBetaInvitation[];
+}
+
+/** The token is returned once, here, and never stored or shown again. */
+export interface AdminBetaInvitationCreated {
+  invitation: AdminBetaInvitation;
+  token: string;
+  /** Studio path that redeems it: /beta/join?t=<token>. */
+  joinPath: string;
+  /** Full link when STUDIO_URL is configured; otherwise build it from the Studio's address. */
+  joinUrl: string | null;
+  /** True when Clerk sent its invitation email to a new address. */
+  emailSent: boolean;
+}
+
+/** What an invitation link shows before (or without) signing in. */
+export interface BetaInvitationPreview {
+  programName: string;
+  programDescription: string;
+  kind: BetaInvitationKind;
+  state: BetaInvitationState | "closed";
+  /** For email invitations, the invited address masked (a•••@example.com). */
+  invitedEmail: string | null;
+  credits: number;
+  endsAt: string;
+}
+
+export interface BetaInvitationAccepted {
+  enrollmentId: string;
+  programId: string;
+  programName: string;
+  creditsGranted: number;
+  /** True when this account was already enrolled through this invitation or program. */
+  alreadyEnrolled: boolean;
+}
+
+/** An invitation addressed to the signed-in user, accepted in-app without a link. */
+export interface BetaPendingInvitation {
+  id: string;
+  programName: string;
+  programDescription: string;
+  credits: number;
+  expiresAt: string;
+  endsAt: string;
+}
+
+/** Who pays for a charged job from an active tester: their beta credits, or (by explicit choice) their own. */
+export type BetaFunding = "beta" | "account";
+
+/** Tester-facing copy for a program's welcome modal. */
+export interface BetaWelcome {
+  heading: string;
+  body: string;
+  benefits: string[];
+  expectations: string[];
+}
+
+export type BetaFeedbackCategory =
+  | "architecture_changed"
+  | "materials_wrong"
+  | "render_failed"
+  | "render_stuck"
+  | "edit_wrong"
+  | "ui_problem"
+  | "billing_credits"
+  | "other";
+
+/** How a mission is verified: from records Renvia already keeps, or by the tester's own tick. */
+export type BetaMissionRule =
+  | { kind: "render_succeeded"; jobTypes?: string[]; count: number }
+  | { kind: "selection_succeeded"; count: number }
+  | { kind: "feedback_submitted"; categories?: BetaFeedbackCategory[]; count: number }
+  | { kind: "manual" };
+
+/** Marks on a reported image, in image-normalized coordinates (0–1) so they survive zoom and pan. */
+export interface BetaAnnotations {
+  v: 1;
+  image: "result" | "source";
+  pins: { x: number; y: number; label?: string }[];
+  boxes: { x: number; y: number; w: number; h: number }[];
+  strokes: { points: [number, number][] }[];
 }

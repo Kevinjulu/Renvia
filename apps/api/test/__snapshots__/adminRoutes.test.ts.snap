@@ -1389,6 +1389,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "spentUsd": 0.095,
       "storage": {
         "byKind": {
+          "feedback": 0,
           "render": 0,
           "upload": 0,
           "watermark": 0,

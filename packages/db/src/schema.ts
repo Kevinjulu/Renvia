@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, integer, bigint, jsonb, uuid, boolean, index, uniqueIndex, check, numeric } from "drizzle-orm/pg-core";
-import type { AdminCreditPackTerms, AdminPlanTerms, RenderGenerationSettings, StudioConfig } from "@renvia/types";
+import { pgTable, text, timestamp, integer, bigint, jsonb, uuid, boolean, index, uniqueIndex, check, numeric, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import type { AdminCreditPackTerms, AdminPlanTerms, BetaAnnotations, BetaMissionRule, BetaWelcome, RenderGenerationSettings, StudioConfig } from "@renvia/types";
 
 export const users = pgTable(
   "users",
@@ -15,6 +15,10 @@ export const users = pgTable(
   planCredits: integer("plan_credits").notNull().default(0),
   /** Scratch: plan credits taken by the charge that last set it, read later in the same transaction. */
   lastPlanDebit: integer("last_plan_debit").notNull().default(0),
+  /** The part of creditBalance granted by a beta program; only beta-funded charges spend it. */
+  betaCredits: integer("beta_credits").notNull().default(0),
+  /** Scratch: beta credits removed by the statement that last set it, read later in the same transaction. */
+  lastBetaDebit: integer("last_beta_debit").notNull().default(0),
   disabled: boolean("disabled").notNull().default(false),
   /** Per-user override of app_settings.daily_render_limit; null = use the global setting. */
   dailyRenderLimitOverride: integer("daily_render_limit_override"),
@@ -34,6 +38,8 @@ export const users = pgTable(
   (table) => [
     check("users_credit_balance_non_negative", sql`${table.creditBalance} >= 0`),
     check("users_plan_credits_within_balance", sql`${table.planCredits} >= 0 and ${table.planCredits} <= ${table.creditBalance}`),
+    check("users_beta_credits_non_negative", sql`${table.betaCredits} >= 0`),
+    check("users_plan_and_beta_within_balance", sql`${table.planCredits} + ${table.betaCredits} <= ${table.creditBalance}`),
     index("users_last_active_idx").on(table.lastActiveAt),
     check(
       "users_daily_render_limit_override_range",
@@ -147,6 +153,8 @@ export const renders = pgTable("renders", {
   outputResolution: text("output_resolution").generatedAlwaysAs(sql`coalesce("settings" -> 'highRes' ->> 'target', "settings" -> 'upscale' ->> 'target')`),
   /** The Studio Control version the request was checked against; null before migration 0031. */
   configVersion: integer("config_version"),
+  /** Set when beta credits paid for the job; its cost then counts toward that program's budget. */
+  betaProgramId: uuid("beta_program_id").references((): AnyPgColumn => betaPrograms.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -224,6 +232,8 @@ export const budgetReservations = pgTable(
   {
     id: uuid("id").primaryKey(),
     costMicros: integer("cost_micros").notNull(),
+    /** A beta program's hold; the global cap ignores these, since the job's global hold already counts. */
+    betaProgramId: uuid("beta_program_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check("budget_reservations_cost_non_negative", sql`${table.costMicros} >= 0`)],
@@ -256,6 +266,8 @@ export const segmentations = pgTable(
     errorMessage: text("error_message"),
     /** The Studio Control version the request was checked against; null before migration 0031. */
     configVersion: integer("config_version"),
+    /** Set when beta credits paid for the selection. */
+    betaProgramId: uuid("beta_program_id").references((): AnyPgColumn => betaPrograms.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -274,10 +286,14 @@ export const creditLedger = pgTable(
     /** Positive for grants and refunds, negative for spending. */
     amount: integer("amount").notNull(),
     reason: text("reason", {
-      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry", "plan_grant", "plan_expiry", "promo_expiry"],
+      enum: ["signup_bonus", "initial_grant", "admin_grant", "render", "render_refund", "segment", "segment_refund", "purchase", "purchase_refund", "subscription_grant", "subscription_expiry", "plan_grant", "plan_expiry", "promo_expiry", "beta_grant", "beta_expiry"],
     }).notNull(),
     /** The part of `amount` that moved plan credits; refunds return that part to plan credits. */
     planAmount: integer("plan_amount").notNull().default(0),
+    /** The part of `amount` that moved beta credits; refunds return that part to beta credits. */
+    betaAmount: integer("beta_amount").notNull().default(0),
+    /** The beta enrollment a beta grant, charge or expiry belongs to. */
+    betaEnrollmentId: uuid("beta_enrollment_id").references((): AnyPgColumn => betaEnrollments.id),
     /** Set on plan grants and expiries: at most one of each per user per credit period. */
     periodKey: text("period_key"),
     renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
@@ -697,7 +713,7 @@ export const approvalRequests = pgTable(
   "approval_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance", "studio_change", "maintenance_window", "plan_change"] }).notNull(),
+    action: text("action", { enum: ["bulk_credits", "refund", "role_change", "maintenance", "studio_change", "maintenance_window", "plan_change", "beta_grant", "beta_budget"] }).notNull(),
     status: text("status", { enum: ["pending", "approved", "rejected", "executed", "cancelled"] }).notNull().default("pending"),
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
@@ -911,11 +927,213 @@ export const storageObjects = pgTable(
     key: text("key").primaryKey(),
     bytes: bigint("bytes", { mode: "number" }).notNull(),
     contentType: text("content_type").notNull(),
-    kind: text("kind", { enum: ["upload", "render", "watermark"] }).notNull(),
+    kind: text("kind", { enum: ["upload", "render", "watermark", "feedback"] }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("storage_objects_kind_idx").on(table.kind),
     check("storage_objects_bytes_non_negative", sql`${table.bytes} >= 0`),
   ],
+);
+
+// ── Beta program ──────────────────────────────────────────────────────────────────
+// docs/beta-testing-system.md. A tester is an enrollment, never a role; beta credits are a bucket
+// inside users.credit_balance, recorded in credit_ledger.
+
+/** One private testing program: its dates, capacity, credit rules, budget and benefits. */
+export const betaPrograms = pgTable(
+  "beta_programs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    status: text("status", { enum: ["draft", "active", "paused", "ended"] }).notNull().default("draft"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    /** Active and suspended enrollments plus open invitation slots never exceed this. */
+    maxTesters: integer("max_testers").notNull().default(10),
+    /** Beta credits granted on enrollment. */
+    creditsPerTester: integer("credits_per_tester").notNull().default(25),
+    /** Ceiling on everything granted to one enrollment, top-ups included. */
+    maxCreditsPerTester: integer("max_credits_per_tester").notNull().default(100),
+    /** Ceiling on everything granted across the program; null = no pool limit. */
+    creditPool: integer("credit_pool"),
+    /** Hard cap on the fal cost of beta-funded jobs. Credits granted never raise it. */
+    budgetUsd: numeric("budget_usd", { precision: 10, scale: 2 }).notNull().default("10"),
+    /** Percent of budgetUsd at which operators are warned; 100% is always reported. */
+    budgetWarningPercent: integer("budget_warning_percent").notNull().default(80),
+    /** Replace the plan's limits while enrolled; null keeps the plan's. */
+    dailyRenderLimit: integer("daily_render_limit"),
+    monthlyRenderLimit: integer("monthly_render_limit"),
+    concurrentRenderLimit: integer("concurrent_render_limit"),
+    /** Studio feature keys usable regardless of plan (operator kill switches still win). */
+    featureGrants: text("feature_grants").array().notNull().default(sql`'{}'::text[]`),
+    downloadsUnlocked: boolean("downloads_unlocked").notNull().default(true),
+    welcome: jsonb("welcome").$type<BetaWelcome>(),
+    attachmentBudgetMb: integer("attachment_budget_mb").notNull().default(500),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("beta_programs_status_values", sql`${table.status} IN ('draft', 'active', 'paused', 'ended')`),
+    check("beta_programs_dates_order", sql`${table.endsAt} > ${table.startsAt}`),
+    check("beta_programs_budget_range", sql`${table.budgetUsd} BETWEEN 0 AND 10000`),
+  ],
+);
+
+export const betaInvitations = pgTable(
+  "beta_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    programId: uuid("program_id").notNull().references(() => betaPrograms.id),
+    kind: text("kind", { enum: ["email", "link", "existing_user"] }).notNull(),
+    email: text("email"),
+    userId: uuid("user_id").references(() => users.id),
+    /** SHA-256 (hex) of the token; the token itself is shown once and never stored. */
+    tokenHash: text("token_hash").notNull().unique(),
+    maxRedemptions: integer("max_redemptions").notNull().default(1),
+    redemptions: integer("redemptions").notNull().default(0),
+    creditsOverride: integer("credits_override"),
+    cohort: text("cohort"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => users.id),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("beta_invitations_program_idx").on(table.programId, table.createdAt)],
+);
+
+export const betaEnrollments = pgTable(
+  "beta_enrollments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    programId: uuid("program_id").notNull().references(() => betaPrograms.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    invitationId: uuid("invitation_id").references(() => betaInvitations.id),
+    status: text("status", { enum: ["active", "suspended", "completed", "revoked"] }).notNull().default("active"),
+    cohort: text("cohort"),
+    profession: text("profession"),
+    /** Everything granted to this enrollment so far, checked against maxCreditsPerTester. */
+    creditsGranted: integer("credits_granted").notNull().default(0),
+    /** A per-tester extension; null = the program's endsAt. */
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    welcomeSeenAt: timestamp("welcome_seen_at", { withTimezone: true }),
+    tourCompletedAt: timestamp("tour_completed_at", { withTimezone: true }),
+    announcementsSeenAt: timestamp("announcements_seen_at", { withTimezone: true }),
+    repliesSeenAt: timestamp("replies_seen_at", { withTimezone: true }),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endedReason: text("ended_reason"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("beta_enrollments_program_user_unique").on(table.programId, table.userId),
+    // Partial in the migration (status IN active, suspended): one live enrollment per user.
+    uniqueIndex("beta_enrollments_one_live_per_user").on(table.userId),
+    index("beta_enrollments_program_status_idx").on(table.programId, table.status),
+  ],
+);
+
+export const betaMissions = pgTable(
+  "beta_missions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    programId: uuid("program_id").notNull().references(() => betaPrograms.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    title: text("title").notNull(),
+    instructions: text("instructions").notNull().default(""),
+    rule: jsonb("rule").$type<BetaMissionRule>().notNull(),
+    required: boolean("required").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("beta_missions_program_idx").on(table.programId, table.position)],
+);
+
+/** A row exists only once a mission is complete. */
+export const betaMissionProgress = pgTable(
+  "beta_mission_progress",
+  {
+    enrollmentId: uuid("enrollment_id").notNull().references(() => betaEnrollments.id, { onDelete: "cascade" }),
+    missionId: uuid("mission_id").notNull().references(() => betaMissions.id, { onDelete: "cascade" }),
+    source: text("source", { enum: ["auto", "tester", "admin"] }).notNull(),
+    verifiedBy: uuid("verified_by").references(() => users.id),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.enrollmentId, table.missionId] })],
+);
+
+export const betaFeedback = pgTable(
+  "beta_feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Readable number ("BETA-142"); generated by Postgres. */
+    number: integer("number").generatedAlwaysAsIdentity(),
+    programId: uuid("program_id").notNull().references(() => betaPrograms.id),
+    enrollmentId: uuid("enrollment_id").notNull().references(() => betaEnrollments.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    kind: text("kind", { enum: ["bug", "visual_quality", "usability", "suggestion", "praise"] }).notNull(),
+    category: text("category", {
+      enum: ["architecture_changed", "materials_wrong", "render_failed", "render_stuck", "edit_wrong", "ui_problem", "billing_credits", "other"],
+    }).notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    severityReported: text("severity_reported", { enum: ["low", "medium", "high", "critical"] }).notNull().default("medium"),
+    severity: text("severity", { enum: ["low", "medium", "high", "critical"] }),
+    status: text("status", {
+      enum: ["new", "triaged", "investigating", "fix_in_progress", "ready_to_verify", "resolved", "duplicate", "expected", "cannot_reproduce", "declined"],
+    }).notNull().default("new"),
+    renderId: uuid("render_id").references(() => renders.id, { onDelete: "set null" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    canvasNodeId: text("canvas_node_id"),
+    annotations: jsonb("annotations").$type<BetaAnnotations>(),
+    /** Built by the server from its own records when the report is filed; never user-supplied. */
+    diagnostics: jsonb("diagnostics").$type<Record<string, unknown>>(),
+    attachmentKey: text("attachment_key"),
+    duplicateOf: uuid("duplicate_of").references((): AnyPgColumn => betaFeedback.id, { onDelete: "set null" }),
+    knownIssue: boolean("known_issue").notNull().default(false),
+    knownIssueTitle: text("known_issue_title"),
+    assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
+    githubUrl: text("github_url"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("beta_feedback_program_status_idx").on(table.programId, table.status, table.createdAt.desc()),
+    index("beta_feedback_user_idx").on(table.userId, table.createdAt.desc()),
+  ],
+);
+
+/** Append-only thread per report: replies, internal notes and status changes. */
+export const betaFeedbackComments = pgTable(
+  "beta_feedback_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    feedbackId: uuid("feedback_id").notNull().references(() => betaFeedback.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull().default(""),
+    visibility: text("visibility", { enum: ["tester", "internal"] }).notNull(),
+    kind: text("kind", { enum: ["comment", "status_change", "request_info"] }).notNull().default("comment"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("beta_feedback_comments_feedback_idx").on(table.feedbackId, table.createdAt)],
+);
+
+export const betaAnnouncements = pgTable(
+  "beta_announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    programId: uuid("program_id").notNull().references(() => betaPrograms.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    severity: text("severity", { enum: ["info", "important"] }).notNull().default("info"),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (table) => [index("beta_announcements_program_idx").on(table.programId, table.publishedAt.desc())],
 );

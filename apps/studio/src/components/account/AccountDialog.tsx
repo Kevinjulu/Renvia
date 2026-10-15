@@ -33,6 +33,8 @@ const LEDGER_LABEL: Record<CreditLedgerReason, string> = {
   plan_grant: "Monthly plan credits",
   plan_expiry: "Unused monthly credits expired",
   promo_expiry: "Welcome credits replaced by monthly credits",
+  beta_grant: "Beta program credits",
+  beta_expiry: "Unused beta credits expired",
 };
 
 type ClerkSession = Awaited<ReturnType<NonNullable<ReturnType<typeof useUser>["user"]>["getSessions"]>>[number];

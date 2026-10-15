@@ -227,8 +227,12 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
       db
         .update(schema.users)
         // Admin credits never expire. A removal comes out of the balance, and plan credits
-        // shrink with it so they never exceed what is left.
-        .set({ creditBalance: sql`${schema.users.creditBalance} + ${amount}`, planCredits: sql`least(${schema.users.planCredits}, ${schema.users.creditBalance} + ${amount})` })
+        // shrink with it so they never exceed what is left. Beta credits are the program's to
+        // grant and expire: a removal that would reach into them fails the balance checks.
+        .set({
+          creditBalance: sql`${schema.users.creditBalance} + ${amount}`,
+          planCredits: sql`least(${schema.users.planCredits}, ${schema.users.creditBalance} + ${amount} - ${schema.users.betaCredits})`,
+        })
         .where(eq(schema.users.id, id))
         .returning({ id: schema.users.id }),
       db.insert(schema.creditLedger).values({ userId: id, amount, reason: "admin_grant", note, actorId: adminUser.id }),
@@ -247,7 +251,7 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
   } catch (error) {
     if (isBalanceCapViolation(error)) return capError();
     if (isCheckViolation(error)) {
-      return c.json({ error: "That would take the balance below zero", code: "balance_negative" }, 400);
+      return c.json({ error: "That would take the balance below zero (beta credits can't be removed here)", code: "balance_negative" }, 400);
     }
     // The ledger's user foreign key fails for an unknown id.
     if ((error as { code?: string }).code === "23503") return c.json({ error: "Not found" }, 404);

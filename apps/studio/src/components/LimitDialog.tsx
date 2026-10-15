@@ -27,6 +27,9 @@ const KNOWN_CODES: LimitCode[] = [
   "upload_too_large",
   "feature_disabled",
   "storage_full",
+  "beta_credits_exhausted",
+  "beta_budget_exhausted",
+  "beta_unavailable",
 ];
 
 /** Returns the refusal an error represents, or null when it's an ordinary failure. */
@@ -159,6 +162,27 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
       return {
         title: "Not available right now",
         body: "This option isn't available on your account at the moment. Everything else still works.",
+        icon: "ban",
+        tone: "amber",
+      };
+    case "beta_credits_exhausted":
+      return {
+        title: "You've used your beta credits",
+        body: "Your beta credits can't cover this action. Your own credits haven't been touched.",
+        icon: "coins",
+        tone: "amber",
+      };
+    case "beta_budget_exhausted":
+      return {
+        title: "Beta rendering is paused",
+        body: "The shared testing budget has been reached, so new beta renders can't start. Your projects, feedback and downloads are still available.",
+        icon: "pause",
+        tone: "amber",
+      };
+    case "beta_unavailable":
+      return {
+        title: "Beta credits aren't available",
+        body: "Your beta access is paused or has ended, so beta credits can't be used right now.",
         icon: "ban",
         tone: "amber",
       };

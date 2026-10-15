@@ -4,10 +4,21 @@ import { createDb } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
-import { createChargedSegmentation, InsufficientCreditsError } from "../lib/credits.js";
+import { createChargedSegmentation, InsufficientBetaCreditsError, InsufficientCreditsError } from "../lib/credits.js";
+import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
 import { releaseBudgetReservation, reserveBudget } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
-import { checkAllowance, refuseBudget, refuseCredits, refuseDisabled, refuseInput, resolveLimits } from "../lib/limits.js";
+import {
+  checkAllowance,
+  refuseBetaBudget,
+  refuseBetaCredits,
+  refuseBetaUnavailable,
+  refuseBudget,
+  refuseCredits,
+  refuseDisabled,
+  refuseInput,
+  resolveLimits,
+} from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, segmentationModelId } from "../lib/segment.js";
 import { ensureEntitlement } from "../lib/billing.js";
@@ -30,6 +41,8 @@ const createSchema = z
         y: z.number().finite(),
       })
       .optional(),
+  /** Who pays when the caller is a beta tester; "account" only on their explicit choice. */
+  funding: z.enum(["beta", "account"]).optional(),
   })
   .refine((body) => Boolean(body.prompt) || Boolean(body.point), {
     message: "Provide a text prompt and/or a click point",
@@ -61,7 +74,9 @@ segmentations.post("/", async (c) => {
   }
 
   const isAdmin = user.role === "admin";
-  const limits = resolveLimits(user, appSettings, billing.plan);
+  const { context: beta } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  const betaProgram = beta?.running ? beta.program : null;
+  const limits = resolveLimits(user, appSettings, billing.plan, betaProgram);
 
   if (body.prompt && body.prompt.length > limits.maxSelectionPromptChars) {
     const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxSelectionPromptChars, body.prompt.length);
@@ -69,10 +84,10 @@ segmentations.post("/", async (c) => {
   }
 
   const revision = await currentStudioRevision(db);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForSelection(body), effectiveEngineMode(c.env, appSettings));
+  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForSelection(body), effectiveEngineMode(c.env, appSettings), betaProgram?.featureGrants);
   if (featureRefusal) return c.json(featureRefusal, featureRefusal.status);
 
-  const allowance = await checkAllowance(db, user, appSettings, "segment", billing.plan);
+  const allowance = await checkAllowance(db, user, appSettings, "segment", billing.plan, betaProgram);
   if (allowance) return c.json(allowance, allowance.status);
 
   const mode = effectiveEngineMode(c.env, appSettings);
@@ -85,7 +100,15 @@ segmentations.post("/", async (c) => {
 
   const credits = isAdmin ? 0 : effectiveCreditPrices(revision.config, appSettings).selection;
   let created;
+  let programHold: string | null = null;
   try {
+    // Testers pay from beta credits within the program budget; never silently from their own.
+    const funding = await fundJob(c.env, db, beta, body.funding, credits, costMicros);
+    if (!funding.ok) {
+      const refusal = funding.code === "beta_unavailable" ? refuseBetaUnavailable(appSettings) : refuseBetaBudget(appSettings);
+      return c.json(refusal, refusal.status);
+    }
+    programHold = funding.hold;
     created = await createChargedSegmentation(db, user.id, credits, {
       imageUrl: body.imageUrl,
       prompt: body.prompt ?? null,
@@ -94,8 +117,13 @@ segmentations.post("/", async (c) => {
       model: mode === "mock" ? "mock" : segmentationModelId(body),
       costMicros,
       configVersion: revision.version,
-    });
+    }, funding.charge);
+    if (funding.program) await reportProgramSpend(c.env, db, funding.program);
   } catch (error) {
+    if (error instanceof InsufficientBetaCreditsError) {
+      const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
+      return c.json(refusal, refusal.status);
+    }
     if (error instanceof InsufficientCreditsError) {
       const refusal = refuseCredits(appSettings, user.creditBalance, credits);
       return c.json(refusal, refusal.status);
@@ -104,6 +132,7 @@ segmentations.post("/", async (c) => {
   } finally {
     // Once the segmentation row exists its cost is visible to the next reservation check.
     await releaseBudgetReservation(db, reservation);
+    await releaseBudgetReservation(db, programHold);
   }
 
   const { segmentation, maskDataUrl } = await runSegmentation(c.env, db, created, origin, mode);

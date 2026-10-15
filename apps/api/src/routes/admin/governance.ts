@@ -9,6 +9,7 @@ import { adminEventInsert, balanceCapGuard, findAdminUser, isBalanceCapViolation
 import { checkRefundable, refundPaypalPayment } from "./refunds.js";
 import { applyMaintenanceWindowChange, publishStudioConfig, windowProblem, type MaintenanceWindowPayload } from "./studioControl.js";
 import { applyPlanChange, type PlanChangePayload } from "./plans.js";
+import { applyBetaBudget, applyBetaGrant, type BetaBudgetPayload, type BetaGrantPayload } from "./beta.js";
 import type { AdminContext, UserRow } from "./context.js";
 
 export const governanceRoutes = new Hono<AdminContext>();
@@ -153,7 +154,7 @@ governanceRoutes.post("/approvals/:id/reject", async (c) => {
 });
 
 /** Who may execute an approved request: the same capability the action needs when it runs directly. */
-const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage", studio_change: "studio.manage", maintenance_window: "settings.manage", plan_change: "plans.manage" } as const;
+const EXECUTE_PERMISSION = { bulk_credits: "credits.manage", role_change: "users.manage", refund: "billing.manage", maintenance: "settings.manage", studio_change: "studio.manage", maintenance_window: "settings.manage", plan_change: "plans.manage", beta_grant: "beta.credits.manage", beta_budget: "beta.programs.manage" } as const;
 
 /** Staff who can execute some kind of approval can see the queue. */
 function canSeeApprovals(c: { get: (key: "admin") => UserRow }) {
@@ -298,6 +299,48 @@ async function executePlanChange(c: Context<AdminContext>, request: ApprovalRow)
   return c.json({ id: request.id, status: "executed" });
 }
 
+/** An approved beta credit grant: each tester's grant is idempotent, so a retried execute grants nothing twice. */
+async function executeBetaGrant(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const payload = z.object({ enrollmentIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(1000), note: z.string().min(1).max(200), idempotencyKey: z.string().uuid() }).parse(request.payload) satisfies BetaGrantPayload;
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  let results;
+  try {
+    results = await applyBetaGrant(db, payload, actor.id, request.id);
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: request.targetType, targetId: request.targetId, summary: `Executed approved beta credit grant of ${payload.amount}`, detail: { approvalId: request.id, results } }),
+  ]);
+  return c.json({ id: request.id, status: "executed", results });
+}
+
+/** An approved beta budget change, applied only if the budget is still what it was decided against. */
+async function executeBetaBudget(c: Context<AdminContext>, request: ApprovalRow) {
+  const db = c.get("db"); const actor = c.get("admin");
+  const payload = z.object({ programId: z.string().uuid(), budgetUsd: z.number().min(0).max(10_000), expectedBudgetUsd: z.number().min(0).max(10_000), reason: z.string().min(1).max(300) }).parse(request.payload) satisfies BetaBudgetPayload;
+  if (!(await claimApproval(db, request.id))) return c.json({ error: "Approval request must be approved before execution" }, 409);
+  let outcome;
+  try {
+    outcome = await applyBetaBudget(db, payload, actor.id, request.id);
+  } catch (error) {
+    await releaseApproval(db, request.id);
+    throw error;
+  }
+  if (!outcome.ok) {
+    await releaseApproval(db, request.id);
+    return c.json({ error: outcome.error, code: outcome.code }, outcome.status);
+  }
+  await db.batch([
+    db.insert(schema.approvalEvents).values({ approvalId: request.id, actorId: actor.id, action: "executed" }),
+    adminEventInsert(db, { actorId: actor.id, action: "approval.execute", targetType: "beta_program", targetId: payload.programId, summary: `Executed approved beta budget change to $${payload.budgetUsd.toFixed(2)}`, detail: { approvalId: request.id } }),
+  ]);
+  return c.json({ id: request.id, status: "executed" });
+}
+
 governanceRoutes.post("/approvals/:id/execute", async (c) => {
   // Coarse gate before any lookup; the action-specific permission is checked once the request is loaded.
   if (!canSeeApprovals(c)) return c.json({ error: "Forbidden" }, 403);
@@ -331,6 +374,8 @@ governanceRoutes.post("/approvals/:id/execute", async (c) => {
   if (request.action === "studio_change") return executeStudioChange(c, request);
   if (request.action === "maintenance_window") return executeMaintenanceWindow(c, request);
   if (request.action === "plan_change") return executePlanChange(c, request);
+  if (request.action === "beta_grant") return executeBetaGrant(c, request);
+  if (request.action === "beta_budget") return executeBetaBudget(c, request);
   const payload = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), amount: z.number().int().min(1).max(10_000), note: z.string().min(1).max(200) }).parse(request.payload);
   const users = await db.select({ id: schema.users.id, email: schema.users.email, creditBalance: schema.users.creditBalance }).from(schema.users).where(inArray(schema.users.id, payload.userIds));
   if (users.length !== payload.userIds.length) return c.json({ error: "A target user no longer exists; create a new approval request" }, 409);

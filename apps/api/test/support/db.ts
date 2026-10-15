@@ -106,6 +106,31 @@ export async function makePaypalCheckout(
   return checkout!;
 }
 
+/** A beta program that is running now: started yesterday, ending in 20 days. */
+export async function makeBetaProgram(overrides: Partial<typeof schema.betaPrograms.$inferInsert> = {}) {
+  const day = 24 * 60 * 60 * 1000;
+  const [program] = await db
+    .insert(schema.betaPrograms)
+    .values({ slug: `beta-${next()}`, name: "Private beta", status: "active", startsAt: new Date(Date.now() - day), endsAt: new Date(Date.now() + 20 * day), ...overrides })
+    .returning();
+  return program!;
+}
+
+/** Enrolls a user directly (no invitation), with no credits granted yet. */
+export async function enroll(programId: string, userId: string, overrides: Partial<typeof schema.betaEnrollments.$inferInsert> = {}) {
+  const [enrollment] = await db.insert(schema.betaEnrollments).values({ programId, userId, ...overrides }).returning();
+  return enrollment!;
+}
+
+/** Every credit bucket of a user at once. */
+export async function bucketsOf(userId: string) {
+  const [row] = await db
+    .select({ balance: schema.users.creditBalance, plan: schema.users.planCredits, beta: schema.users.betaCredits })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId));
+  return row!;
+}
+
 export async function balanceOf(userId: string): Promise<number> {
   const [row] = await db.select({ creditBalance: schema.users.creditBalance }).from(schema.users).where(eq(schema.users.id, userId));
   return row!.creditBalance;

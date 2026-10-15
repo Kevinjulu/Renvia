@@ -8,23 +8,41 @@ import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { currentStudioRevision, effectiveCreditPrices, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
+import { settleBetaCredits, type BetaContext } from "../lib/beta.js";
+import type { MeBeta, StudioFeatureKey } from "@renvia/types";
 
 export const me = new Hono<AppContext>();
 
 me.use("*", requireAuth);
+
+function presentBeta({ program, enrollment, endsAt, running }: BetaContext): MeBeta {
+  return {
+    programId: program.id,
+    programName: program.name,
+    status: enrollment.status === "suspended" ? "suspended" : "active",
+    running,
+    endsAt: endsAt.toISOString(),
+    downloadsUnlocked: program.downloadsUnlocked,
+    featureGrants: program.featureGrants as StudioFeatureKey[],
+  };
+}
 
 me.get("/", async (c) => {
   const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
 
   // Called once per studio load, so it also refreshes the stored email from Clerk.
-  const [user, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
+  const [synced, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
+  // Closes a beta enrollment past its end and expires its credits before reporting the balance.
+  const { context: beta, expired } = await settleBetaCredits(db, synced.id, { betaCredits: synced.betaCredits });
+  const user = expired > 0 ? await getOrCreateUser(c.env, db, clerkId) : synced;
+  const betaProgram = beta?.running ? beta.program : null;
   const billing = await ensureEntitlement(db, user.id);
   const [usage, revision, maintenance] = await Promise.all([getUsage(db, user.id), currentStudioRevision(db), effectiveMaintenance(db, settings)]);
 
   return c.json({
     ...user,
-    limits: resolveLimits(user, settings, billing.plan),
+    limits: resolveLimits(user, settings, billing.plan, betaProgram),
     entitlement: {
       plan: billing.plan,
       // An admin-granted plan is in force regardless of the base subscription's state.
@@ -51,7 +69,8 @@ me.get("/", async (c) => {
     upcomingMaintenance: maintenance.next
       ? { scope: maintenance.next.scope, startsAt: maintenance.next.startsAt.toISOString(), endsAt: maintenance.next.endsAt.toISOString(), message: maintenance.next.message }
       : null,
-    features: featureAvailability(revision.config, user, billing.plan.slug, effectiveEngineMode(c.env, settings)),
+    features: featureAvailability(revision.config, user, billing.plan.slug, effectiveEngineMode(c.env, settings), betaProgram?.featureGrants),
+    beta: beta ? presentBeta(beta) : null,
     creditPrices: effectiveCreditPrices(revision.config, settings),
     configVersion: revision.version,
   });

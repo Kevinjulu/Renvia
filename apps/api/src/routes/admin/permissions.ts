@@ -28,16 +28,27 @@ export type AdminPermission =
   /** Publish or restore Studio Control feature rules. */
   | "studio.manage"
   /** Grant or remove an unpaid plan. Admin-only until finer billing controls exist. */
-  | "plans.manage";
+  | "plans.manage"
+  /** See beta programs, testers, invitations and their spend. */
+  | "beta.read"
+  /** Invite testers, and suspend, reactivate, extend, complete or revoke them. */
+  | "beta.testers.manage"
+  /** Grant beta credits beyond the welcome amount. */
+  | "beta.credits.manage"
+  /** Create and configure programs: dates, limits, benefits, status and budget. */
+  | "beta.programs.manage"
+  /** Triage beta feedback and reply to testers. */
+  | "beta.feedback.manage";
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
-  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read", "studio.read"],
-  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage", "studio.read"],
-  billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage"],
+  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read", "studio.read", "beta.read"],
+  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage", "studio.read", "beta.read", "beta.testers.manage", "beta.feedback.manage"],
+  billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "beta.read", "beta.credits.manage"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
     "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage", "studio.read", "studio.manage",
+    "beta.read", "beta.testers.manage", "beta.credits.manage", "beta.programs.manage", "beta.feedback.manage",
   ],
 };
 

@@ -214,9 +214,11 @@ function createStorageClient(env: Env): S3Client {
   });
 }
 
-export type StorageKind = "upload" | "render" | "watermark";
+/** feedback: beta testers' report screenshots, kept under feedback/ and counted separately. */
+export type StorageKind = "upload" | "render" | "watermark" | "feedback";
 
 export function storageKindFor(key: string): StorageKind {
+  if (key.startsWith("feedback/")) return "feedback";
   return isWatermarkedKey(key) ? "watermark" : isRenderOutputKey(key) ? "render" : "upload";
 }
 
@@ -250,7 +252,7 @@ export async function storageUsage(db: Database): Promise<{ usedBytes: number; b
     .select({ kind: schema.storageObjects.kind, bytes: sql<string>`coalesce(sum(${schema.storageObjects.bytes}), 0)::bigint`, objects: sql<number>`count(*)::int` })
     .from(schema.storageObjects)
     .groupBy(schema.storageObjects.kind);
-  const byKind: Record<StorageKind, number> = { upload: 0, render: 0, watermark: 0 };
+  const byKind: Record<StorageKind, number> = { upload: 0, render: 0, watermark: 0, feedback: 0 };
   for (const row of rows) byKind[row.kind] = Number(row.bytes);
   return { usedBytes: Object.values(byKind).reduce((sum, value) => sum + value, 0), byKind, objects: rows.reduce((sum, row) => sum + row.objects, 0) };
 }
