@@ -8,7 +8,7 @@ import { formatUsd } from "../../lib/format";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
-import { askReason, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
+import { askReason, ROUTINE_REASON, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
 
 type Detail = AdminBetaProgramDetailResponse;
 type Tab = "testers" | "invitations" | "missions" | "announcements" | "settings" | "insights";
@@ -48,7 +48,8 @@ export function BetaProgramPage() {
   const used = program.budgetUsd > 0 ? program.spentUsd / program.budgetUsd : 1;
 
   const changeStatus = (next: "active" | "paused" | "ended", verb: string) => {
-    const reason = askReason(`Why ${verb} ${program.name}?${next === "ended" ? " Every tester is completed and their beta credits expire." : ""}`);
+    // Ending can't be undone, so it alone asks why; starting, pausing and resuming just happen.
+    const reason = next === "ended" ? askReason(`Why ${verb} ${program.name}? Every tester is completed and their beta credits expire. This can't be undone.`) : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaProgramStatus(program.id, next, reason), `Program ${next === "active" ? "running" : next}.`);
   };
   const changeBudget = () => {
@@ -116,14 +117,14 @@ function TestersTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
   const toggle = (id: string) => setSelected((list) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]));
 
   const lifecycle = (id: string, email: string, status: "active" | "suspended" | "completed" | "revoked", verb: string) => {
-    const reason = askReason(`Why ${verb} ${email}?${status === "completed" || status === "revoked" ? " Their beta credits expire; their own credits are untouched." : ""}`);
+    // Completing or revoking ends their access and expires their credits; suspend/reactivate are reversible.
+    const reason = status === "completed" || status === "revoked" ? askReason(`Why ${verb} ${email}? Their beta credits expire; their own credits are untouched.`) : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaEnrollmentStatus(id, status, reason), `${email}: ${status}.`);
   };
   const extend = (id: string, email: string, current: string) => {
     const value = window.prompt(`New end date for ${email} (YYYY-MM-DD), or blank to follow the program.`, current.slice(0, 10));
     if (value === null) return;
-    const reason = askReason("Why change their end date?");
-    if (reason) void run(() => api.extendBetaEnrollment(id, value ? new Date(`${value}T23:59:59Z`).toISOString() : null, reason), `${email}'s end date changed.`);
+    void run(() => api.extendBetaEnrollment(id, value ? new Date(`${value}T23:59:59Z`).toISOString() : null, ROUTINE_REASON), `${email}'s end date changed.`);
   };
   const grant = (ids: string[]) => {
     const value = window.prompt(`Beta credits to grant to ${ids.length} tester${ids.length === 1 ? "" : "s"} (does not raise the budget)`, "10");
@@ -209,8 +210,7 @@ function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; ru
   };
 
   const revoke = (id: string) => {
-    const reason = askReason("Why revoke this invitation? Its place is released.");
-    if (reason) void run(() => api.revokeBetaInvitation(id, reason), "Invitation revoked.");
+    if (window.confirm("Revoke this invitation? The link stops working and its place is released.")) void run(() => api.revokeBetaInvitation(id, ROUTINE_REASON), "Invitation revoked.");
   };
 
   return (
@@ -406,8 +406,7 @@ function SettingsTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    const reason = askReason("Why change these settings?");
-    if (!reason) return;
+    const reason = ROUTINE_REASON;
     void run(
       () =>
         api.updateBetaProgram(program.id, {
@@ -481,9 +480,7 @@ function ScheduleCard({ data, can, run }: { data: Detail; can: Can; run: Run }) 
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    const reason = askReason("Why change the program dates?");
-    if (!reason) return;
-    const body: Record<string, unknown> = { reason };
+    const body: Record<string, unknown> = { reason: ROUTINE_REASON };
     if (!started && startDay !== toDateInput(program.startsAt)) body.startsAt = startOfDay(startDay).toISOString();
     if (endDay !== toDateInput(program.endsAt)) body.endsAt = endOfDay(endDay).toISOString();
     void run(() => api.updateBetaProgram(program.id, body), "Dates saved.");

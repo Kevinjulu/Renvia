@@ -43,7 +43,13 @@ export const CATEGORY_LABEL: Record<BetaFeedbackCategory, string> = {
   other: "Other",
 };
 
-/** Asks for the audit reason every beta change records; null when the operator cancels. */
+/**
+ * The audit note for routine changes. The audit log already records who changed what, with the
+ * before and after values, so only consequential actions ask for a typed reason (askReason).
+ */
+export const ROUTINE_REASON = "Changed in Beta Management";
+
+/** Asks for a typed reason, for consequential actions only; null when the operator cancels. */
 export function askReason(question: string, fallback = ""): string | null {
   const answer = window.prompt(question, fallback);
   if (answer === null) return null;
