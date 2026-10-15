@@ -2152,6 +2152,8 @@ export interface BetaTester {
   missions: BetaMission[];
   announcements: BetaAnnouncement[];
   unreadAnnouncements: number;
+  /** Replies from the team on the tester's reports since they last read them. */
+  unreadReplies: number;
 }
 
 export interface BetaMeResponse {
@@ -2181,6 +2183,144 @@ export interface AdminBetaAnnouncement {
   severity: "info" | "important";
   publishedAt: string;
   expiresAt: string | null;
+}
+
+export type BetaFeedbackKind = "bug" | "visual_quality" | "usability" | "suggestion" | "praise";
+export type BetaSeverity = "low" | "medium" | "high" | "critical";
+export type BetaFeedbackStatus =
+  | "new"
+  | "triaged"
+  | "investigating"
+  | "fix_in_progress"
+  | "ready_to_verify"
+  | "resolved"
+  | "duplicate"
+  | "expected"
+  | "cannot_reproduce"
+  | "declined";
+
+export interface CreateBetaFeedbackRequest {
+  kind: BetaFeedbackKind;
+  category: BetaFeedbackCategory;
+  title: string;
+  description: string;
+  severity: BetaSeverity;
+  /** The render being reported; the server copies its diagnostics from its own records. */
+  renderId?: string | null;
+  projectId?: string | null;
+  canvasNodeId?: string | null;
+  annotations?: BetaAnnotations | null;
+  /** Build the Studio is running, e.g. a commit SHA. */
+  appVersion?: string | null;
+  /** The last X-Request-Id the Studio saw for this render, if any. */
+  requestId?: string | null;
+  viewport?: string | null;
+}
+
+/** One entry in a report's thread, as the tester sees it. */
+export interface BetaFeedbackComment {
+  id: string;
+  kind: "comment" | "status_change" | "request_info";
+  body: string;
+  /** True for the Renvia team, false for the tester's own messages. */
+  fromTeam: boolean;
+  /** For status changes: the new status. */
+  status: BetaFeedbackStatus | null;
+  createdAt: string;
+}
+
+export interface BetaFeedbackSummary {
+  id: string;
+  /** Shown as BETA-<number>. */
+  number: number;
+  kind: BetaFeedbackKind;
+  category: BetaFeedbackCategory;
+  title: string;
+  status: BetaFeedbackStatus;
+  renderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The team is waiting on the tester: a question, or a fix to confirm. */
+  awaitingTester: boolean;
+}
+
+export interface BetaFeedbackDetail extends BetaFeedbackSummary {
+  description: string;
+  severity: BetaSeverity;
+  annotations: BetaAnnotations | null;
+  /** Signed, expiring links to the reported render and the tester's screenshot. */
+  resultImageUrl: string | null;
+  sourceImageUrl: string | null;
+  attachmentUrl: string | null;
+  comments: BetaFeedbackComment[];
+}
+
+/** A problem the team has confirmed and shared with every tester in the program. */
+export interface BetaKnownIssue {
+  id: string;
+  number: number;
+  title: string;
+  category: BetaFeedbackCategory;
+  status: BetaFeedbackStatus;
+  /** Testers who said they have it too. */
+  plusOnes: number;
+  /** The signed-in tester is one of them, or reported it. */
+  mine: boolean;
+}
+
+export interface AdminBetaFeedbackSummary {
+  id: string;
+  number: number;
+  programId: string;
+  testerEmail: string;
+  kind: BetaFeedbackKind;
+  category: BetaFeedbackCategory;
+  title: string;
+  status: BetaFeedbackStatus;
+  severity: BetaSeverity | null;
+  severityReported: BetaSeverity;
+  knownIssue: boolean;
+  assigneeId: string | null;
+  assigneeEmail: string | null;
+  renderId: string | null;
+  hasAttachment: boolean;
+  plusOnes: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminBetaFeedbackComment {
+  id: string;
+  authorEmail: string | null;
+  fromTeam: boolean;
+  visibility: "tester" | "internal";
+  kind: "comment" | "status_change" | "request_info";
+  body: string;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AdminBetaFeedbackDetail extends AdminBetaFeedbackSummary {
+  description: string;
+  annotations: BetaAnnotations | null;
+  /** Copied from Renvia's own records when the report was filed. */
+  diagnostics: Record<string, unknown> | null;
+  projectId: string | null;
+  canvasNodeId: string | null;
+  render: { status: string; jobType: string | null; model: string | null; sourceImageUrl: string | null; resultImageUrl: string | null } | null;
+  attachmentUrl: string | null;
+  knownIssueTitle: string | null;
+  githubUrl: string | null;
+  duplicateOf: { id: string; number: number } | null;
+  duplicates: number;
+  resolvedAt: string | null;
+  comments: AdminBetaFeedbackComment[];
+}
+
+export interface AdminBetaFeedbackListResponse {
+  feedback: AdminBetaFeedbackSummary[];
+  /** Reports per status across the filtered program(s), for the inbox tabs. */
+  counts: Partial<Record<BetaFeedbackStatus, number>>;
 }
 
 /** An invitation addressed to the signed-in user, accepted in-app without a link. */

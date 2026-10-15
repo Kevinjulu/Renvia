@@ -7,6 +7,11 @@ export default defineConfig({
   // import.meta.env dynamically, which makes Vite inline every var matching the prefix —
   // a "CLERK_" prefix shipped CLERK_SECRET_KEY in the public bundle.
   envPrefix: ["VITE_"],
+  // The deployed commit, attached to beta feedback so a report names the build it came from.
+  // One explicit value, not an env prefix, so nothing else is inlined with it.
+  define: {
+    __APP_VERSION__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7)),
+  },
   server: {
     port: 5173,
   },

@@ -9,6 +9,7 @@ import { getOrCreateUser } from "../lib/users.js";
 import { hashInvitationToken, invitationState, maskEmail, pendingInvitationsFor, redeemInvitation, type RedeemResult } from "../lib/betaEnrollment.js";
 import { settleBetaCredits, type BetaContext } from "../lib/beta.js";
 import { completeManualMission, missionsFor } from "../lib/betaMissions.js";
+import { unreadRepliesFor } from "./betaFeedback.js";
 import type { Database } from "@renvia/db";
 
 /**
@@ -137,7 +138,7 @@ async function announcementsFor(db: Database, context: BetaContext): Promise<Bet
 
 async function presentTester(db: Database, user: UserRow, context: BetaContext): Promise<BetaTester> {
   const { program, enrollment } = context;
-  const [missions, announcements] = await Promise.all([missionsFor(db, enrollment), announcementsFor(db, context)]);
+  const [missions, announcements, unreadReplies] = await Promise.all([missionsFor(db, enrollment), announcementsFor(db, context), unreadRepliesFor(db, user.id, enrollment.repliesSeenAt)]);
   return {
     enrollmentId: enrollment.id,
     status: enrollment.status === "suspended" ? "suspended" : "active",
@@ -159,6 +160,7 @@ async function presentTester(db: Database, user: UserRow, context: BetaContext):
     missions,
     announcements,
     unreadAnnouncements: announcements.filter((announcement) => announcement.unread).length,
+    unreadReplies,
   };
 }
 
@@ -176,14 +178,14 @@ beta.get("/me", requireAuth, async (c) => {
 });
 
 /** Records a one-time onboarding moment on the tester's live enrollment, so it holds across devices. */
-async function markSeen(c: Context<AppContext>, column: "welcomeSeenAt" | "tourCompletedAt" | "announcementsSeenAt") {
+async function markSeen(c: Context<AppContext>, column: "welcomeSeenAt" | "tourCompletedAt" | "announcementsSeenAt" | "repliesSeenAt") {
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
   const target = schema.betaEnrollments[column];
   const updated = await db
     .update(schema.betaEnrollments)
-    // Welcome and tour keep their first time; announcements move forward each time they are read.
-    .set({ [column]: column === "announcementsSeenAt" ? new Date() : sql`coalesce(${target}, now())`, updatedAt: new Date() })
+    // Welcome and tour keep their first time; announcements and replies move forward each time they are read.
+    .set({ [column]: column === "announcementsSeenAt" || column === "repliesSeenAt" ? new Date() : sql`coalesce(${target}, now())`, updatedAt: new Date() })
     .where(and(eq(schema.betaEnrollments.userId, user.id), inArray(schema.betaEnrollments.status, ["active", "suspended"])))
     .returning({ id: schema.betaEnrollments.id });
   if (updated.length === 0) return c.json({ error: "You're not in a beta program", code: "not_enrolled" }, 404);
@@ -193,6 +195,7 @@ async function markSeen(c: Context<AppContext>, column: "welcomeSeenAt" | "tourC
 beta.post("/me/welcome-seen", requireAuth, (c) => markSeen(c, "welcomeSeenAt"));
 beta.post("/me/tour-complete", requireAuth, (c) => markSeen(c, "tourCompletedAt"));
 beta.post("/me/announcements-seen", requireAuth, (c) => markSeen(c, "announcementsSeenAt"));
+beta.post("/me/replies-seen", requireAuth, (c) => markSeen(c, "repliesSeenAt"));
 
 beta.post("/missions/:id/complete", requireAuth, async (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));

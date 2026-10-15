@@ -1887,5 +1887,16 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "POST /beta/enrollments/:id/extend",
   "POST /beta/enrollments/:id/grant",
   "POST /beta/programs/:id/grant",
+  "POST /beta/programs/:id/missions",
+  "PATCH /beta/missions/:id",
+  "DELETE /beta/missions/:id",
+  "POST /beta/programs/:id/announcements",
+  "DELETE /beta/announcements/:id",
+  "GET /beta/feedback",
+  "GET /beta/feedback/:id",
+  "PATCH /beta/feedback/:id",
+  "POST /beta/feedback/:id/comments",
+  "POST /beta/feedback/:id/request-info",
+  "POST /beta/feedback/:id/duplicate",
 ]
 `;

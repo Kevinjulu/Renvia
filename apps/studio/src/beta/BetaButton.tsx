@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGuideStore } from "../guide/useGuideStore";
 import { daysLeft, useBetaStore } from "./useBetaStore";
+import { useFeedbackStore } from "./feedback/useFeedbackStore";
 
 /**
  * The tester's Beta button in the canvas header: credits and days left at a glance, unread
@@ -16,6 +17,7 @@ export function BetaButton() {
   const setPayWithOwnCredits = useBetaStore((state) => state.setPayWithOwnCredits);
   const setWelcomeOpen = useBetaStore((state) => state.setWelcomeOpen);
   const startTour = useGuideStore((state) => state.startTour);
+  const openReport = useFeedbackStore((state) => state.openReport);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const tourPending = Boolean(tester && !tester.tourCompletedAt);
@@ -46,7 +48,7 @@ export function BetaButton() {
   }, [open]);
 
   if (!tester) return null;
-  const unread = tester.unreadAnnouncements;
+  const unread = tester.unreadAnnouncements + tester.unreadReplies;
   const missionsLeft = tester.missions.filter((mission) => !mission.completedAt).length;
   const item = "block w-full rounded-lg px-3 py-2 text-left text-sm text-secondary hover:bg-surface-muted";
 
@@ -63,7 +65,7 @@ export function BetaButton() {
         Beta
         <span className="tabular-nums font-medium">{tester.credits.remaining} cr</span>
         {unread > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white" aria-label={`${unread} unread announcements`}>
+          <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white" aria-label={`${unread} unread updates`}>
             {unread}
           </span>
         )}
@@ -77,6 +79,9 @@ export function BetaButton() {
             </p>
             {!tester.running && <p className="mt-1 text-xs text-amber-700">{tester.status === "suspended" ? "Your beta access is paused." : "Beta rendering is paused right now."}</p>}
           </div>
+          <button type="button" role="menuitem" className={`${item} font-medium text-primary`} onClick={() => { setOpen(false); openReport(); }}>
+            Report a problem
+          </button>
           <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); navigate("/beta"); }}>
             Beta Program{missionsLeft > 0 ? ` · ${missionsLeft} missions to go` : ""}{unread > 0 ? ` · ${unread} new` : ""}
           </button>

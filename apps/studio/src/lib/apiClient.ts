@@ -1,6 +1,10 @@
 import { useMemo, useRef } from "react";
 import { useAuth } from "@clerk/react";
 import type {
+  BetaFeedbackDetail,
+  BetaFeedbackSummary,
+  BetaKnownIssue,
+  CreateBetaFeedbackRequest,
   BetaInvitationAccepted,
   BetaInvitationPreview,
   BetaMeResponse,
@@ -254,6 +258,20 @@ function createApiClient(getToken: GetToken) {
     markBetaTourComplete: () => request<{ ok: true }>(getToken, "/beta/me/tour-complete", { method: "POST" }),
     markBetaAnnouncementsSeen: () => request<{ ok: true }>(getToken, "/beta/me/announcements-seen", { method: "POST" }),
     completeBetaMission: (id: string) => request<{ missions: BetaMission[] }>(getToken, `/beta/missions/${id}/complete`, { method: "POST" }),
+    markBetaRepliesSeen: () => request<{ ok: true }>(getToken, "/beta/me/replies-seen", { method: "POST" }),
+    createBetaFeedback: (body: CreateBetaFeedbackRequest) =>
+      request<BetaFeedbackDetail>(getToken, "/beta/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    /** The screenshot is sent as-is; the API compresses it. */
+    attachBetaScreenshot: (id: string, file: File) =>
+      request<BetaFeedbackDetail>(getToken, `/beta/feedback/${id}/attachment`, { method: "POST", headers: { "Content-Type": file.type }, body: file }),
+    listBetaFeedback: () => request<{ feedback: BetaFeedbackSummary[] }>(getToken, "/beta/feedback"),
+    getBetaFeedback: (id: string) => request<BetaFeedbackDetail>(getToken, `/beta/feedback/${id}`),
+    replyBetaFeedback: (id: string, body: string) =>
+      request<BetaFeedbackDetail>(getToken, `/beta/feedback/${id}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }),
+    confirmBetaFix: (id: string, fixed: boolean, comment?: string) =>
+      request<BetaFeedbackDetail>(getToken, `/beta/feedback/${id}/confirm-fix`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fixed, comment }) }),
+    listBetaKnownIssues: (category?: string) => request<{ issues: BetaKnownIssue[] }>(getToken, `/beta/known-issues${category ? `?category=${category}` : ""}`),
+    plusOneBetaIssue: (id: string) => request<{ ok: true; alreadyCounted: boolean }>(getToken, `/beta/feedback/${id}/plus-one`, { method: "POST" }),
     getRenderBudget: () => request<RenderBudgetResponse>(getToken, "/renders/budget"),
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
     cancelRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}/cancel`, { method: "POST" }),

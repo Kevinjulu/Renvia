@@ -23,6 +23,8 @@ import { reportClientError } from "../../components/AppErrorHandling";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
 import { upscaleCredits, type RenderEditSettings, type UpscaleTarget } from "@renvia/types";
 import { creditPricesFor } from "../../lib/creditPrices";
+import { useBetaStore } from "../../beta/useBetaStore";
+import { useFeedbackStore } from "../../beta/feedback/useFeedbackStore";
 
 /** "Area edit · Door, Window": what the selection was tagged as, when it was. */
 function areaEditTag(edit: RenderEditSettings): string {
@@ -103,6 +105,9 @@ export function RenderResultsPanel() {
   const features = me?.role === "admin" ? undefined : me?.features;
   const askUpgrade = useUpgradeDialogStore((state) => state.ask);
   const lockedDownloads = downloadsLocked(me);
+  // Beta testers can report a render straight from its actions.
+  const isTester = useBetaStore((state) => state.tester !== null);
+  const openReport = useFeedbackStore((state) => state.openReport);
   /** The upgrade that unlocks an upscale to `target`, when the user's plan is what stops it. */
   const upscaleUpgrade = (target: "4k" | "8k") => {
     const key = target === "8k" ? "export.8k" : "export.4k";
@@ -375,6 +380,18 @@ export function RenderResultsPanel() {
                 <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" />
               </svg>
             </button>
+            {isTester && (
+              <button
+                type="button"
+                title="Report this render"
+                aria-label="Report this render"
+                onClick={() => openReport({ renderId: job.id, projectId: job.projectId, resultImageUrl: job.resultImageUrl ?? null, sourceImageUrl: job.sourceImageUrl ?? null })}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M3.5 14V2.5M3.5 3h8l-1.6 3 1.6 3h-8" />
+                </svg>
+              </button>
+            )}
             <button
               type="button"
               className="is-danger"

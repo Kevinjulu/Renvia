@@ -17,6 +17,7 @@ import { billing } from "./routes/billing.js";
 import { allowedOrigins } from "./lib/origins.js";
 import { clientErrors } from "./routes/clientErrors.js";
 import { beta } from "./routes/beta.js";
+import { betaFeedback } from "./routes/betaFeedback.js";
 
 export interface Env {
   DATABASE_URL: string;
@@ -144,6 +145,7 @@ app.route("/admin", admin);
 app.route("/cron", cron);
 app.route("/errors", clientErrors);
 app.route("/beta", beta);
+app.route("/beta", betaFeedback);
 
 // Mounted under /api so Vercel's api/ directory convention can serve this
 // whole app from a single catch-all function (see apps/api/api/[...route].ts).

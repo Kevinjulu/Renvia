@@ -626,7 +626,8 @@ async function missionsOf(db: Database, programId: string): Promise<AdminBetaMis
   const rows = await db
     .select({
       mission: schema.betaMissions,
-      completions: sql<number>`(select count(*) from beta_mission_progress mp where mp.mission_id = ${schema.betaMissions.id})::int`,
+      // Table-qualified: Drizzle leaves single-table column references bare inside subqueries.
+      completions: sql<number>`(select count(*) from beta_mission_progress mp where mp.mission_id = beta_missions.id)::int`,
     })
     .from(schema.betaMissions)
     .where(eq(schema.betaMissions.programId, programId))

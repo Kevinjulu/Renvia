@@ -19,6 +19,7 @@ import { studioControlRoutes } from "./studioControl.js";
 import { modelsRoutes } from "./models.js";
 import { plansRoutes } from "./plans.js";
 import { betaRoutes } from "./beta.js";
+import { betaFeedbackRoutes } from "./betaFeedback.js";
 
 export const admin = new Hono<AdminContext>();
 
@@ -42,3 +43,4 @@ admin.route("/", studioControlRoutes);
 admin.route("/", modelsRoutes);
 admin.route("/", plansRoutes);
 admin.route("/", betaRoutes);
+admin.route("/", betaFeedbackRoutes);

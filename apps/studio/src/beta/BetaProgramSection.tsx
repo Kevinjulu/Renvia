@@ -4,6 +4,7 @@ import { useApiClient } from "../lib/apiClient";
 import { refreshAccount } from "../lib/useAccountStore";
 import { daysLeft, refreshBeta, useBetaStore } from "./useBetaStore";
 import { BetaInvitationBanner } from "./BetaInvitationBanner";
+import { MyReports } from "./feedback/MyReports";
 
 function MissionRow({ mission, onComplete, busy }: { mission: BetaMission; onComplete: () => void; busy: boolean }) {
   const done = Boolean(mission.completedAt);
@@ -139,6 +140,8 @@ export function BetaProgramSection() {
           </ul>
         )}
       </section>
+
+      <MyReports />
 
       <section>
         <h2 className="font-display text-lg font-semibold text-primary">Announcements</h2>
