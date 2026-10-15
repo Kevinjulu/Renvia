@@ -3,6 +3,7 @@ import { AccountMenu } from "../components/account/AccountMenu";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
 import { nodeForView } from "../canvas/buildingViews";
 import { BetaButton } from "../beta/BetaButton";
+import { FeedbackButton } from "../beta/feedback/FeedbackButton";
 
 export function CanvasTopBar({ projectName }: { projectName: string }) {
   const scale = useCanvasStore((state) => state.camera.scale);
@@ -14,6 +15,6 @@ export function CanvasTopBar({ projectName }: { projectName: string }) {
   };
   return <header className="studio-topbar">
     <div className="studio-project-title"><p><strong>{projectName}</strong><span>{uploadedCount} of {viewCount} elevations uploaded</span></p></div>
-    <div className="studio-header-actions"><button className="zoom" type="button" aria-label={`Zoom ${Math.round(scale * 100)}%. Reset to 100%`} title="Reset zoom" onClick={resetZoom}>{Math.round(scale * 100)}%</button><BetaButton /><BillingStatus /><AccountMenu /></div>
+    <div className="studio-header-actions"><button className="zoom" type="button" aria-label={`Zoom ${Math.round(scale * 100)}%. Reset to 100%`} title="Reset zoom" onClick={resetZoom}>{Math.round(scale * 100)}%</button><FeedbackButton /><BetaButton /><BillingStatus /><AccountMenu /></div>
   </header>;
 }

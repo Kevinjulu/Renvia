@@ -34,7 +34,7 @@ export function MyReports() {
         {reports === null ? (
           <p className="mt-2 text-sm text-muted">Loading…</p>
         ) : reports.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Nothing yet. When a render looks wrong, use “Report this render” on it so we see exactly what you saw.</p>
+          <p className="mt-2 rounded-xl border border-dashed border-hairline px-4 py-6 text-center text-sm text-muted">Nothing yet. When a render looks wrong, use the Feedback button in your project (or the flag on the render) so we see exactly what you saw.</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {reports.map((report) => (

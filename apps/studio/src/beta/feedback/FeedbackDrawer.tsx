@@ -1,19 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { BetaAnnotations, BetaFeedbackCategory, BetaFeedbackKind, BetaKnownIssue, BetaSeverity } from "@renvia/types";
+import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { refreshBeta } from "../useBetaStore";
 import { AnnotateImage, type AnnotateTool } from "./AnnotationLayer";
 import { emptyAnnotations, hasMarks, LIMITS } from "./annotations";
-import { useFeedbackStore } from "./useFeedbackStore";
-
-const KINDS: { value: BetaFeedbackKind; label: string }[] = [
-  { value: "visual_quality", label: "Render looks wrong" },
-  { value: "bug", label: "Something broke" },
-  { value: "usability", label: "Hard to use" },
-  { value: "suggestion", label: "Idea" },
-  { value: "praise", label: "Something great" },
-];
+import { categoriesFor, defaultCategory, isProblem, KINDS, reportableRenders } from "./presets";
+import { type FeedbackTarget, useFeedbackStore } from "./useFeedbackStore";
 
 export const CATEGORY_LABELS: Record<BetaFeedbackCategory, string> = {
   architecture_changed: "The building's structure changed",
@@ -43,12 +37,18 @@ const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 export function FeedbackDrawer() {
   const api = useApiClient();
   const navigate = useNavigate();
-  const target = useFeedbackStore((state) => state.target);
+  const openedFor = useFeedbackStore((state) => state.target);
+  const openedKind = useFeedbackStore((state) => state.kind);
   const closeReport = useFeedbackStore((state) => state.closeReport);
   const openThread = useFeedbackStore((state) => state.openThread);
 
-  const [kind, setKind] = useState<BetaFeedbackKind>(target ? "visual_quality" : "bug");
-  const [category, setCategory] = useState<BetaFeedbackCategory>(target ? "architecture_changed" : "ui_problem");
+  const jobs = useRenderJobsStore((state) => state.jobs);
+  const renders = useMemo(() => reportableRenders(jobs), [jobs]);
+  const startKind: BetaFeedbackKind = openedKind ?? (openedFor ? "visual_quality" : "bug");
+  // Opened from a render it's about that render; otherwise the tester can attach one here.
+  const [target, setTarget] = useState<FeedbackTarget | null>(openedFor);
+  const [kind, setKind] = useState<BetaFeedbackKind>(startKind);
+  const [category, setCategory] = useState<BetaFeedbackCategory>(defaultCategory(startKind));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<BetaSeverity>("medium");
@@ -76,6 +76,35 @@ export function FeedbackDrawer() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [closeReport, sending]);
+
+  // Pasting an image anywhere in the form attaches it as the screenshot.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith("image/"));
+      if (!file) return;
+      event.preventDefault();
+      setScreenshot(file);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  const screenshotPreview = useMemo(() => (screenshot ? URL.createObjectURL(screenshot) : null), [screenshot]);
+  useEffect(() => () => {
+    if (screenshotPreview) URL.revokeObjectURL(screenshotPreview);
+  }, [screenshotPreview]);
+
+  const problem = isProblem(kind);
+  const pickKind = (value: BetaFeedbackKind) => {
+    setKind(value);
+    if (!categoriesFor(value).includes(category)) setCategory(defaultCategory(value));
+  };
+  const attach = (job: (typeof renders)[number] | null) => {
+    const side = job?.resultImageUrl ? "result" : "source";
+    setTarget(job ? { renderId: job.id, projectId: job.projectId, resultImageUrl: job.resultImageUrl ?? null, sourceImageUrl: job.sourceImageUrl ?? null } : null);
+    setImage(side);
+    setAnnotations(emptyAnnotations(side));
+  };
 
   const imageUrl = image === "result" ? target?.resultImageUrl ?? target?.sourceImageUrl : target?.sourceImageUrl;
   const markedImage = { ...annotations, image };
@@ -106,7 +135,7 @@ export function FeedbackDrawer() {
         category,
         title: title.trim(),
         description: description.trim(),
-        severity,
+        severity: problem ? severity : "low",
         renderId: target?.renderId ?? null,
         projectId: target?.projectId ?? null,
         annotations: target && hasMarks(markedImage) ? markedImage : null,
@@ -145,7 +174,7 @@ export function FeedbackDrawer() {
         <header className="flex items-center justify-between border-b border-hairline px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blueprint">Beta feedback</p>
-            <h2 id="feedback-title" className="font-display text-lg font-semibold text-primary">{target ? "Report this render" : "Report a problem"}</h2>
+            <h2 id="feedback-title" className="font-display text-lg font-semibold text-primary">{kind === "suggestion" ? "Share an idea" : kind === "praise" ? "Tell us what's great" : target ? "Report this render" : "Report a problem"}</h2>
           </div>
           <button type="button" onClick={closeReport} disabled={sending} className="rounded-lg px-2.5 py-1.5 text-sm text-secondary hover:bg-surface-muted" aria-label="Close">
             ✕
@@ -168,19 +197,38 @@ export function FeedbackDrawer() {
               <p className="text-sm font-medium text-primary">What's this about?</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {KINDS.map((option) => (
-                  <button key={option.value} type="button" className={chip(kind === option.value)} onClick={() => setKind(option.value)}>{option.label}</button>
+                  <button key={option.value} type="button" title={option.hint} className={chip(kind === option.value)} onClick={() => pickKind(option.value)}>{option.label}</button>
                 ))}
               </div>
             </section>
 
-            <label className="block text-sm font-medium text-primary">
-              What went wrong?
-              <select className={field} value={category} onChange={(event) => setCategory(event.target.value as BetaFeedbackCategory)}>
-                {(Object.keys(CATEGORY_LABELS) as BetaFeedbackCategory[]).map((value) => <option key={value} value={value}>{CATEGORY_LABELS[value]}</option>)}
-              </select>
-            </label>
+            {problem && categoriesFor(kind).length > 1 && (
+              <section>
+                <p className="text-sm font-medium text-primary">What went wrong?</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {categoriesFor(kind).map((value) => (
+                    <button key={value} type="button" className={chip(category === value)} onClick={() => setCategory(value)}>{CATEGORY_LABELS[value]}</button>
+                  ))}
+                </div>
+              </section>
+            )}
 
-            {issues.length > 0 && (
+            {!openedFor && renders.length > 0 && (
+              <section>
+                <p className="text-sm font-medium text-primary">Which render is this about? <span className="font-normal text-faint">(optional)</span></p>
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                  <button type="button" onClick={() => attach(null)} className={`grid h-14 w-20 shrink-0 place-items-center rounded-lg border text-xs font-medium ${target ? "border-hairline text-secondary hover:bg-surface-muted" : "border-primary bg-primary text-white"}`}>None</button>
+                  {renders.map((job) => (
+                    <button key={job.id} type="button" onClick={() => attach(job)} aria-label={`Attach the render from ${new Date(job.createdAt).toLocaleString()}`} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 ${target?.renderId === job.id ? "border-blueprint" : "border-transparent hover:border-hairline"}`}>
+                      <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" className="h-full w-full object-cover" />
+                      {job.status === "failed" && <span className="absolute inset-x-0 bottom-0 bg-red-600/85 text-[10px] font-semibold text-white">Failed</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {problem && issues.length > 0 && (
               <section className="rounded-xl border border-blueprint/30 bg-blueprint-soft px-4 py-3">
                 <p className="text-sm font-medium text-primary">Known issues like this</p>
                 <p className="text-xs text-secondary">If one of these is your problem, tell us instead of reporting it again.</p>
@@ -227,26 +275,38 @@ export function FeedbackDrawer() {
 
             <label className="block text-sm font-medium text-primary">
               Short title
-              <input className={field} value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. The roof pitch changed on the front elevation" />
+              <input className={field} value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder={kind === "suggestion" ? "e.g. Let me save my favourite material presets" : kind === "praise" ? "e.g. The brick textures look real" : "e.g. The roof pitch changed on the front elevation"} />
             </label>
             <label className="block text-sm font-medium text-primary">
-              What happened?
-              <textarea className={`${field} min-h-[96px]`} value={description} maxLength={4000} onChange={(event) => setDescription(event.target.value)} placeholder="What you did, what you expected, and what you got instead." />
+              {problem ? "What happened?" : "Tell us more"}
+              <textarea className={`${field} min-h-[96px]`} value={description} maxLength={4000} onChange={(event) => setDescription(event.target.value)} placeholder={problem ? "What you did, what you expected, and what you got instead." : "Why it matters to you, and how you'd use it."} />
             </label>
 
-            <section>
+            {problem && <section>
               <p className="text-sm font-medium text-primary">How much does it get in the way?</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {SEVERITIES.map((option) => (
                   <button key={option.value} type="button" className={chip(severity === option.value)} onClick={() => setSeverity(option.value)}>{option.label}</button>
                 ))}
               </div>
-            </section>
+            </section>}
 
-            <label className="block text-sm font-medium text-primary">
-              Screenshot <span className="font-normal text-faint">(optional, up to 5 MB)</span>
-              <input type="file" accept="image/png,image/jpeg,image/webp" className="mt-1 block w-full text-sm text-secondary" onChange={(event) => setScreenshot(event.target.files?.[0] ?? null)} />
-            </label>
+            <section>
+              <p className="text-sm font-medium text-primary">Screenshot <span className="font-normal text-faint">(optional, up to 5 MB)</span></p>
+              {screenshot && screenshotPreview ? (
+                <div className="mt-2 flex items-center gap-3 rounded-xl border border-hairline px-3 py-2">
+                  <img src={screenshotPreview} alt="Screenshot to attach" className="h-12 w-20 rounded-md object-cover" />
+                  <span className="min-w-0 flex-1 truncate text-xs text-secondary">{screenshot.name || "Pasted image"} · {(screenshot.size / 1024 / 1024).toFixed(1)} MB</span>
+                  <button type="button" onClick={() => setScreenshot(null)} className="rounded-lg px-2 py-1 text-xs font-medium text-secondary hover:bg-surface-muted">Remove</button>
+                </div>
+              ) : (
+                <label className="mt-2 flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-hairline px-3 py-4 text-center hover:bg-surface-muted">
+                  <span className="text-sm font-medium text-secondary">Choose an image, or paste one with Ctrl+V</span>
+                  <span className="text-xs text-faint">PNG, JPEG or WebP</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => setScreenshot(event.target.files?.[0] ?? null)} />
+                </label>
+              )}
+            </section>
 
             <p className="text-xs text-faint">
               We attach technical details of the render you're reporting (model, timings, any error) from our own records. We don't record your screen or what you clicked.
@@ -259,7 +319,7 @@ export function FeedbackDrawer() {
           <footer className="flex justify-end gap-2.5 border-t border-hairline px-5 py-4">
             <button type="button" onClick={closeReport} disabled={sending} className="rounded-lg px-3.5 py-2 text-sm font-medium text-secondary hover:bg-surface-muted">Cancel</button>
             <button type="button" onClick={() => void submit()} disabled={sending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60">
-              {sending ? "Sending…" : "Send report"}
+              {sending ? "Sending…" : problem ? "Send report" : "Send feedback"}
             </button>
           </footer>
         )}

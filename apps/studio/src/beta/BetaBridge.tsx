@@ -23,7 +23,7 @@ export function BetaBridge() {
   const reportOpen = useFeedbackStore((state) => state.open);
   const threadId = useFeedbackStore((state) => state.threadId);
   const openThread = useFeedbackStore((state) => state.openThread);
-  const reportKey = useFeedbackStore((state) => state.target?.renderId ?? "general");
+  const reportKey = useFeedbackStore((state) => `${state.target?.renderId ?? "general"}:${state.kind ?? ""}`);
 
   useEffect(() => {
     void refreshBeta(api.getBetaMe);
