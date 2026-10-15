@@ -9,7 +9,7 @@ import { navForPath } from "../../lib/nav";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
-import { betaCan, errorText, PROGRAM_STATUS_TONE } from "./shared";
+import { betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
 
 /** Every beta program at a glance, and a new one (admins). */
 export function BetaProgramsPage() {
@@ -40,7 +40,7 @@ export function BetaProgramsPage() {
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-primary">{program.name}</h2>
                   <p className="text-xs text-faint">
-                    {new Date(program.startsAt).toLocaleDateString()} – {new Date(program.endsAt).toLocaleDateString()}
+                    {new Date(program.startsAt).toLocaleDateString()} – {new Date(program.endsAt).toLocaleDateString()} · {scheduleLabel(program.startsAt, program.endsAt)}
                   </p>
                 </div>
                 <Pill tone={PROGRAM_STATUS_TONE[program.status]}>{program.status}</Pill>
@@ -66,7 +66,20 @@ export function BetaProgramsPage() {
 
 function CreateProgram({ onDone }: { onDone: () => void }) {
   const api = useAdminApi();
-  const [form, setForm] = useState({ name: "Renvia Private Beta", slug: "private-beta", description: "", durationDays: 21, maxTesters: 10, creditsPerTester: 25, budgetUsd: 10 });
+  const today = toDateInput(new Date());
+  const [form, setForm] = useState({
+    name: "Renvia Private Beta",
+    slug: "private-beta",
+    description: "",
+    startDay: today,
+    // 21 days including the first: today plus 20.
+    endDay: toDateInput(new Date(Date.now() + 20 * 24 * 60 * 60 * 1000)),
+    maxTesters: 10,
+    creditsPerTester: 25,
+    budgetUsd: 10,
+  });
+  const days = form.startDay && form.endDay ? programDays(form.startDay, form.endDay) : 0;
+  const datesOk = days >= 14 && days <= 21;
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const set = (patch: Partial<typeof form>) => setForm((current) => ({ ...current, ...patch }));
@@ -76,7 +89,8 @@ function CreateProgram({ onDone }: { onDone: () => void }) {
     setSaving(true);
     setError("");
     try {
-      await api.createBetaProgram({ ...form, reason: "Created from Beta Management" });
+      const { startDay, endDay, ...rest } = form;
+      await api.createBetaProgram({ ...rest, startsAt: startOfDay(startDay).toISOString(), endsAt: endOfDay(endDay).toISOString(), reason: "Created from Beta Management" });
       onDone();
     } catch (reason) {
       setError(errorText(reason, "Couldn't create the program"));
@@ -91,13 +105,18 @@ function CreateProgram({ onDone }: { onDone: () => void }) {
         <label className="text-sm text-primary">Name<input className={inputClass()} value={form.name} onChange={(event) => set({ name: event.target.value })} required /></label>
         <label className="text-sm text-primary">Slug<input className={inputClass()} value={form.slug} onChange={(event) => set({ slug: event.target.value })} pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]" required /></label>
         <label className="text-sm text-primary md:col-span-2">Description (testers see this)<textarea className={inputClass()} rows={2} value={form.description} onChange={(event) => set({ description: event.target.value })} /></label>
-        <label className="text-sm text-primary">Duration (days, 14–21)<input type="number" min={14} max={21} className={inputClass()} value={form.durationDays} onChange={(event) => set({ durationDays: Number(event.target.value) })} /></label>
+        <label className="text-sm text-primary">Starts on<input type="date" required className={inputClass()} value={form.startDay} min={today} onChange={(event) => set({ startDay: event.target.value })} /></label>
+        <label className="text-sm text-primary">Ends on (last day testers have access)<input type="date" required className={inputClass(datesOk ? undefined : "invalid")} value={form.endDay} min={form.startDay} onChange={(event) => set({ endDay: event.target.value })} /></label>
+        <p className={`text-xs md:col-span-2 ${datesOk ? "text-faint" : "text-rose-600"}`}>
+          {days > 0 ? `${days} days, ${new Date(startOfDay(form.startDay)).toLocaleDateString()} to ${new Date(endOfDay(form.endDay)).toLocaleDateString()}.` : "Pick both dates."}{" "}
+          {datesOk ? "Testers can join once you press Start; beta rendering opens on the start day." : "A new program runs 14–21 days. You can extend it later."}
+        </p>
         <label className="text-sm text-primary">Maximum testers<input type="number" min={1} max={1000} className={inputClass()} value={form.maxTesters} onChange={(event) => set({ maxTesters: Number(event.target.value) })} /></label>
         <label className="text-sm text-primary">Beta credits per tester<input type="number" min={0} max={10000} className={inputClass()} value={form.creditsPerTester} onChange={(event) => set({ creditsPerTester: Number(event.target.value) })} /></label>
         <label className="text-sm text-primary">Fal budget (USD, at most $10 to start)<input type="number" min={0} max={10} step={0.01} className={inputClass()} value={form.budgetUsd} onChange={(event) => set({ budgetUsd: Number(event.target.value) })} /></label>
         <p className="text-xs text-faint md:col-span-2">The program starts as a draft. Start it from its page once missions and the welcome are ready. Raising the budget later is a separate, audited action.</p>
         {error && <p className="text-sm text-rose-600 md:col-span-2">{error}</p>}
-        <div className="md:col-span-2"><Button type="submit" variant="primary" disabled={saving}>{saving ? "Creating…" : "Create draft"}</Button></div>
+        <div className="md:col-span-2"><Button type="submit" variant="primary" disabled={saving || !datesOk}>{saving ? "Creating…" : "Create draft"}</Button></div>
       </form>
     </Card>
   );

@@ -86,3 +86,39 @@ export function AnnotatedImage({ src, annotations }: { src: string; annotations:
     </div>
   );
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A timestamp as the yyyy-mm-dd a date input shows, in the operator's own time zone. */
+export function toDateInput(iso: string | Date): string {
+  const date = new Date(iso);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** A program starts at the beginning of its first day and ends at the end of its last, locally. */
+export function startOfDay(day: string): Date {
+  return new Date(`${day}T00:00:00`);
+}
+
+export function endOfDay(day: string): Date {
+  return new Date(`${day}T23:59:59.999`);
+}
+
+/** Calendar days from a start day to an end day, both included (the API counts the same way). */
+export function programDays(startDay: string, endDay: string): number {
+  return Math.ceil((endOfDay(endDay).getTime() - startOfDay(startDay).getTime()) / DAY_MS);
+}
+
+/** "Starts in 3 days", "12 days left", "Ended": where a program is in its schedule. */
+export function scheduleLabel(startsAt: string, endsAt: string, now = Date.now()): string {
+  const start = new Date(startsAt).getTime();
+  const end = new Date(endsAt).getTime();
+  if (now < start) {
+    const days = Math.ceil((start - now) / DAY_MS);
+    return days <= 1 ? "Starts within a day" : `Starts in ${days} days`;
+  }
+  if (now >= end) return "Ended";
+  const left = Math.ceil((end - now) / DAY_MS);
+  return left <= 1 ? "Last day" : `${left} days left`;
+}

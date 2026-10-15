@@ -8,7 +8,7 @@ import { formatUsd } from "../../lib/format";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
-import { askReason, betaCan, errorText, PROGRAM_STATUS_TONE } from "./shared";
+import { askReason, betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, scheduleLabel, startOfDay, toDateInput } from "./shared";
 
 type Detail = AdminBetaProgramDetailResponse;
 type Tab = "testers" | "invitations" | "missions" | "announcements" | "settings" | "insights";
@@ -59,12 +59,6 @@ export function BetaProgramPage() {
     const reason = askReason("Why change the budget?");
     if (reason) void run(() => api.setBetaBudget(program.id, Math.round(budgetUsd * 100) / 100, reason), `Budget set to ${formatUsd(budgetUsd)}.`);
   };
-  const extendProgram = () => {
-    const value = window.prompt("New end date for everyone (YYYY-MM-DD). Credits and budget don't change.", program.endsAt.slice(0, 10));
-    if (!value) return;
-    const reason = askReason("Why move the end date?");
-    if (reason) void run(() => api.updateBetaProgram(program.id, { endsAt: new Date(`${value}T23:59:59Z`).toISOString(), reason }), "End date moved.");
-  };
 
   return (
     <div>
@@ -72,14 +66,14 @@ export function BetaProgramPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2"><h1 className="text-[26px] font-bold tracking-tight text-primary">{program.name}</h1><Pill tone={PROGRAM_STATUS_TONE[program.status]}>{program.status}</Pill></div>
-          <p className="text-sm text-muted">{new Date(program.startsAt).toLocaleDateString()} – {new Date(program.endsAt).toLocaleDateString()} · {program.slug}</p>
+          <p className="text-sm text-muted">{new Date(program.startsAt).toLocaleDateString()} – {new Date(program.endsAt).toLocaleDateString()} · {scheduleLabel(program.startsAt, program.endsAt)} · {program.slug}</p>
         </div>
         {can.managePrograms && program.status !== "ended" && (
           <div className="flex flex-wrap gap-2">
             {(program.status === "draft" || program.status === "paused") && <Button variant="primary" onClick={() => changeStatus("active", "start")}>{program.status === "draft" ? "Start program" : "Resume"}</Button>}
             {program.status === "active" && <Button onClick={() => changeStatus("paused", "pause")}>Pause</Button>}
             <Button onClick={changeBudget}>Change budget</Button>
-            <Button onClick={extendProgram}>Extend</Button>
+            <Button onClick={() => setTab("settings")}>Change dates</Button>
             <Button variant="danger" onClick={() => changeStatus("ended", "end")}>End</Button>
           </div>
         )}
@@ -435,6 +429,8 @@ function SettingsTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
   };
 
   return (
+    <div className="space-y-5">
+    <ScheduleCard data={data} can={can} run={run} />
     <Card title="Program settings">
       <form onSubmit={save}>
         <fieldset disabled={!editable} className="grid gap-4 md:grid-cols-2">
@@ -462,6 +458,55 @@ function SettingsTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
           <Field label="What we ask (one per line)"><textarea rows={4} className={inputClass()} value={form.expectations} onChange={(event) => setForm({ ...form, expectations: event.target.value })} /></Field>
           {editable && <div className="md:col-span-2"><Button type="submit" variant="primary">Save settings</Button></div>}
         </fieldset>
+      </form>
+    </Card>
+    </div>
+  );
+}
+
+/**
+ * When the program runs. The start can move only until it has started (testers' access counts from
+ * it); the end can move any time, which extends or shortens it for every tester without their own
+ * date. Neither changes credits or the budget.
+ */
+function ScheduleCard({ data, can, run }: { data: Detail; can: Can; run: Run }) {
+  const api = useAdminApi();
+  const { program } = data;
+  const [startDay, setStartDay] = useState(toDateInput(program.startsAt));
+  const [endDay, setEndDay] = useState(toDateInput(program.endsAt));
+  const started = program.status !== "draft" && new Date(program.startsAt).getTime() <= Date.now();
+  const editable = can.managePrograms && program.status !== "ended";
+  const changed = startDay !== toDateInput(program.startsAt) || endDay !== toDateInput(program.endsAt);
+  const valid = Boolean(startDay && endDay) && endOfDay(endDay) > startOfDay(startDay);
+
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    const reason = askReason("Why change the program dates?");
+    if (!reason) return;
+    const body: Record<string, unknown> = { reason };
+    if (!started && startDay !== toDateInput(program.startsAt)) body.startsAt = startOfDay(startDay).toISOString();
+    if (endDay !== toDateInput(program.endsAt)) body.endsAt = endOfDay(endDay).toISOString();
+    void run(() => api.updateBetaProgram(program.id, body), "Dates saved.");
+  };
+
+  return (
+    <Card title="Schedule">
+      <form onSubmit={save} className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm text-primary">
+          Starts on
+          <input type="date" className={inputClass()} value={startDay} disabled={!editable || started} onChange={(event) => setStartDay(event.target.value)} />
+          <span className="mt-1 block text-xs text-faint">{started ? "Already started; it can't move now." : "Beta rendering opens on this day."}</span>
+        </label>
+        <label className="text-sm text-primary">
+          Ends on (last day of access)
+          <input type="date" className={inputClass(valid ? undefined : "invalid")} value={endDay} min={startDay} disabled={!editable} onChange={(event) => setEndDay(event.target.value)} />
+          <span className="mt-1 block text-xs text-faint">Moving it extends or shortens the program for everyone without their own date.</span>
+        </label>
+        <p className="text-xs text-muted md:col-span-2">
+          {valid ? `${programDays(startDay, endDay)} days · ${scheduleLabel(startOfDay(startDay).toISOString(), endOfDay(endDay).toISOString())}` : "The end must be after the start."}
+          {" "}Credits and the budget don't change with the dates.
+        </p>
+        {editable && <div className="md:col-span-2"><Button type="submit" variant="primary" disabled={!changed || !valid}>Save dates</Button></div>}
       </form>
     </Card>
   );

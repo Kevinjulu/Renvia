@@ -32,6 +32,15 @@ import type { AdminContext } from "./context.js";
 export const betaRoutes = new Hono<AdminContext>();
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** A program is created to run this many calendar days; extending it later is unrestricted. */
+const MIN_PROGRAM_DAYS = 14;
+const MAX_PROGRAM_DAYS = 21;
+
+/** Calendar days a program covers: a start at 00:00 and an end at 23:59 on the 14th day is 14 days. */
+export function programDays(startsAt: Date, endsAt: Date): number {
+  return Math.ceil((endsAt.getTime() - startsAt.getTime()) / DAY_MS);
+}
+
 /** Only this much is authorized when a program is created; more needs the audited budget action. */
 const INITIAL_BUDGET_CAP_USD = 10;
 
@@ -167,6 +176,8 @@ const createProgramSchema = settingsSchema.partial().extend({
   slug: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/),
   name: z.string().trim().min(1).max(120),
   startsAt: z.coerce.date().optional(),
+  /** The last moment of the program. Given with startsAt, it takes the place of durationDays. */
+  endsAt: z.coerce.date().optional(),
   /** First programs run 14–21 days; extensions later are unrestricted. */
   durationDays: z.number().int().min(14).max(21).default(21),
   budgetUsd: z.number().min(0).max(INITIAL_BUDGET_CAP_USD).multipleOf(0.01).default(INITIAL_BUDGET_CAP_USD),
@@ -201,8 +212,13 @@ betaRoutes.post("/beta/programs", async (c) => {
   const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
   const db = c.get("db");
   const actor = c.get("admin");
-  const { reason, durationDays, startsAt = new Date(), budgetUsd, ...settings } = createProgramSchema.parse(await c.req.json());
-  const endsAt = new Date(startsAt.getTime() + durationDays * DAY_MS);
+  const { reason, durationDays: requestedDays, startsAt = new Date(), endsAt: requestedEnd, budgetUsd, ...settings } = createProgramSchema.parse(await c.req.json());
+  const endsAt = requestedEnd ?? new Date(startsAt.getTime() + requestedDays * DAY_MS);
+  const durationDays = programDays(startsAt, endsAt);
+  if (endsAt <= startsAt) return c.json({ error: "The end must be after the start", code: "invalid_dates" }, 400);
+  if (durationDays < MIN_PROGRAM_DAYS || durationDays > MAX_PROGRAM_DAYS) {
+    return c.json({ error: `A program runs ${MIN_PROGRAM_DAYS}–${MAX_PROGRAM_DAYS} days when it's created (these dates are ${durationDays}); extend it later if needed`, code: "invalid_dates" }, 400);
+  }
   const id = crypto.randomUUID();
   try {
     await db.batch([
@@ -222,6 +238,8 @@ betaRoutes.post("/beta/programs", async (c) => {
 });
 
 const updateProgramSchema = settingsSchema.partial().extend({
+  /** Reschedules the start; only before the program has started. */
+  startsAt: z.coerce.date().optional(),
   /** Moves the whole program's end: an extension (or shortening) for every tester without their own date. */
   endsAt: z.coerce.date().optional(),
   reason: z.string().trim().min(1).max(300),
@@ -242,14 +260,21 @@ betaRoutes.patch("/beta/programs/:id", async (c) => {
       return c.json({ error: `${occupied} places are already taken or promised; revoke invitations or end enrollments first`, code: "below_occupied" }, 409);
     }
   }
-  if (patch.endsAt && patch.endsAt <= program.startsAt) return c.json({ error: "The end must be after the start", code: "invalid_dates" }, 400);
+  // The start can move only while it hasn't happened; afterwards testers' access depends on it.
+  const started = program.startsAt <= new Date() && program.status !== "draft";
+  if (patch.startsAt && started && patch.startsAt.getTime() !== program.startsAt.getTime()) {
+    return c.json({ error: "This program has already started; its start date can't change. Move the end date instead.", code: "already_started" }, 409);
+  }
+  if ((patch.endsAt ?? program.endsAt) <= (patch.startsAt ?? program.startsAt)) return c.json({ error: "The end must be after the start", code: "invalid_dates" }, 400);
   const before = Object.fromEntries(Object.keys(patch).map((key) => [key, program[key as keyof BetaProgramRow]]));
   try {
     await db.batch([
       db.update(schema.betaPrograms).set({ ...patch, updatedAt: new Date() }).where(eq(schema.betaPrograms.id, program.id)),
       adminEventInsert(db, {
         actorId: actor.id, action: "beta.update", targetType: "beta_program", targetId: program.id,
-        summary: patch.endsAt ? `Moved ${program.name}'s end to ${patch.endsAt.toISOString().slice(0, 10)}` : `Updated ${program.name}`,
+        summary: patch.startsAt || patch.endsAt
+          ? `Rescheduled ${program.name}: ${(patch.startsAt ?? program.startsAt).toISOString().slice(0, 10)} to ${(patch.endsAt ?? program.endsAt).toISOString().slice(0, 10)}`
+          : `Updated ${program.name}`,
         detail: { reason, before, after: patch },
       }),
     ]);

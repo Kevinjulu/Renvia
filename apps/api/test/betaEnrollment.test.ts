@@ -67,6 +67,31 @@ describe("programs", () => {
     expect((await callAdmin("admin", "POST", "/beta/programs", { slug: "short", name: "Short", durationDays: 14, reason: "x" })).status).toBe(201);
   });
 
+  it("are created for chosen dates, 14 to 21 days long", async () => {
+    const start = new Date(Date.now() + 2 * DAY);
+    const create = (slug: string, days: number) =>
+      callAdmin("admin", "POST", "/beta/programs", { slug, name: slug, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + days * DAY - 1000).toISOString(), reason: "x" });
+
+    const ok = await create("dated", 14);
+    expect(ok.status).toBe(201);
+    expect((await ok.json()) as AdminBetaProgram).toMatchObject({ startsAt: start.toISOString() });
+    expect((await create("too-long", 30)).status).toBe(400);
+    expect((await create("too-short", 7)).status).toBe(400);
+  });
+
+  it("can be rescheduled before they start, but only extended once running", async () => {
+    const draft = await makeBetaProgram({ status: "draft", startsAt: new Date(Date.now() + 5 * DAY), endsAt: new Date(Date.now() + 25 * DAY) });
+    const later = new Date(Date.now() + 7 * DAY).toISOString();
+    expect((await callAdmin("admin", "PATCH", `/beta/programs/${draft.id}`, { startsAt: later, reason: "moved" })).status).toBe(200);
+    expect((await callAdmin("admin", "PATCH", `/beta/programs/${draft.id}`, { endsAt: new Date(Date.now() + 6 * DAY).toISOString(), reason: "bad" })).status).toBe(400);
+
+    const running = await makeBetaProgram();
+    const moved = await callAdmin("admin", "PATCH", `/beta/programs/${running.id}`, { startsAt: new Date().toISOString(), reason: "x" });
+    expect(moved.status).toBe(409);
+    expect(((await moved.json()) as { code: string }).code).toBe("already_started");
+    expect((await callAdmin("admin", "PATCH", `/beta/programs/${running.id}`, { endsAt: new Date(running.endsAt.getTime() + 3 * DAY).toISOString(), reason: "more time" })).status).toBe(200);
+  });
+
   it("are managed by admins only, and readable by every operator", async () => {
     const program = await makeBetaProgram();
     for (const role of ["support", "billing", "analyst"]) {
