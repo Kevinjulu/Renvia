@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { upscaleCredits } from "@renvia/types";
 import { creditPricesFor } from "../../lib/creditPrices";
 import { useGenerationSettingsStore, type OutputResolution } from "../../canvas/hooks/useGenerationSettingsStore";
@@ -24,6 +25,12 @@ export function OutputResolutionPicker() {
     const feature = features?.[option === "8k" ? "export.8k" : "export.4k"];
     return feature && !feature.available ? feature : null;
   };
+  // A size the plan doesn't include (kept from an earlier session or a reused render) drops back to Standard.
+  const planLocked = (option: OutputResolution) => unavailable(option)?.reason === "plan";
+  const valueLocked = planLocked(value);
+  useEffect(() => {
+    if (valueLocked) setValue("standard");
+  }, [valueLocked, setValue]);
   const extraCredits = (option: OutputResolution) => (option === "standard" ? 0 : upscaleCredits(option, creditPricesFor(me)));
   const selected = OPTIONS.find((option) => option.id === value)!;
   const extra = extraCredits(value);
@@ -53,6 +60,10 @@ export function OutputResolutionPicker() {
           ? unavailable(value)!.message ?? `${selected.label} isn't available right now. Choose another size.`
           : selected.edge
           ? `AI-upscaled to ${selected.edge.toLocaleString()} px, ready to download · +${extra} ${extra === 1 ? "credit" : "credits"} per image`
+          : planLocked("4k")
+          ? "The render's own size. 4K and 8K output come with a paid plan."
+          : planLocked("8k")
+          ? "The render's own size. 8K output comes with the Premium plan."
           : "The render's own size. You can still upscale a finished render from its card."}
       </small>
     </div>

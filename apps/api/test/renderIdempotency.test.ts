@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { schema } from "@renvia/db";
 import { describe, expect, it, vi } from "vitest";
 import { callApi } from "./support/api.js";
-import { db, makeProject, makeRender, makeUser } from "./support/db.js";
+import { db, makeProject, makeRender, makeUser, putOnPlan } from "./support/db.js";
 
 // A render request retried after a timeout must return the render the first attempt created,
 // never charge for a second one.
@@ -12,6 +12,7 @@ vi.mock("@clerk/backend", async () => (await import("./support/clerkStub.js")).c
 async function setup(concurrentRenderLimit?: number) {
   await db.insert(schema.billingPlans).values({ slug: "starter", name: "Starter", description: "Starter plan", concurrentRenderLimit });
   const user = await makeUser({ clerkId: "customer", email: "customer@example.test", creditBalance: 10 });
+  await putOnPlan(user.id, "team");
   const project = await makeProject(user.id);
   return { user, project };
 }

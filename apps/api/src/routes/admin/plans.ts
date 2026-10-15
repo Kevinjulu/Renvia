@@ -6,6 +6,7 @@ import {
   CREDIT_PRICE_LABELS,
   creditsForRender,
   featureDenial,
+  planIncludesFeature,
   STUDIO_FEATURES,
   type AdminCreditPack,
   type AdminCreditPackTerms,
@@ -91,7 +92,7 @@ plansRoutes.get("/plans", async (c) => {
         features: STUDIO_FEATURES.map(({ key }) => {
           const rule = revision.config.features[key];
           const denial = featureDenial({ ...rule, rolloutPercent: 100 }, { id: "", planSlug: plan.slug }, key);
-          return { key, available: denial === null || rule.enforcement === "observe" };
+          return { key, available: planIncludesFeature(plan.slug, key) && (denial === null || rule.enforcement === "observe") };
         }),
       };
     }),

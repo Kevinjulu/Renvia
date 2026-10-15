@@ -6,7 +6,7 @@ import type { AdminModelsResponse, AdminPlansResponse, AdminPricingSimulationRes
 import { cancelRender } from "../src/lib/engine.js";
 import { callAdmin } from "./support/admin.js";
 import { callApi } from "./support/api.js";
-import { balanceOf, db, makeProject, makeUser, testEnv } from "./support/db.js";
+import { balanceOf, db, makeProject, makeUser, putOnPlan, testEnv } from "./support/db.js";
 
 // Phase 4: published credit prices (with a compatibility gate against the old formula), model
 // holds, versioned plan and credit pack terms, and the pricing simulator.
@@ -63,6 +63,8 @@ beforeEach(async () => {
   await makeUser({ clerkId: "billing", email: "billing@renvia.test", role: "billing" });
   const customer = await makeUser({ clerkId: "customer", email: "customer@example.test", creditBalance: 100 });
   customerId = customer.id;
+  // On Premium, so 4K and 8K output are in the plan.
+  await putOnPlan(customer.id, "team");
   projectId = (await makeProject(customer.id)).id;
 });
 
@@ -266,12 +268,17 @@ describe("plans and credit packs", () => {
     const current = await control();
     await callAdmin("admin", "POST", "/studio-control/publish", {
       expectedVersion: current.current.version,
-      config: { ...current.current.config, features: { ...current.current.config.features, "export.8k": { ...current.current.config.features["export.8k"], allowedPlans: ["studio"] } } },
-      reason: "8K for Studio",
+      config: { ...current.current.config, features: { ...current.current.config.features, "export.4k": { ...current.current.config.features["export.4k"], allowedPlans: ["team"] } } },
+      reason: "4K for Premium only",
     });
     const body = await plans();
-    expect(body.plans.find((plan) => plan.slug === "starter")!.features.find((feature) => feature.key === "export.8k")!.available).toBe(false);
-    expect(body.plans.find((plan) => plan.slug === "studio")!.features.find((feature) => feature.key === "export.8k")!.available).toBe(true);
+    const has = (slug: string, key: string) => body.plans.find((plan) => plan.slug === slug)!.features.find((feature) => feature.key === key)!.available;
+    expect(has("studio", "export.4k")).toBe(false);
+    expect(has("team", "export.4k")).toBe(true);
+    // Outside the plans that include it, whatever Studio Control says.
+    expect(has("starter", "export.8k")).toBe(false);
+    expect(has("studio", "export.8k")).toBe(false);
+    expect(has("team", "export.8k")).toBe(true);
   });
 });
 

@@ -1637,6 +1637,20 @@ export function rolloutBucket(userId: string, key: StudioFeatureKey): number {
   return hash % 100;
 }
 
+/**
+ * Features only some plans include, whatever Studio Control says: Studio Control can narrow
+ * these further but never open them to another plan. A feature not listed is in every plan.
+ */
+export const PLAN_FEATURES: Partial<Record<StudioFeatureKey, readonly string[]>> = {
+  "export.4k": ["studio", "team"],
+  "export.8k": ["team"],
+};
+
+export function planIncludesFeature(planSlug: string, key: StudioFeatureKey): boolean {
+  const plans = PLAN_FEATURES[key];
+  return !plans || plans.includes(planSlug);
+}
+
 /** paused: the model behind it is paused in the Model Registry. */
 export type StudioFeatureDenial = "disabled" | "plan" | "rollout" | "paused";
 

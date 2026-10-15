@@ -4,7 +4,7 @@ import { schema } from "@renvia/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelRender, refreshRender } from "../src/lib/engine.js";
 import { callApi } from "./support/api.js";
-import { db, makeProject, makeUser, testEnv } from "./support/db.js";
+import { db, makeProject, makeUser, putOnPlan, testEnv } from "./support/db.js";
 
 // A render made with a 4K or 8K output resolution runs two fal passes inside one job: the
 // render itself, then an upscale of its result. The standard result stays the render's image;
@@ -57,6 +57,7 @@ async function setup(falMode: "prod" | "mock" = "prod") {
   await db.insert(schema.billingPlans).values({ slug: "starter", name: "Starter", description: "Starter plan" });
   await db.insert(schema.appSettings).values({ id: 1, falMode, falBudgetUsd: "100" });
   const user = await makeUser({ clerkId: "customer", email: "customer@example.test", creditBalance: 10 });
+  await putOnPlan(user.id, "team");
   const project = await makeProject(user.id);
   objects.set("u/source.jpg", await image(64, 48));
   return { user, project };

@@ -5,6 +5,7 @@ import {
   defaultStudioConfig,
   featureDenial,
   legacyCreditPrices,
+  planIncludesFeature,
   STUDIO_FEATURES,
   type CreditPrices,
   type RenderEngineMode,
@@ -152,6 +153,9 @@ const DEFAULT_MESSAGES: Record<StudioFeatureDenial, (label: string) => string> =
   rollout: (label) => `${label} isn't available on your account yet.`,
 };
 
+/** For a feature outside the user's plan (see PLAN_FEATURES), which no rule can switch on. */
+const PLAN_MESSAGE = (label: string) => `${label} comes with a paid plan. Upgrade to use it.`;
+
 function labelFor(key: StudioFeatureKey): string {
   return STUDIO_FEATURES.find((feature) => feature.key === key)?.label ?? key;
 }
@@ -162,6 +166,7 @@ export function featureAvailability(config: StudioConfig, user: UserRow, planSlu
     FEATURE_KEYS.map((key) => {
       const paused = bypasses(user) ? null : pausedModel(config, mode, key);
       if (paused) return [key, { available: false, reason: "paused", message: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)) }];
+      if (!bypasses(user) && !planIncludesFeature(planSlug, key)) return [key, { available: false, reason: "plan", message: PLAN_MESSAGE(labelFor(key)) }];
       const rule = config.features[key];
       const denial = bypasses(user) ? null : featureDenial(rule, { id: user.id, planSlug }, key);
       // An observe-mode rule never refuses, so the feature is available.
@@ -197,6 +202,10 @@ export async function checkFeatures(
   for (const key of keys) {
     const paused = pausedModel(revision.config, mode, key);
     if (paused) return { code: "feature_disabled", error: paused.message ?? DEFAULT_MESSAGES.paused(labelFor(key)), status: 403, feature: key, reason: "paused" };
+  }
+  // Nor is there for a feature the user's plan doesn't include.
+  for (const key of keys) {
+    if (!planIncludesFeature(planSlug, key)) return { code: "feature_disabled", error: PLAN_MESSAGE(labelFor(key)), status: 403, feature: key, reason: "plan" };
   }
   const observed: { featureKey: StudioFeatureKey; reason: Exclude<StudioFeatureDenial, "paused"> }[] = [];
   let refusal: FeatureRefusal | null = null;

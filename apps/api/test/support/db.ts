@@ -47,6 +47,13 @@ export async function makeUser(overrides: Partial<typeof schema.users.$inferInse
   return user!;
 }
 
+/** Moves a user made by makeUser onto a plan, creating the plan if it doesn't exist yet. */
+export async function putOnPlan(userId: string, slug: string) {
+  let [plan] = await db.select({ id: schema.billingPlans.id }).from(schema.billingPlans).where(eq(schema.billingPlans.slug, slug));
+  plan ??= (await db.insert(schema.billingPlans).values({ slug, name: slug, description: `${slug} plan`, priceCents: 2000, concurrentRenderLimit: 8 }).returning({ id: schema.billingPlans.id }))[0]!;
+  await db.update(schema.userEntitlements).set({ planId: plan.id }).where(eq(schema.userEntitlements.userId, userId));
+}
+
 export async function makeProject(ownerId: string) {
   const [project] = await db.insert(schema.projects).values({ ownerId, name: `Project ${next()}` }).returning();
   return project!;

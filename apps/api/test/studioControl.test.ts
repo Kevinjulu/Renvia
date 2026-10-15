@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultStudioConfig, rolloutBucket, type AdminStudioControlResponse, type MeResponse, type StudioConfig } from "@renvia/types";
 import { callAdmin } from "./support/admin.js";
 import { callApi } from "./support/api.js";
-import { db, makeProject, makeUser } from "./support/db.js";
+import { db, makeProject, makeUser, putOnPlan } from "./support/db.js";
 
 // Studio Control: versioned feature rules enforced by the API, observe mode, approvals for
 // publishing, and scheduled maintenance windows.
@@ -53,6 +53,8 @@ beforeEach(async () => {
   await makeUser({ clerkId: "billing", email: "billing@renvia.test", role: "billing" });
   const customer = await makeUser({ clerkId: "customer", email: "customer@example.test", creditBalance: 50 });
   customerId = customer.id;
+  // On Premium, so every feature is in the plan and only Studio Control's rules decide.
+  await putOnPlan(customer.id, "team");
   projectId = (await makeProject(customer.id)).id;
 });
 
@@ -108,6 +110,27 @@ describe("feature rules", () => {
     const adminProject = await makeProject((await db.select().from(schema.users).where(eq(schema.users.clerkId, "admin")))[0]!.id);
     expect((await render("admin", { highRes: { target: "8k" } }, adminProject.id)).status).toBe(201);
     expect((await me()).features["export.8k"]).toEqual({ available: false, reason: "disabled", message: "8K is resting this week." });
+  });
+
+  it("keeps 4K and 8K output to the plans that include them, whatever the rules say", async () => {
+    // Several renders below; only the plan should decide, not the one-at-a-time cap.
+    await db.update(schema.users).set({ limitsExempt: true }).where(eq(schema.users.id, customerId));
+    await putOnPlan(customerId, "starter");
+    const free = await render("customer", { highRes: { target: "4k" } });
+    expect(free.status).toBe(403);
+    expect(await free.json()).toMatchObject({ code: "feature_disabled", feature: "export.4k", reason: "plan" });
+    expect((await me()).features["export.8k"]).toMatchObject({ available: false, reason: "plan" });
+    expect((await render("customer")).status).toBe(201);
+
+    await putOnPlan(customerId, "studio");
+    expect((await render("customer", { highRes: { target: "4k" } })).status).toBe(201);
+    expect(await (await render("customer", { highRes: { target: "8k" } })).json()).toMatchObject({ feature: "export.8k", reason: "plan" });
+    // Observe mode doesn't open it up either.
+    await publish("export.8k", { enforcement: "observe" });
+    expect((await render("customer", { highRes: { target: "8k" } })).status).toBe(403);
+
+    await putOnPlan(customerId, "team");
+    expect((await render("customer", { highRes: { target: "8k" } })).status).toBe(201);
   });
 
   it("limits a feature to chosen plans", async () => {
