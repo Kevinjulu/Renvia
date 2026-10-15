@@ -24,6 +24,29 @@ function shillings(usdCents: number, rate: number) {
   return Math.round((usdCents / 100) * rate) * 100;
 }
 
+const RETURN_KEY = "renvia.checkoutReturn";
+
+/** Remembers the Studio page a checkout started from; payment providers always return to Billing. */
+function rememberCheckoutReturn(path: string | undefined) {
+  try {
+    if (path && path.startsWith("/") && !path.startsWith("//")) sessionStorage.setItem(RETURN_KEY, path);
+    else sessionStorage.removeItem(RETURN_KEY);
+  } catch {
+    // Storage blocked: Billing just won't offer the way back.
+  }
+}
+
+/** The page to offer going back to after a checkout, read once. */
+export function takeCheckoutReturn(): string | null {
+  try {
+    const path = sessionStorage.getItem(RETURN_KEY);
+    sessionStorage.removeItem(RETURN_KEY);
+    return path && path.startsWith("/") && !path.startsWith("//") && path !== "/billing" ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 function renewalNote(item: CheckoutItem, method: PaymentMethod): string {
   if (item.kind === "credit_pack") return "One payment. The credits never expire.";
   const period = item.interval === "year" ? "year" : "month";
@@ -36,11 +59,14 @@ export function CheckoutDialog({
   catalog,
   createCheckout,
   onClose,
+  returnTo,
 }: {
   item: CheckoutItem;
   catalog: BillingCatalogResponse;
   createCheckout: (body: CreateCheckoutRequest) => Promise<CreateCheckoutResponse>;
   onClose: () => void;
+  /** The Studio page to offer going back to once the payment settles on Billing. */
+  returnTo?: string;
 }) {
   const methods = METHOD_ORDER.filter((method) => item.methods.includes(method));
   const [method, setMethod] = useState<PaymentMethod | null>(methods[0] ?? null);
@@ -72,6 +98,7 @@ export function CheckoutDialog({
         idempotencyKey: idempotencyKey.current,
       });
       if (!checkout.approvalUrl) throw new Error("The payment page isn't available");
+      rememberCheckoutReturn(returnTo);
       window.location.assign(checkout.approvalUrl);
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.detail ?? "Couldn't start the payment. Try again." : "Couldn't start the payment. Try again.");

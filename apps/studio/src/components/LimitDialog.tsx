@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { LimitCode, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { creditPricesFor } from "../lib/creditPrices";
+import { useUpgradeDialogStore } from "../lib/useUpgradeDialog";
 
 /** A refusal the studio can explain, lifted out of an ApiError. */
 export interface LimitRefusal {
@@ -225,6 +226,7 @@ export function LimitDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onDismiss]);
 
+  const openPlans = useUpgradeDialogStore((state) => state.openPlans);
   const copy = copyFor(refusal, me);
   const tone = TONE[copy.tone];
   const usage = usageLine(refusal);
@@ -285,12 +287,17 @@ export function LimitDialog({
 
         <div className="mt-5 flex justify-end gap-2.5">
           {outOfCredits && (
-            <a
-              href="/billing#plans"
+            <button
+              type="button"
+              onClick={() => {
+                onDismiss();
+                // Free accounts get more from a plan's monthly credits; paid ones usually just need a top-up.
+                openPlans({ tab: me.entitlement.plan.interval === "none" ? "plans" : "credits" });
+              }}
               className="mr-auto rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-secondary transition-colors hover:bg-surface-muted"
             >
-              See plans
-            </a>
+              {me.entitlement.plan.interval === "none" ? "See plans" : "Buy credits"}
+            </button>
           )}
           {showCredits && (
             <button

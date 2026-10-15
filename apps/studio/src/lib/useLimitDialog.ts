@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { limitRefusal, type LimitRefusal } from "../components/LimitDialog";
+import { reportUpgrade } from "./useUpgradeDialog";
 
 interface LimitDialogState {
   /** The refusal currently being explained, or null when nothing is blocked. */
@@ -28,6 +29,8 @@ export const useLimitDialogStore = create<LimitDialogState>((set) => ({
  * Callers that swallow errors can use the return value to stay quiet when it's covered.
  */
 export function reportLimit(error: unknown): boolean {
+  // Something their plan doesn't include gets the upgrade popup, not a dead end.
+  if (reportUpgrade(error)) return true;
   const refusal = limitRefusal(error);
   if (!refusal) return false;
   useLimitDialogStore.getState().show(refusal);

@@ -14,6 +14,7 @@ import { useApiClient } from "../../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { describeRenderFailure } from "../../canvas/utils/renderErrors";
 import { reportLimit } from "../../lib/useLimitDialog";
+import { downloadsLocked, upgradeTopicFor, useUpgradeDialogStore } from "../../lib/useUpgradeDialog";
 import { filledBuildingViews } from "../../canvas/buildingViews";
 import { useDownloadDialogStore } from "../../canvas/hooks/useDownloadDialogStore";
 import { jobProgress } from "../../canvas/utils/renderProgress";
@@ -97,10 +98,19 @@ export function RenderResultsPanel() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [upscaling, setUpscaling] = useState<UpscaleTarget | null>(null);
-  const prices = creditPricesFor(useAccountStore((state) => state.me));
-  const features = useAccountStore((state) => (state.me?.role === "admin" ? undefined : state.me?.features));
-  /** Studio Control's reason an upscale to `target` isn't available, or null. */
+  const me = useAccountStore((state) => state.me);
+  const prices = creditPricesFor(me);
+  const features = me?.role === "admin" ? undefined : me?.features;
+  const askUpgrade = useUpgradeDialogStore((state) => state.ask);
+  const lockedDownloads = downloadsLocked(me);
+  /** The upgrade that unlocks an upscale to `target`, when the user's plan is what stops it. */
+  const upscaleUpgrade = (target: "4k" | "8k") => {
+    const key = target === "8k" ? "export.8k" : "export.4k";
+    return upgradeTopicFor(key, features?.[key]);
+  };
+  /** Studio Control's reason an upscale to `target` isn't available, or null. A plan limit isn't one: that opens the upgrade. */
   const upscaleBlocked = (target: "4k" | "8k") => {
+    if (upscaleUpgrade(target)) return null;
     const blocked = [features?.["render.upscale"], features?.[target === "8k" ? "export.8k" : "export.4k"]].find((feature) => feature?.available === false);
     return blocked ? blocked.message ?? "Not available right now" : null;
   };
@@ -359,7 +369,7 @@ export function RenderResultsPanel() {
               type="button"
               title={job.resultImageUrl ? "Download" : "Download source"}
               aria-label={job.resultImageUrl ? "Download" : "Download source"}
-              onClick={() => openDownload(job.id)}
+              onClick={() => (lockedDownloads ? askUpgrade("download") : openDownload(job.id))}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12.5h10" />
@@ -487,8 +497,19 @@ export function RenderResultsPanel() {
                 {(["4k", "8k"] as const).map((target) => {
                   const credits = upscaleCredits(target, prices);
                   return (
-                    <button key={target} type="button" className="rp-btn" disabled={upscaling !== null || upscaleBlocked(target) !== null} title={upscaleBlocked(target) ?? undefined} onClick={() => void handleUpscale(target)}>
-                      {upscaling === target ? "Starting…" : `${target.toUpperCase()} · ${plural(credits, "credit")}`}
+                    <button
+                      key={target}
+                      type="button"
+                      className={`rp-btn ${upscaleUpgrade(target) ? "is-locked" : ""}`}
+                      disabled={upscaling !== null || upscaleBlocked(target) !== null}
+                      title={upscaleUpgrade(target) ? `${target.toUpperCase()} comes with a paid plan` : upscaleBlocked(target) ?? undefined}
+                      onClick={() => {
+                        const topic = upscaleUpgrade(target);
+                        if (topic) askUpgrade(topic);
+                        else void handleUpscale(target);
+                      }}
+                    >
+                      {upscaling === target ? "Starting…" : upscaleUpgrade(target) ? `${target.toUpperCase()} · Upgrade` : `${target.toUpperCase()} · ${plural(credits, "credit")}`}
                     </button>
                   );
                 })}

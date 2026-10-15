@@ -35,7 +35,22 @@ function CheckIcon() {
   );
 }
 
-export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalogResponse; me: MeResponse | null; onChoose: (item: CheckoutItem) => void }) {
+export function PlansSection({
+  catalog,
+  me,
+  onChoose,
+  highlight = null,
+  variant = "page",
+}: {
+  catalog: BillingCatalogResponse;
+  me: MeResponse | null;
+  onChoose: (item: CheckoutItem) => void;
+  /** The plan that unlocks what the user just tried, marked instead of the usual best value. */
+  highlight?: string | null;
+  /** In the Studio's plans popup: no heading or Enterprise card, just the plans to choose from. */
+  variant?: "page" | "dialog";
+}) {
+  const inDialog = variant === "dialog";
   const entitlement = me?.entitlement ?? null;
   const [interval, setBillingInterval] = useState<BillingInterval>(entitlement?.billingInterval ?? "month");
   const plans = catalog.plans;
@@ -48,12 +63,16 @@ export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalo
     : websiteUrl("/pricing#pricing", "signed-in");
 
   return (
-    <section className="billing-section" id="plans" aria-labelledby="plans-title">
+    <section className={`billing-section ${inDialog ? "is-dialog" : ""}`} id={inDialog ? undefined : "plans"} aria-labelledby={inDialog ? undefined : "plans-title"} aria-label={inDialog ? "Plans" : undefined}>
       <header className="billing-section-heading plans-heading">
-        <div>
-          <h2 id="plans-title">Plans</h2>
-          <p>Every plan includes the full Studio. Paid plans add monthly credits, clean downloads and higher limits.</p>
-        </div>
+        {inDialog ? (
+          <p className="plans-dialog-lead">Every plan includes the full Studio. Paid plans add monthly credits, clean downloads and higher resolutions.</p>
+        ) : (
+          <div>
+            <h2 id="plans-title">Plans</h2>
+            <p>Every plan includes the full Studio. Paid plans add monthly credits, clean downloads and higher limits.</p>
+          </div>
+        )}
         {yearlySold && (
           <div className="plans-interval" role="radiogroup" aria-label="Billing period">
             <button type="button" role="radio" aria-checked={interval === "month"} className={interval === "month" ? "is-active" : ""} onClick={() => setBillingInterval("month")}>
@@ -66,10 +85,10 @@ export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalo
         )}
       </header>
 
-      <div className="plans-grid">
+      <div className={`plans-grid ${inDialog ? "is-dialog" : ""}`}>
         {plans.map((plan) => {
           const free = plan.slug === FREE_SLUG || plan.priceCents === 0;
-          const featured = plan.slug === FEATURED_SLUG;
+          const featured = plan.slug === (highlight ?? FEATURED_SLUG);
           const yearly = interval === "year" && plan.yearlyPriceCents !== null && !free;
           const shownCents = yearly ? Math.round(plan.yearlyPriceCents! / 12) : plan.priceCents;
           const isCurrent = plan.slug === currentSlug && (free || currentInterval === null || currentInterval === interval);
@@ -91,7 +110,7 @@ export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalo
 
           return (
             <article key={plan.slug} className={`plan-card ${featured ? "is-featured" : ""} ${isCurrent ? "is-current" : ""}`}>
-              {featured && <span className="billing-pack-badge">Best value</span>}
+              {featured && <span className="billing-pack-badge">{highlight ? "Unlocks this" : "Best value"}</span>}
               <h3>{plan.name}</h3>
               <p className="plan-description">{plan.description}</p>
               <div className="plan-price">
@@ -123,6 +142,7 @@ export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalo
           );
         })}
 
+        {!inDialog && (
         <article className="plan-card is-enterprise">
           <h3>Enterprise</h3>
           <p className="plan-description">For studios and teams of five or more.</p>
@@ -143,6 +163,7 @@ export function PlansSection({ catalog, me, onChoose }: { catalog: BillingCatalo
             ))}
           </ul>
         </article>
+        )}
       </div>
     </section>
   );

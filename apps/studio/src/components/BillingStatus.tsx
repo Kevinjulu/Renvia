@@ -1,9 +1,9 @@
-import { useNavigate } from "react-router-dom";
 import { useAccountStore } from "../lib/useAccountStore";
+import { useUpgradeDialogStore } from "../lib/useUpgradeDialog";
 
 /** Credits pill + Upgrade button — shared between the dashboard and canvas top bars. */
 export function BillingStatus() {
-  const navigate = useNavigate();
+  const openPlans = useUpgradeDialogStore((state) => state.openPlans);
   const me = useAccountStore((state) => state.me);
   const isAdmin = me?.role === "admin";
   const credits = me?.creditBalance ?? 0;
@@ -24,7 +24,7 @@ export function BillingStatus() {
       {!isAdmin && (
         <button
           type="button"
-          onClick={() => navigate("/billing")}
+          onClick={() => openPlans()}
           className="group flex items-center gap-1.5 rounded-full bg-primary py-1.5 pl-2.5 pr-3.5 text-sm font-medium text-white transition-all duration-150 hover:opacity-90 active:scale-[0.97]"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" className="text-glow transition-transform duration-150 group-hover:scale-110">

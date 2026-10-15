@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BillingCatalogResponse, BillingCheckout, CreateCheckoutRequest, CreateCheckoutResponse, CreditPack, MeResponse, PaymentMethod } from "@renvia/types";
+import type { BillingCatalogResponse, BillingCheckout, CreateCheckoutRequest, CreateCheckoutResponse, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { refreshAccount, useAccountStore } from "../lib/useAccountStore";
 import { packOutcome } from "./billingPresentation";
 import { creditPricesFor } from "../lib/creditPrices";
-import { CheckoutDialog, formatPrice, type CheckoutItem } from "./CheckoutDialog";
+import { CheckoutDialog, formatPrice, takeCheckoutReturn, type CheckoutItem } from "./CheckoutDialog";
+import { CreditPacksGrid, packMethodsFor } from "./CreditPacksGrid";
 import { PlansSection } from "./PlansSection";
 import { CreditIcon, RefundIcon, SparkleIcon } from "./icons";
 
@@ -75,15 +76,10 @@ export function BillingSection({ api }: { api: StudioApi }) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  const bestValueSku = useMemo(() => {
-    if (!catalog || catalog.creditPacks.length < 2) return null;
-    return catalog.creditPacks.reduce((best, pack) => (pack.priceCents / pack.credits < best.priceCents / best.credits ? pack : best)).sku;
-  }, [catalog]);
+  // Where a checkout started from the Studio popup should take them back to, once it settles.
+  const [backTo, setBackTo] = useState<string | null>(null);
   const packNames = useMemo(() => new Map(catalog?.creditPacks.map((pack) => [pack.sku, pack.name]) ?? []), [catalog]);
-  const packMethods = useMemo(
-    () => (catalog ? (Object.keys(catalog.paymentMethods) as PaymentMethod[]).filter((method) => catalog.paymentMethods[method]) : []),
-    [catalog],
-  );
+  const packMethods = useMemo(() => (catalog ? packMethodsFor(catalog) : []), [catalog]);
 
   const loadCatalog = useCallback(async () => setCatalog(await api.getBillingCatalog()), [api]);
 
@@ -93,6 +89,9 @@ export function BillingSection({ api }: { api: StudioApi }) {
     const params = new URLSearchParams(window.location.search);
     const checkoutId = params.get("checkout");
     const cancelled = params.get("paypal") === "cancel" || params.get("cancelled") === "1";
+    // Read once and cleared, so only set it when there is one (StrictMode runs this twice).
+    const back = checkoutId ? takeCheckoutReturn() : null;
+    if (back) setBackTo(back);
     const settle = async () => {
       if (checkoutId && cancelled) {
         await api.cancelCheckout(checkoutId).catch(() => undefined);
@@ -150,8 +149,6 @@ export function BillingSection({ api }: { api: StudioApi }) {
     }
   };
 
-  const buyPack = (pack: CreditPack) => setCheckout({ kind: "credit_pack", product: pack.sku, name: pack.name, usdCents: pack.priceCents, methods: packMethods });
-
   const prices = creditPricesFor(me);
   const standardCost = prices.render;
   const entitlement = me?.entitlement ?? null;
@@ -174,7 +171,16 @@ export function BillingSection({ api }: { api: StudioApi }) {
 
   return (
     <div className="billing-page">
-      {notice && <div className="billing-notice is-success" role="status">{notice}</div>}
+      {notice && (
+        <div className="billing-notice is-success" role="status">
+          {notice}
+          {backTo && (
+            <a className="billing-notice-action" href={backTo}>
+              Back to your project →
+            </a>
+          )}
+        </div>
+      )}
       {error && <div className="billing-notice is-error" role="alert">{error}</div>}
 
       <section className="billing-card billing-summary" aria-label="Account summary">
@@ -264,36 +270,7 @@ export function BillingSection({ api }: { api: StudioApi }) {
           <h2 id="credit-packs-title">Top up credits</h2>
           <p>One-time purchases by card, M-Pesa or PayPal. Credits are added once payment is confirmed and never expire.</p>
         </header>
-        {catalog.creditPacks.length === 0 ? (
-          <div className="billing-empty">
-            <p className="billing-empty-title">No credit packs available yet</p>
-            <p>Check back soon — new packs will appear here.</p>
-          </div>
-        ) : (
-          <div className="billing-pack-grid">
-            {catalog.creditPacks.map((pack) => {
-              const isBestValue = pack.sku === bestValueSku;
-              const outcome = packOutcome(pack.credits, standardCost);
-              return (
-                <article key={pack.sku} className={`billing-pack ${isBestValue ? "is-best-value" : ""}`}>
-                  {isBestValue && <span className="billing-pack-badge">Best value</span>}
-                  <h3>{pack.name}</h3>
-                  <div className="billing-pack-price">
-                    <strong>{formatPrice(pack.priceCents, pack.currency)}</strong>
-                    <span>{pack.credits} credits</span>
-                  </div>
-                  <p className="billing-pack-detail">
-                    {outcome.renders === null ? "Standard renders currently require no credits." : `Up to ${outcome.renderLabel}.`} {outcome.guidance}
-                  </p>
-                  <p className="billing-pack-unit">{formatPrice(Math.round(pack.priceCents / pack.credits), pack.currency)} per credit</p>
-                  <button type="button" disabled={!anyMethod} onClick={() => buyPack(pack)}>
-                    {anyMethod ? "Buy credits" : "Checkout coming soon"}
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        )}
+        <CreditPacksGrid catalog={catalog} standardCost={standardCost} onChoose={setCheckout} />
       </section>
 
       <section className="billing-section" aria-labelledby="billing-history-title">

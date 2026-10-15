@@ -62,6 +62,9 @@ export class ApiError extends Error {
     readonly limit: number | null = null,
     readonly used: number | null = null,
     readonly requestId: string | null = null,
+    /** For feature_disabled: the Studio feature refused and why ("plan", "disabled", …). */
+    readonly feature: string | null = null,
+    readonly reason: string | null = null,
   ) {
     super(`API request failed: ${status}${code ? ` (${code})` : ""}`);
   }
@@ -99,7 +102,7 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
     const response = await fetchWithTimeout(`${API_BASE_URL}/api${path}`, { ...init, headers });
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
-        | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown }
+        | { code?: unknown; error?: unknown; limit?: unknown; used?: unknown; feature?: unknown; reason?: unknown }
         | null;
       throw new ApiError(
         response.status,
@@ -108,6 +111,8 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
         numberOrNull(body?.limit),
         numberOrNull(body?.used),
         response.headers.get("X-Request-Id"),
+        typeof body?.feature === "string" ? body.feature : null,
+        typeof body?.reason === "string" ? body.reason : null,
       );
     }
     return response.json() as Promise<T>;
@@ -123,7 +128,7 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
 }
 
 function apiErrorFromBody(status: number, text: string, requestId: string | null = null) {
-  let body: { code?: unknown; error?: unknown; limit?: unknown; used?: unknown } | null = null;
+  let body: { code?: unknown; error?: unknown; limit?: unknown; used?: unknown; feature?: unknown; reason?: unknown } | null = null;
   try {
     body = JSON.parse(text);
   } catch {
@@ -136,6 +141,8 @@ function apiErrorFromBody(status: number, text: string, requestId: string | null
     numberOrNull(body?.limit),
     numberOrNull(body?.used),
     requestId,
+    typeof body?.feature === "string" ? body.feature : null,
+    typeof body?.reason === "string" ? body.reason : null,
   );
 }
 

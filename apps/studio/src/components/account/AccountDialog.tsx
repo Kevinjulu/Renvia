@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 import { useSession, useUser } from "@clerk/react";
 import type { CreditLedgerEntry, CreditLedgerReason } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
@@ -7,6 +6,7 @@ import { formatRelativeTime } from "../../lib/relativeTime";
 import { MIN_PASSWORD_LENGTH } from "../../lib/finishAuth";
 import { creditsLeftPercent, loadCreditHistory, planLabel, useAccountStore } from "../../lib/useAccountStore";
 import { useFocusTrap } from "../../lib/useFocusTrap";
+import { useUpgradeDialogStore, type PlansTab } from "../../lib/useUpgradeDialog";
 import { PasswordStrength } from "../auth/PasswordStrength";
 import { Avatar } from "./Avatar";
 
@@ -327,7 +327,7 @@ function SecurityTab() {
   );
 }
 
-function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
+function PlanTab({ onPlans }: { onPlans: (tab: PlansTab) => void }) {
   const me = useAccountStore((state) => state.me);
   const isAdmin = me?.role === "admin";
   const credits = me?.creditBalance ?? 0;
@@ -358,7 +358,7 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
           {memberSince && <small>Member since {memberSince}</small>}
         </div>
         {!isAdmin && (
-          <button type="button" className="account-button is-primary" onClick={() => onNavigate("/billing")}>
+          <button type="button" className="account-button is-primary" onClick={() => onPlans("plans")}>
             Upgrade plan
           </button>
         )}
@@ -388,7 +388,7 @@ function PlanTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                 <span style={{ width: `${percent}%` }} />
               </div>
             )}
-            <button type="button" className="account-button" onClick={() => onNavigate("/billing")}>
+            <button type="button" className="account-button" onClick={() => onPlans("credits")}>
               Buy more credits
             </button>
           </div>
@@ -431,7 +431,6 @@ interface AccountDialogProps {
 /** "Manage account" — Renvia's own replacement for Clerk's UserProfile modal. */
 export function AccountDialog({ initialTab = "profile", onClose }: AccountDialogProps) {
   const [tab, setTab] = useState<AccountTab>(initialTab);
-  const navigate = useNavigate();
   const panelRef = useFocusTrap<HTMLDivElement>(true, ".account-dialog-nav .is-active");
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -449,9 +448,10 @@ export function AccountDialog({ initialTab = "profile", onClose }: AccountDialog
     };
   }, []);
 
-  const goTo = (path: string) => {
+  const openPlans = useUpgradeDialogStore((state) => state.openPlans);
+  const showPlans = (tab: PlansTab) => {
     onClose();
-    navigate(path);
+    openPlans({ tab });
   };
 
   const active = TABS.find((item) => item.id === tab)!;
@@ -496,7 +496,7 @@ export function AccountDialog({ initialTab = "profile", onClose }: AccountDialog
           <div className="account-dialog-content">
             {tab === "profile" && <ProfileTab />}
             {tab === "security" && <SecurityTab />}
-            {tab === "plan" && <PlanTab onNavigate={goTo} />}
+            {tab === "plan" && <PlanTab onPlans={showPlans} />}
           </div>
         </div>
       </div>

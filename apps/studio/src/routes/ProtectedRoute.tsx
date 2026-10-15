@@ -9,6 +9,8 @@ import { LimitDialog } from "../components/LimitDialog";
 import { AccountDialog } from "../components/account/AccountDialog";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
+import { UpgradeDialog } from "../components/upgrade/UpgradeDialog";
+import { PlansDialog } from "../components/upgrade/PlansDialog";
 
 export function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -71,6 +73,8 @@ export function ProtectedRoute() {
         />
       )}
       {creditsOpen && <AccountDialog initialTab="plan" onClose={() => setCreditsOpen(false)} />}
+      <UpgradeDialog />
+      <PlansDialog />
     </>
   );
 }

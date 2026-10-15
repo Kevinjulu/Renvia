@@ -12,6 +12,7 @@ import { ApiError, useApiClient } from "../../lib/apiClient";
 import { creditPricesFor } from "../../lib/creditPrices";
 import { limitRefusal, type LimitRefusal } from "../../components/LimitDialog";
 import { reportLimit, useLimitDialogStore } from "../../lib/useLimitDialog";
+import { upgradeTopicFor, useUpgradeDialogStore } from "../../lib/useUpgradeDialog";
 import { refreshAccount, useAccountStore } from "../../lib/useAccountStore";
 import { useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
@@ -160,6 +161,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const isMaintenance = Boolean(me?.maintenanceRenders) && !isAdmin;
   // A Studio Control rule switched off something this request uses (the API refuses it too).
   const unavailableFeature = me && !isAdmin ? featuresForRender(costSettings).map((key) => me.features?.[key]).find((feature) => feature && !feature.available) ?? null : null;
+  // When it's the plan that leaves it out, the way forward is the upgrade, not a dead end.
+  const upgradeTopic = me && !isAdmin ? featuresForRender(costSettings).map((key) => upgradeTopicFor(key, me.features?.[key])).find(Boolean) ?? null : null;
+  const askUpgrade = useUpgradeDialogStore((state) => state.ask);
   const hasTarget = isEdit ? editRender !== null : filled.length > 0;
   const editProblem = isEdit ? draft.problem : null;
   // A render needs direction beyond the elevation itself: a prompt or a reference image.
@@ -185,6 +189,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
     if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
     if (isDisabled) return "Account disabled";
     if (isMaintenance) return "Temporarily unavailable";
+    if (upgradeTopic) return "Upgrade to use";
     if (unavailableFeature) return "Not available";
     if (isOverBudget) return "Over render budget";
     if (isOutOfCredits) return creditBalance === 0 ? "Out of credits" : "Not enough credits";
@@ -368,6 +373,10 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           type="button"
           disabled={!canSubmit}
           onClick={() => {
+            if (upgradeTopic) {
+              askUpgrade(upgradeTopic);
+              return;
+            }
             if (blocked) {
               showLimit(blocked);
               return;

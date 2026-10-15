@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useDownloadDialogStore } from "./hooks/useDownloadDialogStore";
 import { useRenderJobsStore } from "./hooks/useRenderJobsStore";
 import { useAccountStore } from "../lib/useAccountStore";
+import { downloadsLocked, useUpgradeDialogStore } from "../lib/useUpgradeDialog";
 import { PROTECTED_IMAGES } from "../lib/protectedImages";
 
 type Format = "jpeg" | "png" | "webp";
@@ -73,9 +73,14 @@ export function DownloadDialog() {
   const highRes = job?.settings?.highRes;
   const imageUrl = highRes?.imageUrl ?? job?.resultImageUrl ?? job?.sourceImageUrl ?? null;
   const me = useAccountStore((state) => state.me);
-  const navigate = useNavigate();
-  // Downloading and copying are paid-plan features; free accounts see why instead of the options.
-  const locked = me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
+  // Downloading and copying are paid-plan features; free accounts get the upgrade popup instead.
+  const locked = downloadsLocked(me);
+  const askUpgrade = useUpgradeDialogStore((state) => state.ask);
+  useEffect(() => {
+    if (!jobId || !locked) return;
+    close();
+    askUpgrade("download");
+  }, [jobId, locked, close, askUpgrade]);
 
   const [render, setRender] = useState<{ blob: Blob; bitmap: ImageBitmap } | null>(null);
   const [source, setSource] = useState<ImageBitmap | null>(null);
@@ -91,7 +96,7 @@ export function DownloadDialog() {
 
   // Reset for each render opened.
   useEffect(() => {
-    if (!job || !imageUrl) return;
+    if (!job || !imageUrl || locked) return;
     let cancelled = false;
     setRender(null);
     setSource(null);
@@ -203,7 +208,7 @@ export function DownloadDialog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [render, format, edge, layout, compareReady]);
 
-  if (!jobId || !job || !imageUrl) return null;
+  if (!jobId || !job || !imageUrl || locked) return null;
 
   const outputSize = (() => {
     if (!original) return null;
@@ -276,44 +281,7 @@ export function DownloadDialog() {
               </svg>
             </button>
           </header>
-          {locked ? (
-            <div className="dl-locked">
-              <span className="dl-locked-icon" aria-hidden="true">
-                <svg viewBox="0 0 16 16">
-                  <rect x="3" y="7" width="10" height="7" rx="1.5" />
-                  <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-                </svg>
-              </span>
-              <h3>Downloads come with a paid plan</h3>
-              <p>
-                On the free plan you can render, edit and compare as much as your credits allow, but renders stay in the Studio. A paid plan
-                lets you download and copy them as clean, watermark-free files.
-              </p>
-              <ul>
-                <li>JPG, PNG or WebP, at full resolution</li>
-                <li>Before & after layouts for client reviews</li>
-                <li>Every render you've already made, not just new ones</li>
-              </ul>
-              <div className="dl-actions">
-                <footer>
-                  <button type="button" className="dl-secondary" onClick={close}>
-                    Not now
-                  </button>
-                  <button
-                    ref={downloadRef}
-                    type="button"
-                    className="dl-primary"
-                    onClick={() => {
-                      close();
-                      navigate("/billing#plans");
-                    }}
-                  >
-                    See plans
-                  </button>
-                </footer>
-              </div>
-            </div>
-          ) : loadError ? (
+          {loadError ? (
             <p className="dl-error">Couldn't load this image. Check your connection and try again.</p>
           ) : (
             <>
