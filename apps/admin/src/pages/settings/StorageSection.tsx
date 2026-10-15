@@ -11,7 +11,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1e3)} KB`;
 }
 
-const KIND_LABELS = { render: "Renders & 4K/8K", upload: "Uploads & references", watermark: "Watermarked copies" } as const;
+const KIND_LABELS = { render: "Renders & 4K/8K", upload: "Uploads & references", watermark: "Watermarked copies", feedback: "Beta screenshots" } as const;
 
 /**
  * Image storage against its cap. Cloudflare R2's free tier is 10 GB; the cap stops new uploads
@@ -41,7 +41,7 @@ export function StorageSection({ data, draft, fieldErrors, update }: { data: Adm
       <div className="h-2 overflow-hidden rounded-full bg-surface-muted" role="meter" aria-valuemin={0} aria-valuemax={capBytes} aria-valuenow={usedBytes} aria-label="Image storage used">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${ratio * 100}%` }} />
       </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         {(Object.keys(KIND_LABELS) as (keyof typeof KIND_LABELS)[]).map((kind) => (
           <div key={kind}>
             <dt className="text-faint">{KIND_LABELS[kind]}</dt>

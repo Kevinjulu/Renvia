@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
+import { FlaskConical, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -124,6 +124,28 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Failures and recovery",
     banner: "/banners/exterior-3.jpg",
     roles: ["support", "billing", "admin"],
+  },
+  {
+    to: "/beta",
+    label: "Beta program",
+    icon: FlaskConical,
+    end: false,
+    title: "Beta program",
+    description: "Private testing programs: testers, invitations, credits, missions, announcements and the fal budget.",
+    hint: "Testers, credits & budget",
+    banner: "/banners/cabin.jpg",
+    roles: ["analyst", "support", "billing", "admin"],
+  },
+  {
+    to: "/beta-feedback",
+    label: "Beta feedback",
+    icon: MessageSquareWarning,
+    end: false,
+    title: "Beta feedback",
+    description: "Every tester report with their marks on the render, diagnostics and thread — triage, reply and resolve.",
+    hint: "Tester reports & triage",
+    banner: "/banners/exterior-2.jpg",
+    roles: ["analyst", "support", "billing", "admin"],
   },
   {
     to: "/approvals",

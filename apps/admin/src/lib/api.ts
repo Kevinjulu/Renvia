@@ -1,6 +1,17 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminBetaAnnouncement,
+  AdminBetaEnrollment,
+  AdminBetaFeedbackDetail,
+  AdminBetaFeedbackListResponse,
+  AdminBetaInvitation,
+  AdminBetaInvitationCreated,
+  AdminBetaMission,
+  AdminBetaProgram,
+  AdminBetaProgramDetailResponse,
+  AdminBetaProgramsResponse,
+  BetaMissionRule,
   AdminCommercialChangeResponse,
   AdminCreditPackTerms,
   AdminModelsResponse,
@@ -126,6 +137,40 @@ export function useAdminApi() {
     () => ({
       getMe: () => request<MeResponse>(getToken, "/me"),
       getOverview: () => request<AdminOverviewResponse>(getToken, "/admin/overview"),
+      // ── Beta program ──
+      listBetaPrograms: () => request<AdminBetaProgramsResponse>(getToken, "/admin/beta/programs"),
+      getBetaProgram: (id: string) => request<AdminBetaProgramDetailResponse>(getToken, `/admin/beta/programs/${id}`),
+      createBetaProgram: (body: Record<string, unknown>) => request<AdminBetaProgram>(getToken, "/admin/beta/programs", { method: "POST", body: JSON.stringify(body) }),
+      updateBetaProgram: (id: string, body: Record<string, unknown>) => request<AdminBetaProgram>(getToken, `/admin/beta/programs/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      setBetaProgramStatus: (id: string, status: "active" | "paused" | "ended", reason: string) =>
+        request<AdminBetaProgram>(getToken, `/admin/beta/programs/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),
+      setBetaBudget: (id: string, budgetUsd: number, reason: string) =>
+        request<AdminBetaProgram | { pendingApproval: true; approvalId: string }>(getToken, `/admin/beta/programs/${id}/budget`, { method: "POST", body: JSON.stringify({ budgetUsd, reason }) }),
+      inviteBetaTester: (programId: string, body: Record<string, unknown>) =>
+        request<AdminBetaInvitationCreated>(getToken, `/admin/beta/programs/${programId}/invitations`, { method: "POST", body: JSON.stringify(body) }),
+      inviteBetaTestersBulk: (programId: string, body: { emails: string[]; sendEmail: boolean; cohort?: string | null }) =>
+        request<{ results: ({ email: string; ok: true } & AdminBetaInvitationCreated | { email: string; ok: false; error: string; code: string })[] }>(getToken, `/admin/beta/programs/${programId}/invitations/bulk`, { method: "POST", body: JSON.stringify(body) }),
+      revokeBetaInvitation: (id: string, reason: string) => request<AdminBetaInvitation>(getToken, `/admin/beta/invitations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }),
+      setBetaEnrollmentStatus: (id: string, status: "active" | "suspended" | "completed" | "revoked", reason: string) =>
+        request<AdminBetaEnrollment>(getToken, `/admin/beta/enrollments/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),
+      extendBetaEnrollment: (id: string, endsAt: string | null, reason: string) =>
+        request<AdminBetaEnrollment>(getToken, `/admin/beta/enrollments/${id}/extend`, { method: "POST", body: JSON.stringify({ endsAt, reason }) }),
+      grantBetaCredits: (programId: string, body: { enrollmentIds: string[]; amount: number; note: string; idempotencyKey: string }) =>
+        request<{ results: { enrollmentId: string; status: string; reason?: string }[] } | { pendingApproval: true; approvalId: string }>(getToken, `/admin/beta/programs/${programId}/grant`, { method: "POST", body: JSON.stringify(body) }),
+      createBetaMission: (programId: string, body: { title: string; instructions: string; rule: BetaMissionRule; required: boolean; position: number }) =>
+        request<AdminBetaMission>(getToken, `/admin/beta/programs/${programId}/missions`, { method: "POST", body: JSON.stringify(body) }),
+      deleteBetaMission: (id: string) => request<{ deleted: true }>(getToken, `/admin/beta/missions/${id}`, { method: "DELETE" }),
+      createBetaAnnouncement: (programId: string, body: { title: string; body: string; severity: "info" | "important" }) =>
+        request<AdminBetaAnnouncement>(getToken, `/admin/beta/programs/${programId}/announcements`, { method: "POST", body: JSON.stringify(body) }),
+      deleteBetaAnnouncement: (id: string) => request<{ deleted: true }>(getToken, `/admin/beta/announcements/${id}`, { method: "DELETE" }),
+      listBetaFeedback: (params: { programId?: string; status?: string; category?: string; severity?: string; knownIssue?: string; assigneeId?: string; page?: number }) =>
+        request<AdminBetaFeedbackListResponse>(getToken, `/admin/beta/feedback${query(params)}`),
+      getBetaFeedback: (id: string) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`),
+      updateBetaFeedback: (id: string, body: Record<string, unknown>) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      commentBetaFeedback: (id: string, body: string, visibility: "tester" | "internal") =>
+        request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}/comments`, { method: "POST", body: JSON.stringify({ body, visibility }) }),
+      requestBetaFeedbackInfo: (id: string, body: string) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}/request-info`, { method: "POST", body: JSON.stringify({ body }) }),
+      markBetaFeedbackDuplicate: (id: string, of: string) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}/duplicate`, { method: "POST", body: JSON.stringify({ of }) }),
       listUsers: (params: {
         search?: string;
         role?: "user" | "analyst" | "support" | "billing" | "admin";

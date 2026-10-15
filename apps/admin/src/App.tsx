@@ -23,6 +23,9 @@ import { IncidentsPage } from "./pages/IncidentsPage";
 import { FinancialsPage } from "./pages/FinancialsPage";
 import { OperationsPage } from "./pages/OperationsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { BetaProgramsPage } from "./pages/beta/BetaProgramsPage";
+import { BetaProgramPage } from "./pages/beta/BetaProgramPage";
+import { BetaFeedbackPage } from "./pages/beta/BetaFeedbackPage";
 import { PerformancePage } from "./pages/PerformancePage";
 import { StudioControlPage } from "./pages/StudioControlPage";
 import { ModelsPage } from "./pages/ModelsPage";
@@ -105,6 +108,9 @@ function AdminGate() {
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
+          <Route path="/beta" element={<BetaProgramsPage />} />
+          <Route path="/beta/:id" element={<BetaProgramPage />} />
+          <Route path="/beta-feedback" element={<BetaFeedbackPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

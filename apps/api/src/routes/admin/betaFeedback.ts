@@ -5,7 +5,7 @@ import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminBetaFeedbackComment, AdminBetaFeedbackDetail, AdminBetaFeedbackListResponse, AdminBetaFeedbackSummary, BetaFeedbackStatus } from "@renvia/types";
 import { presentUploadUrl, signedUploadUrl } from "../../lib/storage.js";
-import { plusOnesSql } from "../../lib/betaFeedback.js";
+import { CLOSED_STATUSES, plusOnesSql } from "../../lib/betaFeedback.js";
 import { denyUnless } from "./permissions.js";
 import { adminEventInsert } from "./shared.js";
 import type { AdminContext } from "./context.js";
@@ -175,7 +175,8 @@ function statusWrites(db: Database, feedbackId: string, actorId: string, from: B
   return [
     db
       .update(schema.betaFeedback)
-      .set({ status: to, resolvedAt: to === "resolved" ? now : null, updatedAt: now, ...extra })
+      // Any closed outcome dates the close; screenshots are deleted 90 days after it.
+      .set({ status: to, resolvedAt: (CLOSED_STATUSES as readonly string[]).includes(to) ? now : null, updatedAt: now, ...extra })
       .where(eq(schema.betaFeedback.id, feedbackId)),
     db.insert(schema.betaFeedbackComments).values({
       feedbackId,

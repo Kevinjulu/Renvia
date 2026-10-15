@@ -1,8 +1,9 @@
 # Renvia Beta Testing System — implementation spec
 
 Status: approved 2026-10-15. Revised the same day for the first private program's scale.
-Stages 1–3 (§11) are built, tested and deployed (migration 0035 applied to production on
-2026-10-15). Stages 4–7 remain. No real invitations go out until the release gate (§12) passes.
+Stages 1–6 (§11) are built, tested and deployed (migration 0035 applied to production on
+2026-10-15). Stage 7 (end-to-end browser tests) remains, and no real invitations go out until the
+release gate (§12) passes.
 
 **First program defaults.** All are editable in admin; the $10 budget is the only spend authorized.
 
