@@ -4,6 +4,7 @@ import { Logo } from "../components/brand/Logo";
 import { Avatar } from "../components/account/Avatar";
 import { planLabel, useAccountStore } from "../lib/useAccountStore";
 import { CreditIcon, SettingsIcon } from "./icons";
+import { useBetaStore } from "../beta/useBetaStore";
 
 export type DashboardView = "home" | "all" | "favorites";
 interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; activeSection?: string; }
@@ -16,6 +17,7 @@ const icons: Record<string, JSX.Element> = {
   templates: <><rect x="4" y="3" width="7" height="8" rx="1"/><rect x="13" y="3" width="7" height="4" rx="1"/><rect x="4" y="13" width="7" height="8" rx="1"/><rect x="13" y="9" width="7" height="12" rx="1"/></>,
   assets: <><path d="M4 9 12 4l8 5v10H4Z"/><circle cx="12" cy="12" r="2"/></>,
   tools: <><path d="m4 20 8-8M14 5l2-2 5 5-2 2M13 6l5 5M5 5l2 2M4 8l4-4M16 16l4 4"/></>,
+  beta: <><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 15h9"/></>,
   team: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 6a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 5"/></>,
   settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
 };
@@ -26,12 +28,14 @@ export function DashboardSidebar({ view, onChangeView, activeSection }: Dashboar
   const navigate = useNavigate();
   const { user } = useUser();
   const me = useAccountStore((state) => state.me);
+  // Shown to testers, and to anyone with an invitation waiting.
+  const showBeta = useBetaStore((state) => state.tester !== null || state.invitations.length > 0);
   const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your account";
   return (
     <aside className="dashboard-sidebar">
       <Logo className="dashboard-logo" wordmarkClassName="text-[20px] text-white" />
       <nav className="dashboard-nav">
-        <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="favorites" label="Favorites" active={!activeSection && view === "favorites"} onClick={() => { onChangeView("favorites"); navigate("/dashboard?view=favorites"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>
+        <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="favorites" label="Favorites" active={!activeSection && view === "favorites"} onClick={() => { onChangeView("favorites"); navigate("/dashboard?view=favorites"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>{showBeta && <NavItem name="beta" label="Beta Program" active={activeSection === "beta"} onClick={() => navigate("/beta")}/>}
       </nav>
       <div className="dashboard-nav-divider" />
       <nav className="dashboard-nav dashboard-nav-secondary"><NavItem name="team" label="Team" active={activeSection === "team"} onClick={() => navigate("/team")}/><NavItem name="settings" label="Settings" active={activeSection === "settings"} onClick={() => navigate("/settings")}/></nav>

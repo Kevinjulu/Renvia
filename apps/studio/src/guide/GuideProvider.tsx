@@ -28,9 +28,9 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const setActiveTab = useCanvasStore((state) => state.setActiveTab);
 
   useEffect(() => {
-    const requested = searchParams.get("tour") === "1";
-    if (requested) {
-      startTour("orientation");
+    const requested = searchParams.get("tour");
+    if (requested === "1" || requested === "beta") {
+      startTour(requested === "beta" ? "beta" : "orientation");
       const next = new URLSearchParams(searchParams);
       next.delete("tour");
       setSearchParams(next, { replace: true });

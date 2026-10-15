@@ -1,6 +1,10 @@
 import { useMemo, useRef } from "react";
 import { useAuth } from "@clerk/react";
 import type {
+  BetaInvitationAccepted,
+  BetaInvitationPreview,
+  BetaMeResponse,
+  BetaMission,
   CreateCanvasNodeRequest,
   BillingCatalogResponse,
   BillingCheckout,
@@ -38,6 +42,13 @@ import type {
 } from "@renvia/types";
 import { reportClientError } from "../components/AppErrorHandling";
 import { ConnectionError, connectionErrorFrom, markApiReachable, markApiUnreachable } from "./connection";
+import { currentFunding } from "../beta/useBetaStore";
+
+/** Adds the tester's funding choice to a charged request; untouched for everyone else. */
+function withFunding<T extends object>(body: T): T {
+  const funding = currentFunding();
+  return funding ? { ...body, funding } : body;
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
@@ -214,7 +225,7 @@ function createApiClient(getToken: GetToken) {
       request<CreateRenderResponse>(getToken, "/renders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(withFunding(body)),
       }),
     repairPrompt: (prompt: string, sourceLocked = true) =>
       request<PromptRepairResponse>(getToken, "/renders/repair-prompt", {
@@ -226,14 +237,23 @@ function createApiClient(getToken: GetToken) {
       request<CreateUpscaleResponse>(getToken, `/renders/${id}/upscale`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(withFunding(body)),
       }),
     createSegmentation: (body: CreateSegmentationRequest) =>
       request<CreateSegmentationResponse>(getToken, "/segmentations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(withFunding(body)),
       }),
+    getBetaMe: () => request<BetaMeResponse>(getToken, "/beta/me"),
+    previewBetaInvitation: (token: string) => request<BetaInvitationPreview>(getToken, `/beta/invitations/preview?t=${encodeURIComponent(token)}`),
+    acceptBetaInvitation: (token: string) =>
+      request<BetaInvitationAccepted>(getToken, "/beta/invitations/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }),
+    acceptBetaInvitationById: (id: string) => request<BetaInvitationAccepted>(getToken, `/beta/invitations/${id}/accept`, { method: "POST" }),
+    markBetaWelcomeSeen: () => request<{ ok: true }>(getToken, "/beta/me/welcome-seen", { method: "POST" }),
+    markBetaTourComplete: () => request<{ ok: true }>(getToken, "/beta/me/tour-complete", { method: "POST" }),
+    markBetaAnnouncementsSeen: () => request<{ ok: true }>(getToken, "/beta/me/announcements-seen", { method: "POST" }),
+    completeBetaMission: (id: string) => request<{ missions: BetaMission[] }>(getToken, `/beta/missions/${id}/complete`, { method: "POST" }),
     getRenderBudget: () => request<RenderBudgetResponse>(getToken, "/renders/budget"),
     getRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}`),
     cancelRender: (id: string) => request<GetRenderResponse>(getToken, `/renders/${id}/cancel`, { method: "POST" }),

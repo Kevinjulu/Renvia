@@ -19,6 +19,7 @@ import { HelpArticles } from "../dashboard/HelpArticles";
 import { DashboardHero } from "../dashboard/DashboardHero";
 import { DashboardPanels } from "../dashboard/DashboardPanels";
 import { RestoreNotice } from "../dashboard/RestoreNotice";
+import { BetaInvitationBanner } from "../beta/BetaInvitationBanner";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ProjectGridSkeleton } from "../dashboard/ProjectGridSkeleton";
 
@@ -164,6 +165,7 @@ export function DashboardRoute() {
         <div className="dashboard-layout">
           <main className="dashboard-main">
             <RestoreNotice />
+            {isHome && <BetaInvitationBanner />}
             {isHome && <><div className="dashboard-greeting"><p>Dashboard</p><h1>{greetingFor(new Date())}, {user?.firstName || "there"}</h1><small>Turn your ideas into stunning architectural visuals with AI.</small></div><DashboardHero onCreate={() => void handleCreate()} /></>}
           <div className="dashboard-section-heading">
             <h2>{heading}</h2>

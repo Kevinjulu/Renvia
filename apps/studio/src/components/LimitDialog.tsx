@@ -3,6 +3,7 @@ import type { LimitCode, MeResponse } from "@renvia/types";
 import { ApiError } from "../lib/apiClient";
 import { creditPricesFor } from "../lib/creditPrices";
 import { useUpgradeDialogStore } from "../lib/useUpgradeDialog";
+import { useBetaStore } from "../beta/useBetaStore";
 
 /** A refusal the studio can explain, lifted out of an ApiError. */
 export interface LimitRefusal {
@@ -215,6 +216,9 @@ function usageLine(refusal: LimitRefusal): string | null {
   }
 }
 
+/** Refusals of a beta-funded job, which the tester may choose to pay for with their own credits. */
+const BETA_REFUSALS: LimitCode[] = ["beta_credits_exhausted", "beta_budget_exhausted", "beta_unavailable"];
+
 /** Refusals where the user's credit balance is worth showing alongside the reason. */
 const ALLOWANCE_CODES: LimitCode[] = [
   "insufficient_credits",
@@ -251,6 +255,9 @@ export function LimitDialog({
   }, [onDismiss]);
 
   const openPlans = useUpgradeDialogStore((state) => state.openPlans);
+  const setPayWithOwnCredits = useBetaStore((state) => state.setPayWithOwnCredits);
+  // A beta job that couldn't use beta credits: offer the tester's own, never spend them unasked.
+  const offerOwnCredits = BETA_REFUSALS.includes(refusal.code) && me !== null && me.creditBalance - me.betaCredits > 0;
   const copy = copyFor(refusal, me);
   const tone = TONE[copy.tone];
   const usage = usageLine(refusal);
@@ -321,6 +328,19 @@ export function LimitDialog({
               className="mr-auto rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-secondary transition-colors hover:bg-surface-muted"
             >
               {me.entitlement.plan.interval === "none" ? "See plans" : "Buy credits"}
+            </button>
+          )}
+          {offerOwnCredits && (
+            <button
+              type="button"
+              onClick={() => {
+                setPayWithOwnCredits(true);
+                onDismiss();
+              }}
+              className="mr-auto rounded-lg border border-hairline px-3.5 py-2 text-sm font-medium text-secondary transition-colors hover:bg-surface-muted"
+              title="Then press Generate again. Switch back from the Beta menu."
+            >
+              Use my own credits
             </button>
           )}
           {showCredits && (

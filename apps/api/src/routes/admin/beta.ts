@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createClerkClient } from "@clerk/backend";
 import { schema, type Database } from "@renvia/db";
 import {
   STUDIO_FEATURES,
+  type AdminBetaAnnouncement,
+  type AdminBetaMission,
   type AdminBetaEnrollment,
   type AdminBetaInvitation,
   type AdminBetaInvitationCreated,
@@ -16,6 +18,7 @@ import {
 import type { Env } from "../../index.js";
 import { effectiveEndsAt, expireBetaCredits, grantBetaCredits, programSpendMicros, type BetaProgramRow, type GrantResult } from "../../lib/beta.js";
 import { completeProgramEnrollments, createInvitation, invitationState, programCapacity, type BetaInvitationRow } from "../../lib/betaEnrollment.js";
+import { missionRuleSchema } from "../../lib/betaMissions.js";
 import { denyUnless } from "./permissions.js";
 import { governance, requestApproval } from "./governance.js";
 import { adminEventInsert, MICROS_PER_USD } from "./shared.js";
@@ -188,6 +191,8 @@ betaRoutes.get("/beta/programs/:id", async (c) => {
     program: await presentProgram(db, program),
     enrollments: await enrollmentsOf(db, program),
     invitations: await presentInvitations(db, invitations),
+    missions: await missionsOf(db, program.id),
+    announcements: await announcementsOf(db, program.id),
   };
   return c.json(response);
 });
@@ -613,4 +618,103 @@ betaRoutes.post("/beta/programs/:id/grant", async (c) => {
     .where(and(eq(schema.betaEnrollments.programId, programId), inArray(schema.betaEnrollments.id, enrollmentIds), or(eq(schema.betaEnrollments.status, "active"), eq(schema.betaEnrollments.status, "suspended"))));
   if (inProgram.length !== enrollmentIds.length) return c.json({ error: "Every selected tester must be current in this program", code: "invalid_selection" }, 400);
   return grantOrRequest(c, { ...body, enrollmentIds }, null);
+});
+
+// ── Missions and announcements ───────────────────────────────────────────────────
+
+async function missionsOf(db: Database, programId: string): Promise<AdminBetaMission[]> {
+  const rows = await db
+    .select({
+      mission: schema.betaMissions,
+      completions: sql<number>`(select count(*) from beta_mission_progress mp where mp.mission_id = ${schema.betaMissions.id})::int`,
+    })
+    .from(schema.betaMissions)
+    .where(eq(schema.betaMissions.programId, programId))
+    .orderBy(asc(schema.betaMissions.position), asc(schema.betaMissions.createdAt));
+  return rows.map(({ mission, completions }) => ({
+    id: mission.id,
+    programId: mission.programId,
+    position: mission.position,
+    title: mission.title,
+    instructions: mission.instructions,
+    rule: mission.rule,
+    required: mission.required,
+    completions: Number(completions),
+  }));
+}
+
+async function announcementsOf(db: Database, programId: string): Promise<AdminBetaAnnouncement[]> {
+  const rows = await db.select().from(schema.betaAnnouncements).where(eq(schema.betaAnnouncements.programId, programId)).orderBy(desc(schema.betaAnnouncements.publishedAt)).limit(100);
+  return rows.map((row) => ({
+    id: row.id,
+    programId: row.programId,
+    title: row.title,
+    body: row.body,
+    severity: row.severity,
+    publishedAt: row.publishedAt.toISOString(),
+    expiresAt: row.expiresAt?.toISOString() ?? null,
+  }));
+}
+
+const missionSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  instructions: z.string().trim().max(1000).default(""),
+  rule: missionRuleSchema,
+  required: z.boolean().default(true),
+  position: z.number().int().min(0).max(1000).default(0),
+});
+
+betaRoutes.post("/beta/programs/:id/missions", async (c) => {
+  const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const program = await findProgram(db, z.string().uuid().parse(c.req.param("id")));
+  if (!program) return c.json({ error: "Not found" }, 404);
+  const body = missionSchema.parse(await c.req.json());
+  const [mission] = await db.insert(schema.betaMissions).values({ ...body, programId: program.id }).returning();
+  await adminEventInsert(db, { actorId: c.get("admin").id, action: "beta.update", targetType: "beta_mission", targetId: mission!.id, summary: `Added mission "${body.title}" to ${program.name}`, detail: { programId: program.id, rule: body.rule } });
+  return c.json((await missionsOf(db, program.id)).find((row) => row.id === mission!.id), 201);
+});
+
+betaRoutes.patch("/beta/missions/:id", async (c) => {
+  const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const patch = missionSchema.partial().parse(await c.req.json());
+  const [mission] = await db.update(schema.betaMissions).set(patch).where(eq(schema.betaMissions.id, id)).returning();
+  if (!mission) return c.json({ error: "Not found" }, 404);
+  await adminEventInsert(db, { actorId: c.get("admin").id, action: "beta.update", targetType: "beta_mission", targetId: id, summary: `Updated mission "${mission.title}"`, detail: { after: patch } });
+  return c.json((await missionsOf(db, mission.programId)).find((row) => row.id === id));
+});
+
+betaRoutes.delete("/beta/missions/:id", async (c) => {
+  const denied = denyUnless(c, "beta.programs.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [mission] = await db.delete(schema.betaMissions).where(eq(schema.betaMissions.id, id)).returning();
+  if (!mission) return c.json({ error: "Not found" }, 404);
+  await adminEventInsert(db, { actorId: c.get("admin").id, action: "beta.update", targetType: "beta_mission", targetId: id, summary: `Removed mission "${mission.title}"`, detail: { programId: mission.programId } });
+  return c.json({ deleted: true });
+});
+
+betaRoutes.post("/beta/programs/:id/announcements", async (c) => {
+  const denied = denyUnless(c, "beta.testers.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const program = await findProgram(db, z.string().uuid().parse(c.req.param("id")));
+  if (!program) return c.json({ error: "Not found" }, 404);
+  const body = z
+    .object({ title: z.string().trim().min(1).max(120), body: z.string().trim().max(2000).default(""), severity: z.enum(["info", "important"]).default("info"), expiresAt: z.coerce.date().nullable().optional() })
+    .parse(await c.req.json());
+  const [announcement] = await db.insert(schema.betaAnnouncements).values({ ...body, expiresAt: body.expiresAt ?? null, programId: program.id, createdBy: c.get("admin").id }).returning();
+  await adminEventInsert(db, { actorId: c.get("admin").id, action: "beta.update", targetType: "beta_announcement", targetId: announcement!.id, summary: `Announced "${body.title}" to ${program.name}`, detail: { programId: program.id, severity: body.severity } });
+  return c.json((await announcementsOf(db, program.id)).find((row) => row.id === announcement!.id), 201);
+});
+
+betaRoutes.delete("/beta/announcements/:id", async (c) => {
+  const denied = denyUnless(c, "beta.testers.manage"); if (denied) return c.json(denied, 403);
+  const db = c.get("db");
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const [announcement] = await db.delete(schema.betaAnnouncements).where(eq(schema.betaAnnouncements.id, id)).returning();
+  if (!announcement) return c.json({ error: "Not found" }, 404);
+  await adminEventInsert(db, { actorId: c.get("admin").id, action: "beta.update", targetType: "beta_announcement", targetId: id, summary: `Withdrew announcement "${announcement.title}"`, detail: { programId: announcement.programId } });
+  return c.json({ deleted: true });
 });

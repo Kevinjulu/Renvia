@@ -49,7 +49,8 @@ export function markTourFinished(tourId: string): void {
     ? current.toursCompleted
     : [...current.toursCompleted, tourId];
   writeGuidePersistence({
-    orientationDone: tourId === "orientation" ? true : current.orientationDone,
+    // The beta tour covers the orientation's ground, so finishing it settles both.
+    orientationDone: tourId === "orientation" || tourId === "beta" ? true : current.orientationDone,
     toursCompleted,
   });
 }

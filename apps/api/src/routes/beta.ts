@@ -1,12 +1,15 @@
 import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
-import type { BetaInvitationAccepted, BetaInvitationPreview, BetaPendingInvitation } from "@renvia/types";
+import type { BetaAnnouncement, BetaInvitationAccepted, BetaInvitationPreview, BetaMeResponse, BetaPendingInvitation, BetaTester, StudioFeatureKey } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { hashInvitationToken, invitationState, maskEmail, pendingInvitationsFor, redeemInvitation, type RedeemResult } from "../lib/betaEnrollment.js";
+import { settleBetaCredits, type BetaContext } from "../lib/beta.js";
+import { completeManualMission, missionsFor } from "../lib/betaMissions.js";
+import type { Database } from "@renvia/db";
 
 /**
  * The tester side of beta invitations: preview a link, list invitations addressed to me, accept.
@@ -87,12 +90,11 @@ beta.post("/invitations/accept", requireAuth, async (c) => {
   return redeemResponse(c, await redeemInvitation(db, user, { tokenHash: await hashInvitationToken(token) }));
 });
 
-/** Invitations addressed to me (my account or my email), accepted in-app without the link. */
-beta.get("/invitations", requireAuth, async (c) => {
-  const db = createDb(c.env.DATABASE_URL);
-  const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
+type UserRow = typeof schema.users.$inferSelect;
+
+async function pendingFor(db: Database, user: UserRow): Promise<BetaPendingInvitation[]> {
   const rows = await pendingInvitationsFor(db, user);
-  const invitations: BetaPendingInvitation[] = rows.map(({ invitation, program }) => ({
+  return rows.map(({ invitation, program }) => ({
     id: invitation.id,
     programName: program.name,
     programDescription: program.description,
@@ -100,7 +102,108 @@ beta.get("/invitations", requireAuth, async (c) => {
     expiresAt: invitation.expiresAt.toISOString(),
     endsAt: program.endsAt.toISOString(),
   }));
-  return c.json({ invitations });
+}
+
+/** Invitations addressed to me (my account or my email), accepted in-app without the link. */
+beta.get("/invitations", requireAuth, async (c) => {
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
+  return c.json({ invitations: await pendingFor(db, user) });
+});
+
+/** Published announcements that haven't expired, newest first. */
+async function announcementsFor(db: Database, context: BetaContext): Promise<BetaAnnouncement[]> {
+  const now = new Date();
+  const rows = await db
+    .select()
+    .from(schema.betaAnnouncements)
+    .where(and(
+      eq(schema.betaAnnouncements.programId, context.program.id),
+      lte(schema.betaAnnouncements.publishedAt, now),
+      or(isNull(schema.betaAnnouncements.expiresAt), gt(schema.betaAnnouncements.expiresAt, now)),
+    ))
+    .orderBy(desc(schema.betaAnnouncements.publishedAt))
+    .limit(20);
+  const seenAt = context.enrollment.announcementsSeenAt;
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    severity: row.severity,
+    publishedAt: row.publishedAt.toISOString(),
+    unread: !seenAt || row.publishedAt > seenAt,
+  }));
+}
+
+async function presentTester(db: Database, user: UserRow, context: BetaContext): Promise<BetaTester> {
+  const { program, enrollment } = context;
+  const [missions, announcements] = await Promise.all([missionsFor(db, enrollment), announcementsFor(db, context)]);
+  return {
+    enrollmentId: enrollment.id,
+    status: enrollment.status === "suspended" ? "suspended" : "active",
+    running: context.running,
+    program: {
+      id: program.id,
+      name: program.name,
+      description: program.description,
+      status: program.status,
+      welcome: program.welcome ?? null,
+      downloadsUnlocked: program.downloadsUnlocked,
+      featureGrants: program.featureGrants as StudioFeatureKey[],
+    },
+    enrolledAt: enrollment.enrolledAt.toISOString(),
+    endsAt: context.endsAt.toISOString(),
+    credits: { remaining: user.betaCredits, granted: enrollment.creditsGranted },
+    welcomeSeenAt: enrollment.welcomeSeenAt?.toISOString() ?? null,
+    tourCompletedAt: enrollment.tourCompletedAt?.toISOString() ?? null,
+    missions,
+    announcements,
+    unreadAnnouncements: announcements.filter((announcement) => announcement.unread).length,
+  };
+}
+
+/** The Beta Program area: the tester's program, credits, missions and announcements, or invitations waiting for them. */
+beta.get("/me", requireAuth, async (c) => {
+  const db = createDb(c.env.DATABASE_URL);
+  const clerkId = c.get("auth").clerkId;
+  let user = await getOrCreateUser(c.env, db, clerkId);
+  const { context, expired } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  if (expired > 0) user = await getOrCreateUser(c.env, db, clerkId);
+  const response: BetaMeResponse = context
+    ? { tester: await presentTester(db, user, context), invitations: [] }
+    : { tester: null, invitations: await pendingFor(db, user) };
+  return c.json(response);
+});
+
+/** Records a one-time onboarding moment on the tester's live enrollment, so it holds across devices. */
+async function markSeen(c: Context<AppContext>, column: "welcomeSeenAt" | "tourCompletedAt" | "announcementsSeenAt") {
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
+  const target = schema.betaEnrollments[column];
+  const updated = await db
+    .update(schema.betaEnrollments)
+    // Welcome and tour keep their first time; announcements move forward each time they are read.
+    .set({ [column]: column === "announcementsSeenAt" ? new Date() : sql`coalesce(${target}, now())`, updatedAt: new Date() })
+    .where(and(eq(schema.betaEnrollments.userId, user.id), inArray(schema.betaEnrollments.status, ["active", "suspended"])))
+    .returning({ id: schema.betaEnrollments.id });
+  if (updated.length === 0) return c.json({ error: "You're not in a beta program", code: "not_enrolled" }, 404);
+  return c.json({ ok: true });
+}
+
+beta.post("/me/welcome-seen", requireAuth, (c) => markSeen(c, "welcomeSeenAt"));
+beta.post("/me/tour-complete", requireAuth, (c) => markSeen(c, "tourCompletedAt"));
+beta.post("/me/announcements-seen", requireAuth, (c) => markSeen(c, "announcementsSeenAt"));
+
+beta.post("/missions/:id/complete", requireAuth, async (c) => {
+  const id = z.string().uuid().parse(c.req.param("id"));
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, c.get("auth").clerkId);
+  const { context } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  if (!context) return c.json({ error: "You're not in a beta program", code: "not_enrolled" }, 404);
+  const outcome = await completeManualMission(db, context.enrollment, id);
+  if (outcome === "not_found") return c.json({ error: "Not found", code: "not_found" }, 404);
+  if (outcome === "verified_only") return c.json({ error: "This mission completes itself once you've done it", code: "verified_only" }, 409);
+  return c.json({ missions: await missionsFor(db, context.enrollment) });
 });
 
 beta.post("/invitations/:id/accept", requireAuth, async (c) => {

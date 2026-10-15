@@ -8,10 +8,11 @@ import { StudioPreferencesSection } from "../dashboard/StudioPreferencesSection"
 import { BillingSection } from "../dashboard/BillingSection";
 import { ActivitySection } from "../dashboard/ActivitySection";
 import { useApiClient } from "../lib/apiClient";
+import { BetaProgramSection } from "../beta/BetaProgramSection";
 
-export type SectionKey = "explore" | "templates" | "assets" | "ai-tools" | "team" | "settings" | "billing" | "activity";
+export type SectionKey = "explore" | "templates" | "assets" | "ai-tools" | "team" | "settings" | "billing" | "activity" | "beta";
 const copy: Record<SectionKey, [string, string, string]> = {
-  explore: ["Discover", "Explore architectural ideas", "A curated starting point for materials, moods, and presentation styles."], templates: ["Start faster", "Project templates", "Choose a proven visual direction, then make it your own in the Studio."], assets: ["Your library", "Assets and uploads", "Keep sketches, models, references, and finished renders in one place."], "ai-tools": ["Creative toolkit", "AI tools", "Focused workflows for rendering, regional edits, materials, and variations."], team: ["Collaboration", "Your team", "Invite collaborators and keep project feedback close to the work."], settings: ["Preferences", "Studio settings", "Defaults for new renders and edits, plus a way to replay the tour."], billing: ["Billing", "Credits and billing", "Choose a plan, top up render credits, and review past payments."], activity: ["Workspace history", "Recent activity", "When your projects were created and last edited."],
+  explore: ["Discover", "Explore architectural ideas", "A curated starting point for materials, moods, and presentation styles."], templates: ["Start faster", "Project templates", "Choose a proven visual direction, then make it your own in the Studio."], assets: ["Your library", "Assets and uploads", "Keep sketches, models, references, and finished renders in one place."], "ai-tools": ["Creative toolkit", "AI tools", "Focused workflows for rendering, regional edits, materials, and variations."], team: ["Collaboration", "Your team", "Invite collaborators and keep project feedback close to the work."], settings: ["Preferences", "Studio settings", "Defaults for new renders and edits, plus a way to replay the tour."], billing: ["Billing", "Credits and billing", "Choose a plan, top up render credits, and review past payments."], activity: ["Workspace history", "Recent activity", "When your projects were created and last edited."], beta: ["Private beta", "Beta Program", "Your beta credits, testing missions and updates from the Renvia team."],
 };
 const cards: Partial<Record<SectionKey, Array<[string, string, string?]>>> = {
   explore: [["Warm minimal residences", "Natural timber, quiet stone, and generous daylight.", "/dashboard/house-exterior.jpg"], ["Modern lakeside living", "Low profiles and reflective landscapes.", "/dashboard/lakeside-house.jpg"], ["After-dark presentation", "Controlled contrast and believable interior light.", "/dashboard/house-dark.jpg"]],
@@ -50,5 +51,6 @@ export function DashboardSectionRoute({ section }: { section: SectionKey }) {
     {section === "settings" && <StudioPreferencesSection onSaved={setNotice} />}
     {section === "billing" && <BillingSection api={api} />}
     {section === "activity" && <ActivitySection query={search} />}
+    {section === "beta" && <BetaProgramSection />}
   </main></div></div>;
 }

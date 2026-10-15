@@ -14,7 +14,8 @@ export type GuideTopicId =
   | "canvas.tabs"
   | "canvas.filmstrip"
   | "canvas.editToolbar"
-  | "results.panel";
+  | "results.panel"
+  | "beta.button";
 
 export interface GuideTopic {
   id: GuideTopicId;
@@ -138,7 +139,16 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     article: "getting-started",
     legend: 6,
   },
+  // Only on screen for beta testers; it has no legend pin, so the legend never looks for it.
+  "beta.button": {
+    id: "beta.button",
+    title: "Beta Program",
+    short: "Your beta credits, missions and announcements — and where to report problems.",
+    body: "This is your line to the Renvia team. It shows your beta credits and how long your access lasts, your testing missions, and announcements from us.",
+    how: "Open it any time to check your missions or replay this introduction. When something looks wrong in a render, report it from here so we can see exactly what happened.",
+  },
 };
+
 
 export const LEGEND_TOPICS = Object.values(GUIDE_TOPICS)
   .filter((topic) => topic.legend != null)
@@ -177,3 +187,51 @@ export const DONE_COPY = {
   title: "That’s the layout",
   body: "Press Guide anytime to inspect a region, or hover the small question marks on denser controls. Replay this tour from the same menu.",
 };
+
+/** The beta tester's tour: the Studio's main path, then where to report what they find. */
+export const BETA_TOUR = {
+  id: "beta",
+  steps: [
+    { kind: "welcome" },
+    { kind: "spot", topicId: "control.uploads", tab: "render" },
+    { kind: "spot", topicId: "control.direction", tab: "render" },
+    { kind: "spot", topicId: "control.generate", tab: "render" },
+    { kind: "spot", topicId: "results.panel", tab: "render" },
+    { kind: "spot", topicId: "control.tabs", tab: "render" },
+    { kind: "spot", topicId: "canvas.stage", tab: "render" },
+    { kind: "spot", topicId: "beta.button", tab: "render" },
+    { kind: "done" },
+  ] satisfies TourStep[],
+} as const;
+
+export type TourId = "orientation" | "beta";
+
+export interface TourDefinition {
+  id: TourId;
+  /** Shown on the first card's corner. */
+  label: string;
+  steps: readonly TourStep[];
+  welcome: { title: string; body: string };
+  done: { title: string; body: string };
+}
+
+export const TOURS: Record<TourId, TourDefinition> = {
+  orientation: { id: "orientation", label: "Studio tour", steps: ORIENTATION_TOUR.steps, welcome: WELCOME_COPY, done: DONE_COPY },
+  beta: {
+    id: "beta",
+    label: "Beta tour",
+    steps: BETA_TOUR.steps,
+    welcome: {
+      title: "A quick look before you test",
+      body: "Upload an elevation, render it, refine it with Edit, and download the result. This takes about a minute and ends at the place to report anything that looks wrong.",
+    },
+    done: {
+      title: "You're ready to test",
+      body: "Try your missions in the Beta Program area. If a render changes the architecture or something breaks, report it from the Beta button. Replay this tour from the same menu.",
+    },
+  },
+};
+
+export function tourFor(id: string | null): TourDefinition {
+  return id === "beta" ? TOURS.beta : TOURS.orientation;
+}

@@ -13,6 +13,7 @@ import { SmallScreenNotice } from "./components/SmallScreenNotice";
 // The canvas pulls in Konva, so it (and the less-visited pages) load on demand.
 const CanvasRoute = lazy(() => import("./routes/CanvasRoute").then((module) => ({ default: module.CanvasRoute })));
 const HelpArticleRoute = lazy(() => import("./routes/HelpArticleRoute").then((module) => ({ default: module.HelpArticleRoute })));
+const BetaJoinRoute = lazy(() => import("./beta/BetaJoinRoute").then((module) => ({ default: module.BetaJoinRoute })));
 const DashboardSectionRoute = lazy(() =>
   import("./routes/DashboardSectionRoute").then((module) => ({ default: module.DashboardSectionRoute })),
 );
@@ -28,6 +29,8 @@ export default function App() {
         <Route path="/signup" element={<SignupRoute />} />
         <Route path="/forgot-password" element={<ForgotPasswordRoute />} />
         <Route path="/sso-callback/*" element={<SsoCallbackRoute />} />
+        {/* Open signed out too: an invitation link shows its program before sign-up. */}
+        <Route path="/beta/join" element={<BetaJoinRoute />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardRoute />} />
           <Route path="/project/:projectId" element={<CanvasRoute />} />
@@ -40,6 +43,7 @@ export default function App() {
           <Route path="/settings" element={<DashboardSectionRoute section="settings" />} />
           <Route path="/billing" element={<DashboardSectionRoute section="billing" />} />
           <Route path="/activity" element={<DashboardSectionRoute section="activity" />} />
+          <Route path="/beta" element={<DashboardSectionRoute section="beta" />} />
         </Route>
       </Routes>
       </Suspense>

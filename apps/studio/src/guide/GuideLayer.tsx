@@ -2,14 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useCanvasStore } from "../canvas/hooks/useCanvasStore";
-import {
-  DONE_COPY,
-  getGuideTopic,
-  LEGEND_TOPICS,
-  ORIENTATION_TOUR,
-  WELCOME_COPY,
-  type GuideTopicId,
-} from "./catalog";
+import { getGuideTopic, LEGEND_TOPICS, tourFor, type GuideTopicId } from "./catalog";
 import { holeFromRect, placeCard, revealGuideTarget } from "./geometry";
 import { useGuideRects } from "./useGuideRects";
 import { useGuideStore } from "./useGuideStore";
@@ -40,7 +33,8 @@ function GuideLayerActive({
   stepIndex: number;
   inspectId: GuideTopicId | null;
 }) {
-  const step = mode === "tour" ? ORIENTATION_TOUR.steps[stepIndex] ?? null : null;
+  const tourId = useGuideStore((state) => state.tourId);
+  const step = mode === "tour" ? tourFor(tourId).steps[stepIndex] ?? null : null;
   const spotId = step?.kind === "spot" ? step.topicId : mode === "legend" ? inspectId : null;
   const legendIds = useMemo(() => LEGEND_TOPICS.map((topic) => topic.id), []);
   const measureIds = mode === "tour" ? (spotId ? [spotId] : []) : legendIds;
@@ -89,7 +83,8 @@ function LegendOutlines({ rects, activeId }: { rects: Map<string, DOMRect>; acti
 }
 
 function TourCard({ stepIndex, hole }: { stepIndex: number; hole: ReturnType<typeof holeFromRect> | null }) {
-  const steps = ORIENTATION_TOUR.steps;
+  const tour = tourFor(useGuideStore((state) => state.tourId));
+  const steps = tour.steps;
   const step = steps[stepIndex];
   const nextStep = useGuideStore((state) => state.nextStep);
   const prevStep = useGuideStore((state) => state.prevStep);
@@ -106,8 +101,8 @@ function TourCard({ stepIndex, hole }: { stepIndex: number; hole: ReturnType<typ
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const topic = step.kind === "spot" ? getGuideTopic(step.topicId) : null;
-  const title = topic?.title ?? (step.kind === "done" ? DONE_COPY.title : WELCOME_COPY.title);
-  const body = topic?.body ?? (step.kind === "done" ? DONE_COPY.body : WELCOME_COPY.body);
+  const title = topic?.title ?? (step.kind === "done" ? tour.done.title : tour.welcome.title);
+  const body = topic?.body ?? (step.kind === "done" ? tour.done.body : tour.welcome.body);
   const how = topic?.how ?? null;
 
   return (
@@ -122,7 +117,7 @@ function TourCard({ stepIndex, hole }: { stepIndex: number; hole: ReturnType<typ
     >
       <div className="guide-card-top">
         <span>
-          {isFirst ? "Studio tour" : isLast ? "Done" : `${stepIndex} / ${steps.length - 2}`}
+          {isFirst ? tour.label : isLast ? "Done" : `${stepIndex} / ${steps.length - 2}`}
         </span>
         <button type="button" className="guide-text-btn" onClick={skipTour}>
           Skip

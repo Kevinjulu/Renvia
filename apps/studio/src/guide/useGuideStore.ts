@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { ORIENTATION_TOUR, type GuideTopicId, type TourStep } from "./catalog";
+import { tourFor, type GuideTopicId, type TourStep } from "./catalog";
 import { markTourFinished, readGuidePersistence, writeGuidePersistence } from "./persistence";
 
 export type GuideMode = "idle" | "tour" | "legend";
@@ -25,14 +25,21 @@ interface GuideState {
   exit: () => void;
 }
 
-function orientationStep(): TourStep | null {
-  const { mode, stepIndex } = useGuideStore.getState();
+export function currentTourStep(): TourStep | null {
+  const { mode, stepIndex, tourId } = useGuideStore.getState();
   if (mode !== "tour") return null;
-  return ORIENTATION_TOUR.steps[stepIndex] ?? null;
+  return tourFor(tourId).steps[stepIndex] ?? null;
 }
 
-export function currentTourStep(): TourStep | null {
-  return orientationStep();
+/** Called with the tour's id when a tour is finished or skipped; the beta tour reports it to the server. */
+const finishListeners = new Set<(tourId: string) => void>();
+export function onTourFinished(listener: (tourId: string) => void): () => void {
+  finishListeners.add(listener);
+  return () => finishListeners.delete(listener);
+}
+function finishTour(tourId: string) {
+  markTourFinished(tourId);
+  for (const listener of finishListeners) listener(tourId);
 }
 
 export const useGuideStore = create<GuideState>((set, get) => ({
@@ -58,9 +65,9 @@ export const useGuideStore = create<GuideState>((set, get) => ({
   nextStep: () => {
     const { mode, stepIndex, tourId } = get();
     if (mode !== "tour") return;
-    const last = ORIENTATION_TOUR.steps.length - 1;
+    const last = tourFor(tourId).steps.length - 1;
     if (stepIndex >= last) {
-      if (tourId) markTourFinished(tourId);
+      if (tourId) finishTour(tourId);
       set({ mode: "idle", tourId: null, stepIndex: 0 });
       return;
     }
@@ -73,7 +80,7 @@ export const useGuideStore = create<GuideState>((set, get) => ({
   },
   skipTour: () => {
     const { tourId } = get();
-    if (tourId) markTourFinished(tourId);
+    if (tourId) finishTour(tourId);
     set({ mode: "idle", tourId: null, stepIndex: 0, inspectId: null });
   },
   openLegend: (topicId) =>

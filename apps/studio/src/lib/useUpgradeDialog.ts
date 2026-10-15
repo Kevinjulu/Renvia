@@ -32,8 +32,12 @@ export const useUpgradeDialogStore = create<UpgradeDialogState>((set) => ({
   closePlans: () => set({ plans: null }),
 }));
 
-/** Downloading and copying renders are paid-plan features; admins can always download. */
+/**
+ * Downloading and copying renders are paid-plan features; admins can always download, and so can
+ * testers whose beta program unlocks downloads.
+ */
 export function downloadsLocked(me: MeResponse | null): boolean {
+  if (me?.beta?.running && me.beta.downloadsUnlocked) return false;
   return me !== null && me.role !== "admin" && me.entitlement.plan.interval === "none";
 }
 

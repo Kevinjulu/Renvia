@@ -11,6 +11,7 @@ import { ConnectionBanner } from "../components/ConnectionBanner";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { UpgradeDialog } from "../components/upgrade/UpgradeDialog";
 import { PlansDialog } from "../components/upgrade/PlansDialog";
+import { BetaBridge } from "../beta/BetaBridge";
 
 export function ProtectedRoute() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -75,6 +76,7 @@ export function ProtectedRoute() {
       {creditsOpen && <AccountDialog initialTab="plan" onClose={() => setCreditsOpen(false)} />}
       <UpgradeDialog />
       <PlansDialog />
+      <BetaBridge />
     </>
   );
 }

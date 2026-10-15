@@ -364,6 +364,8 @@ export interface CreateRenderRequest {
    * the render the first attempt created instead of charging again.
    */
   idempotencyKey?: string;
+  /** Beta testers only: "account" spends their own credits, by their explicit choice. Omitted = beta credits. */
+  funding?: BetaFunding;
 }
 
 export interface CreateRenderResponse {
@@ -376,6 +378,8 @@ export interface CreateUpscaleRequest {
   target: UpscaleTarget;
   /** One per export click, reused on retry — see CreateRenderRequest.idempotencyKey. */
   idempotencyKey?: string;
+  /** Beta testers only: "account" spends their own credits, by their explicit choice. Omitted = beta credits. */
+  funding?: BetaFunding;
 }
 
 export interface CreateUpscaleResponse {
@@ -492,6 +496,8 @@ export interface CreateSegmentationRequest {
   imageUrl: string;
   prompt?: string;
   point?: { x: number; y: number };
+  /** Beta testers only: "account" spends their own credits, by their explicit choice. Omitted = beta credits. */
+  funding?: BetaFunding;
 }
 
 export interface CreateSegmentationResponse {
@@ -2062,6 +2068,8 @@ export interface AdminBetaProgramDetailResponse {
   program: AdminBetaProgram;
   enrollments: AdminBetaEnrollment[];
   invitations: AdminBetaInvitation[];
+  missions: AdminBetaMission[];
+  announcements: AdminBetaAnnouncement[];
 }
 
 /** The token is returned once, here, and never stored or shown again. */
@@ -2095,6 +2103,84 @@ export interface BetaInvitationAccepted {
   creditsGranted: number;
   /** True when this account was already enrolled through this invitation or program. */
   alreadyEnrolled: boolean;
+}
+
+/** A testing task, with how far this tester has got on it. */
+export interface BetaMission {
+  id: string;
+  title: string;
+  instructions: string;
+  required: boolean;
+  /** "manual" missions are ticked by the tester; the rest are verified from what they actually did. */
+  kind: BetaMissionRule["kind"];
+  /** For verified missions: how many qualifying results so far, out of `target`. */
+  count: number;
+  target: number;
+  completedAt: string | null;
+}
+
+export interface BetaAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  severity: "info" | "important";
+  publishedAt: string;
+  unread: boolean;
+}
+
+/** Everything the Beta Program area shows a tester. */
+export interface BetaTester {
+  enrollmentId: string;
+  status: "active" | "suspended";
+  /** Beta-funded jobs are accepted now (enrollment and program active, inside the dates). */
+  running: boolean;
+  program: {
+    id: string;
+    name: string;
+    description: string;
+    status: BetaProgramStatus;
+    welcome: BetaWelcome | null;
+    downloadsUnlocked: boolean;
+    featureGrants: StudioFeatureKey[];
+  };
+  enrolledAt: string;
+  /** When this tester's access ends, including any extension. */
+  endsAt: string;
+  credits: { remaining: number; granted: number };
+  welcomeSeenAt: string | null;
+  tourCompletedAt: string | null;
+  missions: BetaMission[];
+  announcements: BetaAnnouncement[];
+  unreadAnnouncements: number;
+}
+
+export interface BetaMeResponse {
+  /** Null when the user has no live enrollment. */
+  tester: BetaTester | null;
+  /** Invitations addressed to the user that they can accept in the Studio. */
+  invitations: BetaPendingInvitation[];
+}
+
+export interface AdminBetaMission {
+  id: string;
+  programId: string;
+  position: number;
+  title: string;
+  instructions: string;
+  rule: BetaMissionRule;
+  required: boolean;
+  /** Testers who have completed it. */
+  completions: number;
+}
+
+export interface AdminBetaAnnouncement {
+  id: string;
+  programId: string;
+  title: string;
+  body: string;
+  severity: "info" | "important";
+  publishedAt: string;
+  expiresAt: string | null;
 }
 
 /** An invitation addressed to the signed-in user, accepted in-app without a link. */
