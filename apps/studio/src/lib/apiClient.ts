@@ -48,6 +48,7 @@ import type {
 import { reportClientError } from "../components/AppErrorHandling";
 import { ConnectionError, connectionErrorFrom, markApiReachable, markApiUnreachable } from "./connection";
 import { currentFunding } from "../beta/useBetaStore";
+import { shrinkForUpload } from "./shrinkForUpload";
 
 /** Adds the tester's funding choice to a charged request; untouched for everyone else. */
 function withFunding<T extends object>(body: T): T {
@@ -170,6 +171,8 @@ async function uploadWithProgress(
   kind?: "mask",
 ): Promise<UploadImageResponse> {
   const token = await getToken();
+  // A mask is stored exactly as drawn; photos are shrunk first so less goes over the network.
+  const body = kind === "mask" ? file : await shrinkForUpload(file);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE_URL}/api/uploads`);
@@ -204,7 +207,7 @@ async function uploadWithProgress(
       markApiUnreachable();
       reject(connectionErrorFrom(null, true));
     };
-    xhr.send(file);
+    xhr.send(body);
   });
 }
 

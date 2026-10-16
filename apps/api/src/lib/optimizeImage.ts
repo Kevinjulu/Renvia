@@ -10,6 +10,8 @@ export const MAX_UPLOAD_EDGE = 2560;
 export const THUMBNAIL_EDGE = 640;
 /** An opaque PNG still larger than this once capped is a photo saved as PNG, not a drawing. */
 const LARGE_OPAQUE_PNG_BYTES = 3 * 1024 * 1024;
+/** An image within MAX_UPLOAD_EDGE and this size with nothing to fix is stored as sent. */
+const STORE_AS_SENT_BYTES = 3 * 1024 * 1024;
 const LIMIT_INPUT_PIXELS = 150_000_000;
 
 /** The bytes aren't an image sharp can read; `message` is safe to show the user. */
@@ -37,7 +39,8 @@ function arrayBufferOf(buffer: Buffer): ArrayBuffer {
  * - PNG stays lossless PNG, so line elevations keep crisp edges and transparency survives. Only
  *   a large opaque PNG, which is a photo in practice, becomes a quality-92 JPEG.
  * - WebP stays WebP at quality 90, alpha kept.
- * The original is kept when re-encoding wouldn't shrink it and there is nothing to strip or fix.
+ * The original is kept when it is already small, or re-encoding wouldn't shrink it, and there is
+ * nothing to strip or fix.
  */
 export async function optimizeUpload(input: ArrayBuffer, contentType: string): Promise<OptimizedImage> {
   const source = Buffer.from(input);
@@ -51,6 +54,12 @@ export async function optimizeUpload(input: ArrayBuffer, contentType: string): P
 
   const oversized = Math.max(metadata.width, metadata.height) > MAX_UPLOAD_EDGE;
   const needsRotation = (metadata.orientation ?? 1) !== 1;
+  const hasMetadata = Boolean(metadata.exif || metadata.xmp || metadata.iptc);
+  // Already small, upright and clean, like a copy the Studio shrank before sending: encoding it
+  // again would only cost a second generation of JPEG loss.
+  if (!oversized && !needsRotation && !hasMetadata && input.byteLength <= STORE_AS_SENT_BYTES) {
+    return { bytes: input, contentType };
+  }
   let pipeline = sharp(source, { limitInputPixels: LIMIT_INPUT_PIXELS }).rotate();
   if (oversized) pipeline = pipeline.resize({ width: MAX_UPLOAD_EDGE, height: MAX_UPLOAD_EDGE, fit: "inside", withoutEnlargement: true, kernel: sharp.kernel.lanczos3 });
 
@@ -72,7 +81,7 @@ export async function optimizeUpload(input: ArrayBuffer, contentType: string): P
     throw new UnreadableImageError();
   }
 
-  if (!oversized && !needsRotation && !metadata.exif && output.byteLength >= input.byteLength) {
+  if (!oversized && !needsRotation && !hasMetadata && output.byteLength >= input.byteLength) {
     return { bytes: input, contentType };
   }
   return { bytes: arrayBufferOf(output), contentType: outputType };

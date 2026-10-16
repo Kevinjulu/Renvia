@@ -2,7 +2,9 @@
 
 ## Status
 
-**Server stage and thumbnails implemented (2026-10-16); Studio pre-upload compression still planned.**
+**Implemented (2026-10-16).**
+
+- Studio shrinks JPEG and WebP photos over 1.5 MB in the browser before sending them (`apps/studio/src/lib/shrinkForUpload.ts`): native canvas, no added dependency, capped at 2560px, quality 0.92. PNG is sent untouched so line elevations stay lossless. Any failure, or a copy that isn't smaller, sends the original. The API stores a small, clean, upright image as sent, so a shrunk photo isn't JPEG-encoded twice.
 
 - `POST /api/uploads` and pasted-link imports run every image through `optimizeUpload` (`apps/api/src/lib/optimizeImage.ts`): turned upright, capped at 2560px, metadata stripped, re-encoded per the quality policy below. Selection masks are sent with `X-Upload-Kind: mask` and stored exactly as drawn.
 - Any signed upload link with `&size=thumb` serves a 640px WebP copy, made on first request and stored under `thumbs/` (ledger kind `thumbnail`). Studio and admin grids, cards and tables use it through `thumbnailUrl()` from `@renvia/types`; full-size images load only where an image is viewed or edited. Render thumbnails are deleted with their project.
