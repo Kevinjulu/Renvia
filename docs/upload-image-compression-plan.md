@@ -2,14 +2,7 @@
 
 ## Status
 
-**Implemented (2026-10-16).**
-
-- Studio shrinks JPEG and WebP photos over 1.5 MB in the browser before sending them (`apps/studio/src/lib/shrinkForUpload.ts`): native canvas, no added dependency, capped at 2560px, quality 0.92. PNG is sent untouched so line elevations stay lossless. Any failure, or a copy that isn't smaller, sends the original. The API stores a small, clean, upright image as sent, so a shrunk photo isn't JPEG-encoded twice.
-
-- `POST /api/uploads` and pasted-link imports run every image through `optimizeUpload` (`apps/api/src/lib/optimizeImage.ts`): turned upright, capped at 2560px, metadata stripped, re-encoded per the quality policy below. Selection masks are sent with `X-Upload-Kind: mask` and stored exactly as drawn.
-- Any signed upload link with `&size=thumb` serves a 640px WebP copy, made on first request and stored under `thumbs/` (ledger kind `thumbnail`). Studio and admin grids, cards and tables use it through `thumbnailUrl()` from `@renvia/types`; full-size images load only where an image is viewed or edited. Render thumbnails are deleted with their project.
-- Images are downloaded straight from R2. `GET /api/uploads/<key>` still checks the app signature (and makes a watermarked copy or thumbnail on first request), then redirects to a presigned R2 link that expires with it, so image bytes never pass through a Vercel function. The redirect is cached only by the browser (`private`). The R2 bucket needs a CORS rule allowing `GET`/`HEAD` from any origin, because the Studio fetches images for downloads and previews and a cross-origin redirect sends `Origin: null`.
-- `apps/api/scripts/backfill-images.ts` re-encodes uploads stored before compression existed (dry run by default; `--apply <backupDir>` saves each original locally first). A JPEG that needs no resizing or rotation has its metadata cut out without re-encoding, so its pixels are untouched.
+**Implemented and deployed (2026-10-16).** This is the original plan, kept for its reasoning. For how the pipeline works now, including thumbnails, serving straight from R2, the backfill and the tests, see [image-pipeline.md](image-pipeline.md).
 
 ## Goal
 
