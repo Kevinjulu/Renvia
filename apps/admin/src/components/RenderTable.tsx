@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { AdminRender } from "@renvia/types";
+import { thumbnailUrl, type AdminRender } from "@renvia/types";
 import { formatDateTime, formatModel, formatUsd } from "../lib/format";
 import { Pill, StatusBadge, Table } from "./ui";
 
@@ -19,7 +19,7 @@ export function RenderTable({ renders, showUser = true }: { renders: AdminRender
               className="block h-12 w-16 overflow-hidden rounded-lg border border-hairline bg-surface-muted ring-1 ring-transparent transition hover:ring-blueprint/30"
             >
               <img
-                src={render.resultImageUrl ?? render.sourceImageUrl}
+                src={thumbnailUrl(render.resultImageUrl ?? render.sourceImageUrl)}
                 alt=""
                 loading="lazy"
                 className={`h-full w-full object-cover ${render.resultImageUrl ? "" : "opacity-40"}`}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Project } from "@renvia/types";
+import { thumbnailUrl, type Project } from "@renvia/types";
 import { formatRelativeTime } from "../lib/relativeTime";
 import { ProjectCardMenu } from "./ProjectCardMenu";
 
@@ -74,7 +74,7 @@ export function ProjectCard({ project, favorite, onOpen, onToggleFavorite, onRen
         disabled={renaming}
         className="dashboard-project-image"
       >
-        <img src={project.thumbnailUrl || fallbackImages[fallbackIndex]} alt={`Open ${project.name}`} />
+        <img src={thumbnailUrl(project.thumbnailUrl) || fallbackImages[fallbackIndex]} alt={`Open ${project.name}`} />
       </button>
 
       <div className="dashboard-project-actions">

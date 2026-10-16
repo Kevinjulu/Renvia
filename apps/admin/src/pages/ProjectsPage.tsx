@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AdminProjectOrder, AdminProjectSort } from "@renvia/types";
+import { thumbnailUrl, type AdminProjectOrder, type AdminProjectSort } from "@renvia/types";
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, CircleOff, FolderKanban, Search, Wallet } from "lucide-react";
 import { Card, EmptyState, ErrorNote, Pagination, Skeleton, StatCard } from "../components/ui";
 import { PageHero } from "../components/PageHero";
@@ -192,7 +192,7 @@ export function ProjectsPage() {
                             <div className="flex items-center gap-3">
                               <span className="block h-11 w-14 shrink-0 overflow-hidden rounded-lg border border-hairline bg-surface-muted">
                                 {project.thumbnailUrl ? (
-                                  <img src={project.thumbnailUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                                  <img src={thumbnailUrl(project.thumbnailUrl)} alt="" loading="lazy" className="h-full w-full object-cover" />
                                 ) : null}
                               </span>
                               <div className="min-w-0">

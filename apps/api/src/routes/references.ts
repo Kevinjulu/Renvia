@@ -9,6 +9,7 @@ import { getOrCreateUserId } from "../lib/users.js";
 import { getSettings } from "../lib/settings.js";
 import { objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
+import { optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { presentForViewer } from "../lib/presentAsset.js";
 import { presentStockReference } from "../lib/stockReferences.js";
 
@@ -63,12 +64,13 @@ references.post("/", async (c) => {
   if (body.source === "url") {
     const settings = await getSettings(db);
     try {
-      const image = await importImageFromUrl(body.url, settings.maxUploadMb * 1024 * 1024);
+      const imported = await importImageFromUrl(body.url, settings.maxUploadMb * 1024 * 1024);
+      const image = await optimizeUpload(imported.bytes, imported.contentType);
       const key = objectKeyFor(clerkId, image.contentType);
       await putObject(c.env, key, image.bytes, image.contentType);
       url = publicUploadUrl(new URL(c.req.url).origin, key);
     } catch (error) {
-      if (error instanceof ImportImageError) return c.json({ error: error.message }, 422);
+      if (error instanceof ImportImageError || error instanceof UnreadableImageError) return c.json({ error: error.message }, 422);
       throw error;
     }
   }

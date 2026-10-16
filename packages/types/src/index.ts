@@ -1139,7 +1139,7 @@ export interface AdminSettings {
   /** New uploads and renders are refused once stored images reach this (MB of 10^6 bytes). */
   storageCapMb: number;
   /** Stored images, from the storage ledger. */
-  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number; stock: number } };
+  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number; stock: number; thumbnail: number } };
   maintenanceRenders: boolean;
   maintenanceSegments: boolean;
   maintenanceMessage: string | null;
@@ -2428,4 +2428,13 @@ export interface BetaAnnotations {
   pins: { x: number; y: number; label?: string }[];
   boxes: { x: number; y: number; w: number; h: number }[];
   strokes: { points: [number, number][] }[];
+}
+
+/**
+ * The small copy of one of our signed image links, for grids, cards and tables; the API makes it
+ * the first time it's asked for. Any other URL (blob:, data:, external) is returned unchanged.
+ */
+export function thumbnailUrl<T extends string | null | undefined>(url: T): T {
+  if (!url || !url.includes("/api/uploads/") || !url.includes("signature=") || url.includes("size=thumb")) return url;
+  return `${url}&size=thumb` as T;
 }

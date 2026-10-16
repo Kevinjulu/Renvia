@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { thumbnailUrl } from "@renvia/types";
 import { useElevationUpload } from "../../canvas/hooks/useElevationUpload";
 import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { filledBuildingViews, isDefaultViewId, nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
@@ -82,7 +83,7 @@ export function ActiveElevationCard() {
         title={node ? "View full size" : `Upload the ${view.label.toLowerCase()}`}
       >
         {node ? (
-          <img src={node.imageUrl} alt="" />
+          <img src={thumbnailUrl(node.imageUrl)} alt="" />
         ) : (
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14" />

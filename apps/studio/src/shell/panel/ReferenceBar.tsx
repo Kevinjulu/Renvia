@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { REFERENCE_CATEGORIES, type ReferenceCategory, type ReferenceImage, type StockReference } from "@renvia/types";
+import { thumbnailUrl, REFERENCE_CATEGORIES, type ReferenceCategory, type ReferenceImage, type StockReference } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
@@ -240,7 +240,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
                   title="View this reference full size"
                   onClick={() => viewImage(url, "Reference image")}
                 >
-                  <img src={url} alt="" />
+                  <img src={thumbnailUrl(url)} alt="" />
                 </button>
                 <button type="button" onClick={() => detach(url)} aria-label="Remove reference">
                   <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -389,7 +389,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
                       className="reference-image-tile"
                       title={reference.caption ?? "Use this sample"}
                     >
-                      <img src={reference.url} alt={reference.caption ?? ""} loading="lazy" />
+                      <img src={thumbnailUrl(reference.url)} alt={reference.caption ?? ""} loading="lazy" />
                       {reference.caption && <span className="reference-image-caption">{reference.caption}</span>}
                     </button>
                   ))}
@@ -422,7 +422,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
                   }}
                   className="reference-image-tile"
                 >
-                  <img src={reference.url} alt="" />
+                  <img src={thumbnailUrl(reference.url)} alt="" loading="lazy" />
                 </button>
               ))}
             </div>

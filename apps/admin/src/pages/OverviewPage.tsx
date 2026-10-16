@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { AdminOverviewResponse } from "@renvia/types";
+import { thumbnailUrl, type AdminOverviewResponse } from "@renvia/types";
 import {
   Activity,
   AlertTriangle,
@@ -233,7 +233,7 @@ export function OverviewPage() {
                   {data.recentFailures.map((failure) => (
                     <li key={failure.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
                       <span className="block h-11 w-14 shrink-0 overflow-hidden rounded-lg border border-hairline bg-surface-muted">
-                        <img src={failure.sourceImageUrl} alt="" loading="lazy" className="h-full w-full object-cover opacity-70" />
+                        <img src={thumbnailUrl(failure.sourceImageUrl)} alt="" loading="lazy" className="h-full w-full object-cover opacity-70" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AdminSegmentationOrder, AdminSegmentationSort } from "@renvia/types";
+import { thumbnailUrl, type AdminSegmentationOrder, type AdminSegmentationSort } from "@renvia/types";
 import { AlertTriangle, ArrowDown, ArrowUp, Scan, Search, Timer, Wallet, X } from "lucide-react";
 import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
 import { PageHero } from "../components/PageHero";
@@ -250,7 +250,7 @@ export function SegmentationsPage() {
                         >
                           <td className="px-5 py-3">
                             <span className="block h-12 w-16 overflow-hidden rounded-lg border border-hairline bg-surface-muted">
-                              <img src={item.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                              <img src={thumbnailUrl(item.imageUrl)} alt="" loading="lazy" className="h-full w-full object-cover" />
                             </span>
                           </td>
                           <td className="px-5 py-3" onClick={(event) => event.stopPropagation()}>

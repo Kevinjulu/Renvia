@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AdminRenderOrder, AdminRenderSort } from "@renvia/types";
+import { thumbnailUrl, type AdminRenderOrder, type AdminRenderSort } from "@renvia/types";
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, ImageIcon, Search, Timer, Wallet } from "lucide-react";
 import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
 import { PageHero } from "../components/PageHero";
@@ -248,7 +248,7 @@ export function RendersPage() {
                           <td className="px-5 py-3">
                             <span className="block h-12 w-16 overflow-hidden rounded-lg border border-hairline bg-surface-muted">
                               <img
-                                src={render.resultImageUrl ?? render.sourceImageUrl}
+                                src={thumbnailUrl(render.resultImageUrl ?? render.sourceImageUrl)}
                                 alt=""
                                 loading="lazy"
                                 className={`h-full w-full object-cover ${render.resultImageUrl ? "" : "opacity-40"}`}

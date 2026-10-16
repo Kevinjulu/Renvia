@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Images, Trash2, Upload } from "lucide-react";
-import { REFERENCE_CATEGORIES, type AdminStockReference, type ReferenceCategory } from "@renvia/types";
+import { thumbnailUrl, REFERENCE_CATEGORIES, type AdminStockReference, type ReferenceCategory } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
 import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
@@ -191,7 +191,7 @@ export function LibraryPage() {
                   {inCategory.map((item, index) => (
                     <li key={item.id} className={`overflow-hidden rounded-xl border border-hairline bg-surface ${item.hidden ? "opacity-60" : ""}`}>
                       <div className="relative aspect-[4/3] bg-surface-muted">
-                        <img src={item.url} alt={item.caption ?? ""} className="h-full w-full object-cover" loading="lazy" />
+                        <img src={thumbnailUrl(item.url)} alt={item.caption ?? ""} className="h-full w-full object-cover" loading="lazy" />
                         {item.hidden && <span className="absolute left-2 top-2"><Pill tone="amber">Hidden</Pill></span>}
                       </div>
                       <div className="space-y-2 p-3">

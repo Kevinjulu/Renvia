@@ -21,7 +21,7 @@ import { jobProgress } from "../../canvas/utils/renderProgress";
 import { useArchitectureFact } from "./useArchitectureFact";
 import { reportClientError } from "../../components/AppErrorHandling";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
-import { upscaleCredits, type RenderEditSettings, type UpscaleTarget } from "@renvia/types";
+import { thumbnailUrl, upscaleCredits, type RenderEditSettings, type UpscaleTarget } from "@renvia/types";
 import { creditPricesFor } from "../../lib/creditPrices";
 import { useBetaStore } from "../../beta/useBetaStore";
 import { useFeedbackStore } from "../../beta/feedback/useFeedbackStore";
@@ -569,7 +569,7 @@ export function RenderResultsPanel() {
                       parent ? setPreviewJob(parent.id) : viewImage(job.sourceImageUrl, "Source image", job.viewLabel ?? undefined)
                     }
                   >
-                    <img src={job.sourceImageUrl} alt="" />
+                    <img src={thumbnailUrl(job.sourceImageUrl)} alt="" />
                   </button>
                 </div>
               </div>
@@ -579,7 +579,7 @@ export function RenderResultsPanel() {
                   <div>
                     {references.map((url) => (
                       <button key={url} type="button" title="View this reference full size" onClick={() => viewImage(url, "Reference image")}>
-                        <img src={url} alt="" />
+                        <img src={thumbnailUrl(url)} alt="" />
                       </button>
                     ))}
                   </div>
@@ -613,7 +613,7 @@ export function RenderResultsPanel() {
                     }}
                     title={[item.viewLabel, item.prompt].filter(Boolean).join(": ") || "Render"}
                   >
-                    <img src={item.resultImageUrl ?? item.sourceImageUrl} alt="" />
+                    <img src={thumbnailUrl(item.resultImageUrl ?? item.sourceImageUrl)} alt="" loading="lazy" />
                     {running && <i className="rp-spinner" aria-label="Rendering" />}
                     {item.status === "failed" && <em>Failed</em>}
                     {item.isFavorite && <b aria-label="Starred">★</b>}

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { MAX_EDIT_REFERENCE_NOTE_CHARS, MAX_EDIT_REFERENCES, type EditMethod, type EditReference, type EditReferenceTarget } from "@renvia/types";
+import { thumbnailUrl, MAX_EDIT_REFERENCE_NOTE_CHARS, MAX_EDIT_REFERENCES, type EditMethod, type EditReference, type EditReferenceTarget } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { AdvancedSection } from "./AdvancedSection";
 import { ENVIRONMENT_CONTROLS, environmentLabels } from "./editEnvironmentOptions";
@@ -213,7 +213,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
               <span className="cp-ref-tags-title">What is each one for?</span>
               {editReferences.map((reference, index) => (
                 <div key={reference.url} className="cp-ref-tag">
-                  <img src={reference.url} alt="" />
+                  <img src={thumbnailUrl(reference.url)} alt="" />
                   <div className="cp-ref-tag-fields">
                     <select
                       aria-label={`Reference ${index + 1} is for`}

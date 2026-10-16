@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Project } from "@renvia/types";
+import { thumbnailUrl, type Project } from "@renvia/types";
 import { Link } from "react-router-dom";
 import { ApiError, useApiClient } from "../lib/apiClient";
 import { recordRecentlyViewed } from "../lib/localCollections";
@@ -160,7 +160,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                   >
                     <span className="filmstrip-thumb">
                       {node ? (
-                        <img src={node.imageUrl} alt="" draggable={false} />
+                        <img src={thumbnailUrl(node.imageUrl)} alt="" draggable={false} />
                       ) : (
                         <b>
                           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19h14" /></svg>

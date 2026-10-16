@@ -11,7 +11,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1e3)} KB`;
 }
 
-const KIND_LABELS = { render: "Renders & 4K/8K", upload: "Uploads & references", watermark: "Watermarked copies", feedback: "Beta screenshots", stock: "Sample references" } as const;
+const KIND_LABELS = { render: "Renders & 4K/8K", upload: "Uploads & references", watermark: "Watermarked copies", feedback: "Beta screenshots", stock: "Sample references", thumbnail: "Thumbnails" } as const;
 
 /**
  * Image storage against its cap. Cloudflare R2's free tier is 10 GB; the cap stops new uploads

@@ -6,7 +6,7 @@ import { REFERENCE_CATEGORIES, type AdminStockReference, type AdminStockReferenc
 import type { AdminContext } from "./context.js";
 import { denyUnless } from "./permissions.js";
 import { adminEventInsert } from "./shared.js";
-import { deleteObject, putObject, storageWouldExceed } from "../../lib/storage.js";
+import { deleteObject, putObject, storageWouldExceed, thumbnailKeyFor } from "../../lib/storage.js";
 import { getSettings } from "../../lib/settings.js";
 import { refuseStorage } from "../../lib/limits.js";
 import {
@@ -165,6 +165,7 @@ libraryRoutes.delete("/library/:id", async (c) => {
 
   try {
     await deleteObject(c.env, existing.key);
+    await deleteObject(c.env, thumbnailKeyFor(existing.key));
   } catch (error) {
     return c.json({ error: `The image couldn't be removed from storage; try again. (${error instanceof Error ? error.message : "storage error"})`, code: "storage_error" }, 502);
   }

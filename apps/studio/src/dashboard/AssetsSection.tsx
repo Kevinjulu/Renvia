@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReferenceImage, ReferenceImageSource } from "@renvia/types";
+import { thumbnailUrl, type ReferenceImage, type ReferenceImageSource } from "@renvia/types";
 import { useApiClient } from "../lib/apiClient";
 import { formatRelativeTime } from "../lib/relativeTime";
 
@@ -239,7 +239,7 @@ export function AssetsSection({ autoOpenUpload, query = "", onNotice }: AssetsSe
                 className="asset-tile-image"
                 aria-label={`Open ${SOURCE_LABEL[asset.source]} asset, added ${formatRelativeTime(asset.createdAt)}, in a new tab`}
               >
-                <img src={asset.url} alt="" loading="lazy" />
+                <img src={thumbnailUrl(asset.url)} alt="" loading="lazy" />
               </a>
               <figcaption>
                 <SourceBadge source={asset.source} />

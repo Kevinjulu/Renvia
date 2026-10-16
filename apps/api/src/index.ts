@@ -104,7 +104,7 @@ app.use("*", async (c, next) => {
   c.header("X-Request-Id", id);
   return cors({
     origin: allowedOrigins(c.env),
-    allowHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Request-Id", "X-Upload-Kind"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["X-Request-Id"],
     credentials: true,

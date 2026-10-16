@@ -2,7 +2,10 @@
 
 ## Status
 
-**Planned — not implemented.** Studio currently uploads the original PNG, JPEG or WebP bytes to `POST /api/uploads`. The API checks type and size, then stores those bytes unchanged. `sharp` is already installed in the API and is used elsewhere for image manipulation, but not yet on the general upload route.
+**Server stage and thumbnails implemented (2026-10-16); Studio pre-upload compression still planned.**
+
+- `POST /api/uploads` and pasted-link imports run every image through `optimizeUpload` (`apps/api/src/lib/optimizeImage.ts`): turned upright, capped at 2560px, metadata stripped, re-encoded per the quality policy below. Selection masks are sent with `X-Upload-Kind: mask` and stored exactly as drawn.
+- Any signed upload link with `&size=thumb` serves a 640px WebP copy, made on first request and stored under `thumbs/` (ledger kind `thumbnail`). Studio and admin grids, cards and tables use it through `thumbnailUrl()` from `@renvia/types`; full-size images load only where an image is viewed or edited. Render thumbnails are deleted with their project.
 
 ## Goal
 

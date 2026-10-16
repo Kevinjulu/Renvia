@@ -8,7 +8,7 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput, resolveLimits } from "../lib/limits.js";
-import { deleteObject, ownUploadKey } from "../lib/storage.js";
+import { deleteObject, ownUploadKey, thumbnailKeyFor } from "../lib/storage.js";
 import { watermarkedCopyKeys } from "../lib/watermark.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
@@ -137,8 +137,14 @@ projects.delete("/:id", async (c) => {
   await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id));
   await db.delete(schema.projects).where(eq(schema.projects.id, id));
 
-  // Each output's watermarked copies go with it (deleting one that was never made is a no-op).
-  await Promise.allSettled(generatedKeys.flatMap((key) => [key, ...watermarkedCopyKeys(key)].map((k) => deleteObject(c.env, k))));
+  // Each output's watermarked copies and thumbnails go with it (deleting one that was never made
+  // is a no-op).
+  await Promise.allSettled(
+    generatedKeys
+      .flatMap((key) => [key, ...watermarkedCopyKeys(key)])
+      .flatMap((key) => [key, thumbnailKeyFor(key)])
+      .map((key) => deleteObject(c.env, key)),
+  );
 
   return c.json({ id });
 });

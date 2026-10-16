@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { BetaAnnotations, BetaFeedbackCategory, BetaFeedbackKind, BetaKnownIssue, BetaSeverity } from "@renvia/types";
+import { thumbnailUrl, type BetaAnnotations, type BetaFeedbackCategory, type BetaFeedbackKind, type BetaKnownIssue, type BetaSeverity } from "@renvia/types";
 import { useRenderJobsStore } from "../../canvas/hooks/useRenderJobsStore";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { refreshBeta } from "../useBetaStore";
@@ -220,7 +220,7 @@ export function FeedbackDrawer() {
                   <button type="button" onClick={() => attach(null)} className={`grid h-14 w-20 shrink-0 place-items-center rounded-lg border text-xs font-medium ${target ? "border-hairline text-secondary hover:bg-surface-muted" : "border-primary bg-primary text-white"}`}>None</button>
                   {renders.map((job) => (
                     <button key={job.id} type="button" onClick={() => attach(job)} aria-label={`Attach the render from ${new Date(job.createdAt).toLocaleString()}`} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 ${target?.renderId === job.id ? "border-blueprint" : "border-transparent hover:border-hairline"}`}>
-                      <img src={job.resultImageUrl ?? job.sourceImageUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={thumbnailUrl(job.resultImageUrl ?? job.sourceImageUrl)} alt="" loading="lazy" className="h-full w-full object-cover" />
                       {job.status === "failed" && <span className="absolute inset-x-0 bottom-0 bg-red-600/85 text-[10px] font-semibold text-white">Failed</span>}
                     </button>
                   ))}

@@ -214,13 +214,22 @@ function createStorageClient(env: Env): S3Client {
   });
 }
 
+const THUMBNAIL_PREFIX = "thumbs/";
+
+/** Where the small grid/card copy of `key` is stored; made the first time it is asked for. */
+export function thumbnailKeyFor(key: string): string {
+  return `${THUMBNAIL_PREFIX}${key}.webp`;
+}
+
 /**
  * feedback: beta testers' report screenshots, kept under feedback/ and counted separately.
  * stock: the sample references the team uploads for everyone, under stock/.
+ * thumbnail: small copies of any of the above, under thumbs/.
  */
-export type StorageKind = "upload" | "render" | "watermark" | "feedback" | "stock";
+export type StorageKind = "upload" | "render" | "watermark" | "feedback" | "stock" | "thumbnail";
 
 export function storageKindFor(key: string): StorageKind {
+  if (key.startsWith(THUMBNAIL_PREFIX)) return "thumbnail";
   if (key.startsWith("feedback/")) return "feedback";
   if (key.startsWith("stock/")) return "stock";
   return isWatermarkedKey(key) ? "watermark" : isRenderOutputKey(key) ? "render" : "upload";
@@ -256,7 +265,7 @@ export async function storageUsage(db: Database): Promise<{ usedBytes: number; b
     .select({ kind: schema.storageObjects.kind, bytes: sql<string>`coalesce(sum(${schema.storageObjects.bytes}), 0)::bigint`, objects: sql<number>`count(*)::int` })
     .from(schema.storageObjects)
     .groupBy(schema.storageObjects.kind);
-  const byKind: Record<StorageKind, number> = { upload: 0, render: 0, watermark: 0, feedback: 0, stock: 0 };
+  const byKind: Record<StorageKind, number> = { upload: 0, render: 0, watermark: 0, feedback: 0, stock: 0, thumbnail: 0 };
   for (const row of rows) byKind[row.kind] = Number(row.bytes);
   return { usedBytes: Object.values(byKind).reduce((sum, value) => sum + value, 0), byKind, objects: rows.reduce((sum, row) => sum + row.objects, 0) };
 }

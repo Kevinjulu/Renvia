@@ -167,6 +167,7 @@ async function uploadWithProgress(
   getToken: GetToken,
   file: File,
   onProgress?: (fraction: number) => void,
+  kind?: "mask",
 ): Promise<UploadImageResponse> {
   const token = await getToken();
   return new Promise((resolve, reject) => {
@@ -174,6 +175,8 @@ async function uploadWithProgress(
     xhr.open("POST", `${API_BASE_URL}/api/uploads`);
     xhr.setRequestHeader("Content-Type", file.type);
     xhr.setRequestHeader("X-Request-Id", crypto.randomUUID());
+    // The API compresses uploads; a mask is stored exactly as drawn.
+    if (kind) xhr.setRequestHeader("X-Upload-Kind", kind);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.upload.onprogress = (event) => {
@@ -285,8 +288,8 @@ function createApiClient(getToken: GetToken) {
     hideRender: (id: string) => request<{ ok: true }>(getToken, `/renders/${id}`, { method: "DELETE" }),
     listRenders: (projectId: string) =>
       request<ListRendersResponse>(getToken, `/renders?projectId=${projectId}`),
-    uploadImage: (file: File, onProgress?: (fraction: number) => void) =>
-      uploadWithProgress(getToken, file, onProgress),
+    uploadImage: (file: File, onProgress?: (fraction: number) => void, kind?: "mask") =>
+      uploadWithProgress(getToken, file, onProgress, kind),
     listCanvasNodes: (projectId: string) =>
       request<ListCanvasNodesResponse>(getToken, `/canvas-nodes?projectId=${projectId}`),
     createCanvasNode: (body: CreateCanvasNodeRequest) =>

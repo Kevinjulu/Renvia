@@ -946,7 +946,7 @@ export const storageObjects = pgTable(
     key: text("key").primaryKey(),
     bytes: bigint("bytes", { mode: "number" }).notNull(),
     contentType: text("content_type").notNull(),
-    kind: text("kind", { enum: ["upload", "render", "watermark", "feedback", "stock"] }).notNull(),
+    kind: text("kind", { enum: ["upload", "render", "watermark", "feedback", "stock", "thumbnail"] }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -290,7 +290,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         const naturalSize = await loadImageSize(sourceImageUrl);
         const mask = naturalSize ? await buildStrokeMask(renderStrokes, naturalSize) : null;
         if (!mask) throw new Error("Couldn't read the selected area");
-        const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }));
+        const { publicUrl } = await apiClient.uploadImage(new File([mask], "mask.png", { type: "image/png" }), undefined, "mask");
         edit.maskImageUrl = publicUrl;
       }
 
