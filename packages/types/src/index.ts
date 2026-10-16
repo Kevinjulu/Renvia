@@ -798,6 +798,44 @@ export interface DeleteReferenceImageResponse {
   id: string;
 }
 
+/** Sample-image categories in the Studio reference library, in display order. */
+export const REFERENCE_CATEGORIES = [
+  { key: "windows", label: "Windows" },
+  { key: "roof", label: "Roof" },
+  { key: "doors", label: "Doors" },
+  { key: "pillars", label: "Pillars" },
+  { key: "outdoors", label: "Outdoors" },
+  { key: "exterior", label: "Exterior" },
+] as const;
+
+export type ReferenceCategory = (typeof REFERENCE_CATEGORIES)[number]["key"];
+
+/** A sample reference the team uploaded for every user. */
+export interface StockReference {
+  id: string;
+  category: ReferenceCategory;
+  url: string;
+  caption: string | null;
+}
+
+/** Visible samples only, in each category's display order. */
+export interface ListStockReferencesResponse {
+  references: StockReference[];
+}
+
+export interface AdminStockReference extends StockReference {
+  hidden: boolean;
+  sortOrder: number;
+  bytes: number;
+  createdAt: string;
+}
+
+export interface AdminStockReferencesResponse {
+  references: AdminStockReference[];
+  /** Bytes stored under stock/, for the storage line on the page. */
+  totalBytes: number;
+}
+
 // ── Admin API (/api/admin/*, admins only) ────────────────────────────────────────
 
 export interface AdminUser {
@@ -1101,7 +1139,7 @@ export interface AdminSettings {
   /** New uploads and renders are refused once stored images reach this (MB of 10^6 bytes). */
   storageCapMb: number;
   /** Stored images, from the storage ledger. */
-  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number } };
+  storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number; stock: number } };
   maintenanceRenders: boolean;
   maintenanceSegments: boolean;
   maintenanceMessage: string | null;
@@ -1319,7 +1357,9 @@ export type AdminAuditAction =
   | "maintenance.window"
   | "plan.update"
   /** Beta program changes: programs, invitations, enrollments, grants and budgets (see targetType). */
-  | "beta.update";
+  | "beta.update"
+  /** Sample reference images: uploads, captions, hiding, ordering and deletes. */
+  | "library.update";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {

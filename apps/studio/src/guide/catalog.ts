@@ -63,7 +63,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     title: "Prompt and references",
     short: "Direction for materials, light, and setting. Add a reference image or a prompt.",
     body: "The prompt describes atmosphere and materials in a sentence. Reference images are stronger: the model blends them with your elevation so cladding, landscape, and lighting follow what you show.",
-    how: "Generate needs at least one reference image or a prompt. References usually work best: add up to eight from upload, the library, Unsplash, or a URL.",
+    how: "Generate needs at least one reference image or a prompt. References usually work best: add up to eight from upload, the library, Unsplash, or a URL. Not sure where to start? Open Library and pick a sample from Windows, Roof, Doors, Pillars, Outdoors or Exterior.",
     article: "getting-started",
     tab: "render",
     legend: 4,

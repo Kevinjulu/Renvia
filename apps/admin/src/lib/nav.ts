@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { FlaskConical, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
+import { FlaskConical, Images, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -201,6 +201,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Features & maintenance",
     banner: "/banners/elevation.jpg",
     roles: ["analyst", "support", "admin"],
+  },
+  {
+    to: "/library",
+    label: "Reference library",
+    icon: Images,
+    end: false,
+    title: "Reference library",
+    description: "Sample images every Studio user can pick as a reference: windows, roofs, doors, pillars, outdoors and exteriors.",
+    hint: "Sample references for users",
+    banner: "/banners/elevation.jpg",
+    roles: ["admin"],
   },
   {
     to: "/settings",

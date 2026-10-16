@@ -223,6 +223,25 @@ export const referenceImages = pgTable("reference_images", {
 });
 
 /**
+ * Sample references the team uploads for everyone, grouped by REFERENCE_CATEGORIES. One stored
+ * object under stock/ serves every user: picking one attaches its link, nothing is copied.
+ */
+export const stockReferences = pgTable(
+  "stock_references",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    category: text("category", { enum: ["windows", "roof", "doors", "pillars", "outdoors", "exterior"] }).notNull(),
+    key: text("key").notNull().unique(),
+    caption: text("caption"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    hidden: boolean("hidden").notNull().default(false),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("stock_references_category_idx").on(table.category, table.sortOrder)],
+);
+
+/**
  * Very short-lived budget holds used while a request converts a budget check into a render
  * or segmentation row. They close the race where simultaneous requests could all observe
  * the same remaining fal budget.
@@ -927,7 +946,7 @@ export const storageObjects = pgTable(
     key: text("key").primaryKey(),
     bytes: bigint("bytes", { mode: "number" }).notNull(),
     contentType: text("content_type").notNull(),
-    kind: text("kind", { enum: ["upload", "render", "watermark", "feedback"] }).notNull(),
+    kind: text("kind", { enum: ["upload", "render", "watermark", "feedback", "stock"] }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

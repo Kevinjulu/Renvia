@@ -672,6 +672,61 @@
   object-fit: cover;
 }
 
+.reference-image-caption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  padding: 14px 7px 6px;
+  background: linear-gradient(to top, rgba(17, 19, 24, 0.72), transparent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-library-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reference-library-tab {
+  border: 1px solid #e2e5ea;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.reference-library-tab:hover {
+  border-color: #c7ccd4;
+}
+
+.reference-library-tab.is-active {
+  border-color: #15171a;
+  background: #15171a;
+  color: #fff;
+}
+
+.reference-library-tabs + .reference-modal-empty,
+.reference-library-tabs + .reference-library-lead,
+.reference-library-tabs + .reference-modal-blank {
+  margin-top: 14px;
+}
+
+.reference-library-lead {
+  margin-bottom: 0;
+}
+
 .reference-image-busy {
   position: absolute;
   inset: 0;

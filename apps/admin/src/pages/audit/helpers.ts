@@ -1,5 +1,5 @@
 import type { AdminAuditAction, AdminAuditEvent, AdminAuditRange } from "@renvia/types";
-import { AlertTriangle, Coins, Settings, Shield, ScrollText, UserRound, Users } from "lucide-react";
+import { AlertTriangle, Coins, Images, Settings, Shield, ScrollText, UserRound, Users } from "lucide-react";
 import { formatDay, formatNumber } from "../../lib/format";
 
 export const PAGE_SIZE = 30;
@@ -22,6 +22,7 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "maintenance.window", label: "Maintenance windows" },
   { value: "plan.update", label: "Plans & pricing" },
   { value: "beta.update", label: "Beta program" },
+  { value: "library.update", label: "Reference library" },
 ];
 
 export const RANGES: { value: RangeFilter; label: string }[] = [
@@ -72,6 +73,7 @@ export const ACTION_META: Record<
   "maintenance.window": { label: "Maintenance window", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "plan.update": { label: "Plans & pricing", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "beta.update": { label: "Beta program", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
+  "library.update": { label: "Reference library", tone: "neutral", icon: Images, chip: "bg-surface-muted text-secondary" },
 };
 
 export function groupByDay(events: AdminAuditEvent[]) {

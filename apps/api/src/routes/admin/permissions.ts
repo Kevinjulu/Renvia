@@ -38,7 +38,9 @@ export type AdminPermission =
   /** Create and configure programs: dates, limits, benefits, status and budget. */
   | "beta.programs.manage"
   /** Triage beta feedback and reply to testers. */
-  | "beta.feedback.manage";
+  | "beta.feedback.manage"
+  /** Upload, caption, hide, order and delete the sample references every Studio user sees. */
+  | "library.manage";
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
@@ -48,7 +50,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
     "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage", "studio.read", "studio.manage",
-    "beta.read", "beta.testers.manage", "beta.credits.manage", "beta.programs.manage", "beta.feedback.manage",
+    "beta.read", "beta.testers.manage", "beta.credits.manage", "beta.programs.manage", "beta.feedback.manage", "library.manage",
   ],
 };
 

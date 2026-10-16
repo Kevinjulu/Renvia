@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ReferenceImage } from "@renvia/types";
+import { REFERENCE_CATEGORIES, type ReferenceCategory, type ReferenceImage, type StockReference } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
 import { viewImage } from "../../canvas/utils/viewImage";
 
 type Panel = "library" | "unsplash" | "more" | null;
+/** The library modal shows the user's own images or one category of the team's samples. */
+type LibraryTab = "yours" | ReferenceCategory;
 
 function Spinner({ size = 16 }: { size?: number }) {
   return (
@@ -73,6 +75,11 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
   const [library, setLibrary] = useState<ReferenceImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
+  // The team's samples, shown as category chips beside the user's own images.
+  const [stock, setStock] = useState<StockReference[]>([]);
+  const [stockLoaded, setStockLoaded] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("yours");
+  const libraryTabChosen = useRef(false);
 
   const [isUploading, setIsUploading] = useState(false);
 
@@ -95,10 +102,10 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [openPanel]);
 
-  const attach = (reference: ReferenceImage) => {
+  const attach = ({ url }: { url: string }) => {
     const current = urlsRef.current;
-    if (current.includes(reference.url) || current.length >= maxReferences) return;
-    onChange([...current, reference.url]);
+    if (current.includes(url) || current.length >= maxReferences) return;
+    onChange([...current, url]);
   };
 
   const detach = (url: string) => {
@@ -106,17 +113,32 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
   };
 
   const loadLibrary = async () => {
-    if (libraryLoaded || libraryLoading) return;
+    if ((libraryLoaded && stockLoaded) || libraryLoading) return;
     setLibraryLoading(true);
-    try {
-      const { references } = await apiClient.listReferences();
-      setLibrary(references);
+    // Either list failing leaves that part empty; reopening retries it.
+    const [own, samples] = await Promise.allSettled([
+      libraryLoaded ? Promise.resolve({ references: library }) : apiClient.listReferences(),
+      stockLoaded ? Promise.resolve({ references: stock }) : apiClient.listStockReferences(),
+    ]);
+    const ownReferences = own.status === "fulfilled" ? own.value.references : [];
+    const stockReferences = samples.status === "fulfilled" ? samples.value.references : [];
+    if (own.status === "fulfilled") {
+      setLibrary(ownReferences);
       setLibraryLoaded(true);
-    } catch {
-      // Leave empty; reopen retries.
-    } finally {
-      setLibraryLoading(false);
     }
+    if (samples.status === "fulfilled") {
+      setStock(stockReferences);
+      setStockLoaded(true);
+    }
+    // Someone with nothing saved yet starts on the first category instead of an empty grid.
+    const firstCategory = REFERENCE_CATEGORIES.find(({ key }) => stockReferences.some((item) => item.category === key));
+    if (!libraryTabChosen.current && ownReferences.length === 0 && firstCategory) setLibraryTab(firstCategory.key);
+    setLibraryLoading(false);
+  };
+
+  const chooseLibraryTab = (tab: LibraryTab) => {
+    libraryTabChosen.current = true;
+    setLibraryTab(tab);
   };
 
   const openPanelSafe = (panel: Exclude<Panel, null>) => {
@@ -194,6 +216,10 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
       setIsPasting(false);
     }
   };
+
+  // Only categories with at least one visible sample get a chip.
+  const stockCategories = REFERENCE_CATEGORIES.filter(({ key }) => stock.some((reference) => reference.category === key));
+  const shownTab: LibraryTab = stockCategories.some(({ key }) => key === libraryTab) ? libraryTab : "yours";
 
   const atCap = attachedUrls.length >= maxReferences;
   const capHint = atCapHint ?? `Remove one first — up to ${maxReferences} references per render`;
@@ -317,8 +343,58 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
 
       {openPanel === "library" && (
         <ReferenceModal title="Reference library" titleId="reference-library-title" onClose={() => setOpenPanel(null)} wide>
+          {stockCategories.length > 0 && (
+            <div className="reference-library-tabs" role="tablist" aria-label="Library sections">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={shownTab === "yours"}
+                className={`reference-library-tab ${shownTab === "yours" ? "is-active" : ""}`}
+                onClick={() => chooseLibraryTab("yours")}
+              >
+                Yours
+              </button>
+              {stockCategories.map((category) => (
+                <button
+                  key={category.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={shownTab === category.key}
+                  className={`reference-library-tab ${shownTab === category.key ? "is-active" : ""}`}
+                  onClick={() => chooseLibraryTab(category.key)}
+                >
+                  {category.label}
+                </button>
+              ))}
+            </div>
+          )}
           {libraryLoading ? (
             <p className="reference-modal-empty">Loading your references…</p>
+          ) : shownTab !== "yours" ? (
+            <>
+              <p className="reference-modal-lead reference-library-lead">
+                Samples picked by the Renvia team. Click one to use it as a reference for this render.
+              </p>
+              <div className="reference-image-grid">
+                {stock
+                  .filter((reference) => reference.category === shownTab)
+                  .map((reference) => (
+                    <button
+                      key={reference.id}
+                      type="button"
+                      onClick={() => {
+                        attach(reference);
+                        setOpenPanel(null);
+                      }}
+                      className="reference-image-tile"
+                      title={reference.caption ?? "Use this sample"}
+                    >
+                      <img src={reference.url} alt={reference.caption ?? ""} loading="lazy" />
+                      {reference.caption && <span className="reference-image-caption">{reference.caption}</span>}
+                    </button>
+                  ))}
+              </div>
+            </>
           ) : library.length === 0 ? (
             <div className="reference-modal-blank">
               <div className="reference-modal-blank-icon" aria-hidden="true">
@@ -331,6 +407,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
               <p className="reference-modal-blank-copy">
                 Upload an image or pick one from Unsplash — everything you save shows up here so you don&apos;t have to
                 upload it again.
+                {stockCategories.length > 0 && " Or start with one of our samples in the sections above."}
               </p>
             </div>
           ) : (

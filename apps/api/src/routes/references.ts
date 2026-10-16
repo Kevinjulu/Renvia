@@ -1,7 +1,8 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
+import type { ListStockReferencesResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUserId } from "../lib/users.js";
@@ -9,6 +10,7 @@ import { getSettings } from "../lib/settings.js";
 import { objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
 import { presentForViewer } from "../lib/presentAsset.js";
+import { presentStockReference } from "../lib/stockReferences.js";
 
 export const references = new Hono<AppContext>();
 
@@ -32,6 +34,22 @@ references.get("/", async (c) => {
 
   const origin = new URL(c.req.url).origin;
   return c.json({ references: await Promise.all(rows.map(async (row) => ({ ...row, url: await presentForViewer(c, origin, row.url) }))) });
+});
+
+/** The team's sample references, grouped by category in their display order. Hidden ones are left out. */
+references.get("/stock", async (c) => {
+  const db = createDb(c.env.DATABASE_URL);
+  const rows = await db
+    .select()
+    .from(schema.stockReferences)
+    .where(eq(schema.stockReferences.hidden, false))
+    .orderBy(asc(schema.stockReferences.sortOrder), desc(schema.stockReferences.createdAt));
+
+  const origin = new URL(c.req.url).origin;
+  const response: ListStockReferencesResponse = {
+    references: await Promise.all(rows.map((row) => presentStockReference(c.env, origin, row))),
+  };
+  return c.json(response);
 });
 
 references.post("/", async (c) => {

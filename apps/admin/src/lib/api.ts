@@ -2,6 +2,9 @@ import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
   AdminBetaAnnouncement,
+  AdminStockReference,
+  AdminStockReferencesResponse,
+  ReferenceCategory,
   AdminBetaEnrollment,
   AdminBetaFeedbackDetail,
   AdminBetaFeedbackListResponse,
@@ -103,7 +106,8 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
     const token = await getToken();
     const headers = new Headers(init?.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (init?.body) headers.set("Content-Type", "application/json");
+    // A File body carries its own image type; everything else sent here is JSON.
+    if (typeof init?.body === "string") headers.set("Content-Type", "application/json");
     headers.set("X-Request-Id", crypto.randomUUID());
     const response = await fetch(`${API_BASE_URL}/api${path}`, { ...init, headers });
     if (!response.ok) {
@@ -170,6 +174,14 @@ export function useAdminApi() {
       listBetaFeedback: (params: { programId?: string; status?: string; category?: string; severity?: string; knownIssue?: string; assigneeId?: string; page?: number }) =>
         request<AdminBetaFeedbackListResponse>(getToken, `/admin/beta/feedback${query(params)}`),
       getBetaFeedback: (id: string) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`),
+      listStockReferences: () => request<AdminStockReferencesResponse>(getToken, "/admin/library"),
+      uploadStockReference: (category: ReferenceCategory, file: File, caption: string) =>
+        request<AdminStockReference>(getToken, `/admin/library/${category}${query({ caption: caption.trim() })}`, { method: "POST", body: file }),
+      updateStockReference: (id: string, body: { caption?: string; hidden?: boolean }) =>
+        request<AdminStockReference>(getToken, `/admin/library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      orderStockReferences: (category: ReferenceCategory, ids: string[]) =>
+        request<{ ok: true }>(getToken, `/admin/library/order/${category}`, { method: "POST", body: JSON.stringify({ ids }) }),
+      deleteStockReference: (id: string) => request<{ deleted: true }>(getToken, `/admin/library/${id}`, { method: "DELETE" }),
       updateBetaFeedback: (id: string, body: Record<string, unknown>) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
       commentBetaFeedback: (id: string, body: string, visibility: "tester" | "internal") =>
         request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}/comments`, { method: "POST", body: JSON.stringify({ body, visibility }) }),

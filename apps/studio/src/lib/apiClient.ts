@@ -29,6 +29,7 @@ import type {
   ListCanvasNodesResponse,
   ListProjectsResponse,
   ListReferenceImagesResponse,
+  ListStockReferencesResponse,
   ListRendersResponse,
   MeCreditsResponse,
   MeResponse,
@@ -318,6 +319,7 @@ function createApiClient(getToken: GetToken) {
       }),
     deleteProject: (id: string) => request<DeleteProjectResponse>(getToken, `/projects/${id}`, { method: "DELETE" }),
     listReferences: () => request<ListReferenceImagesResponse>(getToken, "/references"),
+    listStockReferences: () => request<ListStockReferencesResponse>(getToken, "/references/stock"),
     createReference: (body: CreateReferenceImageRequest) =>
       request<ReferenceImage>(getToken, "/references", {
         method: "POST",
