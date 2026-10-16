@@ -1,4 +1,5 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { eq, sql } from "drizzle-orm";
 import { createDb, schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
@@ -283,6 +284,9 @@ export interface StoredObject {
   contentType: string;
 }
 
+/** What a GET is answered with: a stored object by key, or bytes made for this request only. */
+export type ServedImage = { key: string } | StoredObject;
+
 export async function getObject(env: Env, key: string): Promise<StoredObject | null> {
   const client = createStorageClient(env);
   try {
@@ -297,6 +301,39 @@ export async function getObject(env: Env, key: string): Promise<StoredObject | n
     }
     throw error;
   }
+}
+
+/** Whether `key` is stored, without downloading it. */
+export async function objectExists(env: Env, key: string): Promise<boolean> {
+  try {
+    await createStorageClient(env).send(new HeadObjectCommand({ Bucket: storageConfig(env).bucket, Key: key }));
+    return true;
+  } catch (error) {
+    if (error instanceof Error && (error.name === "NotFound" || error.name === "NoSuchKey")) return false;
+    throw error;
+  }
+}
+
+/** The longest a presigned storage link may live (an S3 signing limit). */
+const MAX_DIRECT_LINK_SECONDS = 60 * 60 * 24 * 7;
+/** Direct links are signed at the start of this window, so repeat requests get the same link. */
+const DIRECT_LINK_WINDOW_SECONDS = 60 * 60;
+
+/**
+ * A presigned link straight to `key` in the bucket, so the browser downloads the bytes from
+ * storage rather than through an API function. It expires no later than `expires` (the signed
+ * app link it stands in for). Also returns how long, in seconds, a redirect to it may be cached.
+ */
+export async function directObjectUrl(env: Env, key: string, expires: number, now = Math.floor(Date.now() / 1000)): Promise<{ url: string; maxAge: number }> {
+  const signedAt = now - (now % DIRECT_LINK_WINDOW_SECONDS);
+  const expiresIn = Math.max(1, Math.min(MAX_DIRECT_LINK_SECONDS, expires - signedAt));
+  const url = await getSignedUrl(
+    createStorageClient(env),
+    // Objects never change once written, so the browser may keep its copy.
+    new GetObjectCommand({ Bucket: storageConfig(env).bucket, Key: key, ResponseCacheControl: `private, max-age=${MAX_DIRECT_LINK_SECONDS}, immutable` }),
+    { expiresIn, signingDate: new Date(signedAt * 1000) },
+  );
+  return { url, maxAge: Math.max(0, signedAt + expiresIn - now) };
 }
 
 export async function deleteObject(env: Env, key: string): Promise<void> {

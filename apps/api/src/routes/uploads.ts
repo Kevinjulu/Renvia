@@ -1,9 +1,21 @@
 import { Hono } from "hono";
 import type { UploadImageResponse } from "@renvia/types";
-import type { AppContext } from "../index.js";
+import type { AppContext, Env } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getObject, hasValidSignature, isWatermarkedKey, objectKeyFor, putObject, signedUploadUrl, storageWouldExceed, thumbnailKeyFor, type StoredObject } from "../lib/storage.js";
-import { watermarkedObject } from "../lib/watermark.js";
+import {
+  directObjectUrl,
+  getObject,
+  hasValidSignature,
+  isWatermarkedKey,
+  objectExists,
+  objectKeyFor,
+  putObject,
+  signedUploadUrl,
+  storageWouldExceed,
+  thumbnailKeyFor,
+  type ServedImage,
+} from "../lib/storage.js";
+import { watermarkedCopy } from "../lib/watermark.js";
 import { makeThumbnail, optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
@@ -65,49 +77,60 @@ uploads.post("/", requireAuth, async (c) => {
 
 uploads.get("/:key{.+}", async (c) => {
   const key = c.req.param("key");
-  if (!(await hasValidSignature(c.env, key, new URL(c.req.url)))) {
+  const url = new URL(c.req.url);
+  if (!(await hasValidSignature(c.env, key, url))) {
     return c.json({ error: "Unauthorized" }, 401);
   }
   // A watermarked copy is made from its original the first time anyone opens it.
-  const load = () => (isWatermarkedKey(key) ? watermarkedObject(c.env, key) : getObject(c.env, key));
+  const full = (): Promise<ServedImage | null> => (isWatermarkedKey(key) ? watermarkedCopy(c.env, key) : Promise.resolve({ key }));
   // ?size=thumb on any signed link serves the small copy of the same image, so grids and tables
   // don't download full-size originals. The signature covers the key, so this grants nothing new.
-  const object = new URL(c.req.url).searchParams.get("size") === "thumb" ? await thumbnailObject(c.env, key, load) : await load();
+  const served = url.searchParams.get("size") === "thumb" ? await thumbnail(c.env, key, full) : await full();
 
-  if (!object) {
+  if (!served) {
     return c.json({ error: "Not found" }, 404);
   }
 
-  // Objects never change once written, and linkExpiry keeps the link stable for hours, so the
-  // browser keeps its copy until the link expires instead of downloading it on every view.
-  // private: a shared cache must not extend access beyond the signature.
-  const maxAge = Math.max(0, Number(new URL(c.req.url).searchParams.get("expires")) - Math.floor(Date.now() / 1000));
-  return new Response(object.body, {
-    headers: {
-      "Content-Type": object.contentType,
-      "Cache-Control": `private, max-age=${maxAge}, immutable`,
-    },
+  // Bytes made for this request only (storage is at its cap) can't be linked to, so they're sent.
+  if (!("key" in served)) {
+    return new Response(served.body, { headers: { "Content-Type": served.contentType, "Cache-Control": "private, no-store" } });
+  }
+
+  // Everything stored is downloaded straight from the bucket, so image bytes never pass through
+  // this function. The direct link stays the same for an hour and expires with this one, so the
+  // browser can keep the redirect too. private: a shared cache must not extend access beyond
+  // the signature.
+  const direct = await directObjectUrl(c.env, served.key, Number(url.searchParams.get("expires")));
+  return new Response(null, {
+    status: 302,
+    headers: { Location: direct.url, "Cache-Control": `private, max-age=${direct.maxAge}` },
   });
 });
 
-/** The stored thumbnail of `key`, made from `load()` and stored the first time it is asked for. */
-async function thumbnailObject(env: AppContext["Bindings"], key: string, load: () => Promise<StoredObject | null>): Promise<StoredObject | null> {
+async function bytesOf(env: Env, served: ServedImage): Promise<Uint8Array | null> {
+  const object = "key" in served ? await getObject(env, served.key) : served;
+  return object ? new Uint8Array(await new Response(object.body).arrayBuffer()) : null;
+}
+
+/** The thumbnail of `key`, made from `full()` and stored the first time it is asked for. */
+async function thumbnail(env: Env, key: string, full: () => Promise<ServedImage | null>): Promise<ServedImage | null> {
   const thumbnailKey = thumbnailKeyFor(key);
-  const existing = await getObject(env, thumbnailKey);
-  if (existing) return existing;
-  const original = await load();
-  if (!original) return null;
+  if (await objectExists(env, thumbnailKey)) return { key: thumbnailKey };
+  const original = await full();
+  const source = original && (await bytesOf(env, original));
+  if (!source) return null;
   let bytes: ArrayBuffer;
   try {
-    bytes = await makeThumbnail(new Uint8Array(await new Response(original.body).arrayBuffer()));
+    bytes = await makeThumbnail(source);
   } catch {
-    // Not something sharp can read: serve the original rather than a broken tile.
-    return load();
+    // Not something sharp can read: serve the full image rather than a broken tile.
+    return full();
   }
   // Once storage is at its cap the thumbnail is made fresh for each request instead of stored.
   const db = createDb(env.DATABASE_URL);
   if (!(await storageWouldExceed(db, (await getSettings(db)).storageCapMb, bytes.byteLength))) {
     await putObject(env, thumbnailKey, bytes, "image/webp");
+    return { key: thumbnailKey };
   }
   return { body: new Blob([bytes], { type: "image/webp" }).stream(), contentType: "image/webp" };
 }

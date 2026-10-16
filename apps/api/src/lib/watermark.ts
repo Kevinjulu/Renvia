@@ -7,6 +7,7 @@ import {
   getObject,
   isRenderOutputKey,
   isWatermarkedKey,
+  objectExists,
   originalKeyFor,
   ownUploadKey,
   publicUploadUrl,
@@ -14,6 +15,7 @@ import {
   renderIdForKey,
   storageWouldExceed,
   type AssetViewer,
+  type ServedImage,
   watermarkedKeyFor,
 } from "./storage.js";
 import { getSettings } from "./settings.js";
@@ -137,10 +139,9 @@ export function watermarkedCopyKeys(key: string): string[] {
  * asked for and stored beside it. Null when the key isn't a watermarked render output or the
  * original doesn't exist.
  */
-export async function watermarkedObject(env: Env, key: string): Promise<{ body: ReadableStream; contentType: string } | null> {
+export async function watermarkedCopy(env: Env, key: string): Promise<ServedImage | null> {
   if (!isWatermarkedKey(key) || !isRenderOutputKey(originalKeyFor(key))) return null;
-  const existing = await getObject(env, storedCopyKey(key));
-  if (existing) return existing;
+  if (await objectExists(env, storedCopyKey(key))) return { key: storedCopyKey(key) };
   const original = await getObject(env, originalKeyFor(key));
   if (!original) return null;
   const bytes = await watermarkImage(new Uint8Array(await new Response(original.body).arrayBuffer()), original.contentType);
@@ -150,6 +151,7 @@ export async function watermarkedObject(env: Env, key: string): Promise<{ body: 
   const db = createDb(env.DATABASE_URL);
   if (!(await storageWouldExceed(db, (await getSettings(db)).storageCapMb, body.byteLength))) {
     await putObject(env, storedCopyKey(key), body, original.contentType);
+    return { key: storedCopyKey(key) };
   }
   return { body: new Blob([body], { type: original.contentType }).stream(), contentType: original.contentType };
 }

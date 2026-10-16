@@ -81,10 +81,38 @@ export async function optimizeUpload(input: ArrayBuffer, contentType: string): P
     throw new UnreadableImageError();
   }
 
-  if (!oversized && !needsRotation && !hasMetadata && output.byteLength >= input.byteLength) {
-    return { bytes: input, contentType };
+  if (oversized || needsRotation) return { bytes: arrayBufferOf(output), contentType: outputType };
+  // Same pixels either way, so keep whichever is smaller. A JPEG's metadata is cut out without
+  // re-encoding, so a small, already-compressed photo never grows just to lose its EXIF.
+  const asSent = (contentType === "image/jpeg" && withoutJpegMetadata(source)) || input;
+  return output.byteLength < asSent.byteLength ? { bytes: arrayBufferOf(output), contentType: outputType } : { bytes: asSent, contentType };
+}
+
+/** APP1 holds EXIF (including GPS) and XMP; APP13 holds IPTC. The ICC profile (APP2) is kept. */
+const JPEG_METADATA_MARKERS = new Set([0xe1, 0xed]);
+
+/**
+ * The JPEG with its metadata segments removed and its image data untouched, or null if the
+ * header can't be walked safely.
+ */
+function withoutJpegMetadata(jpeg: Buffer): ArrayBuffer | null {
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null;
+  const kept: Buffer[] = [jpeg.subarray(0, 2)];
+  let offset = 2;
+  while (offset + 4 <= jpeg.length) {
+    if (jpeg[offset] !== 0xff) return null;
+    const marker = jpeg[offset + 1]!;
+    // Start of scan: the compressed image data runs from here to the end of the file.
+    if (marker === 0xda) {
+      kept.push(jpeg.subarray(offset));
+      return arrayBufferOf(Buffer.concat(kept));
+    }
+    const length = jpeg.readUInt16BE(offset + 2);
+    if (length < 2 || offset + 2 + length > jpeg.length) return null;
+    if (!JPEG_METADATA_MARKERS.has(marker)) kept.push(jpeg.subarray(offset, offset + 2 + length));
+    offset += 2 + length;
   }
-  return { bytes: arrayBufferOf(output), contentType: outputType };
+  return null;
 }
 
 /** The small WebP copy shown wherever an image is a tile rather than the thing being looked at. */
