@@ -229,11 +229,15 @@ export function thumbnailKeyFor(key: string): string {
  */
 export type StorageKind = "upload" | "render" | "watermark" | "feedback" | "stock" | "thumbnail";
 
+/** Where watermark.ts stores the copy behind a watermarked/ link: watermarked-v<version>/. */
+const STORED_WATERMARK_COPY = /^watermarked-v\d+\//;
+
 export function storageKindFor(key: string): StorageKind {
   if (key.startsWith(THUMBNAIL_PREFIX)) return "thumbnail";
   if (key.startsWith("feedback/")) return "feedback";
   if (key.startsWith("stock/")) return "stock";
-  return isWatermarkedKey(key) ? "watermark" : isRenderOutputKey(key) ? "render" : "upload";
+  if (isWatermarkedKey(key) || STORED_WATERMARK_COPY.test(key)) return "watermark";
+  return isRenderOutputKey(key) ? "render" : "upload";
 }
 
 /**
