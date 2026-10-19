@@ -10,7 +10,7 @@ export interface ImportedImage {
 
 const FETCH_TIMEOUT_MS = 10_000;
 // Some sites (Pinterest among them) serve an empty shell to unknown clients.
-const USER_AGENT = "Mozilla/5.0 (compatible; RenviaBot/1.0; +https://renvia.app)";
+const USER_AGENT = "Mozilla/5.0 (compatible; RamahStudioBot/1.0)";
 
 /**
  * Fetches a pasted link as an image. People paste the page they found the picture on far more

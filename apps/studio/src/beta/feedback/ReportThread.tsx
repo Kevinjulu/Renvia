@@ -89,7 +89,7 @@ export function ReportThread({ id, onClose }: { id: string; onClose: () => void 
                 {report.comments.map((comment) => (
                   <li key={comment.id} className={`rounded-xl px-4 py-2.5 text-sm ${comment.kind === "request_info" ? "border border-amber-200 bg-amber-50" : comment.fromTeam ? "bg-surface-muted" : "border border-hairline"}`}>
                     <p className="text-xs font-medium text-faint">
-                      {comment.fromTeam ? "Renvia team" : "You"}
+                      {comment.fromTeam ? "Ramah Studio team" : "You"}
                       {comment.kind === "request_info" && " · question for you"}
                       {comment.kind === "status_change" && comment.status && ` · ${STATUS_LABELS[comment.status]}`}
                       {" · "}

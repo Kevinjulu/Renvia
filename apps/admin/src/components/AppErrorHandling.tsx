@@ -20,7 +20,7 @@ class Boundary extends Component<{ children: ReactNode; resetKey: string }, { er
   override componentDidUpdate(previous: Readonly<{ children: ReactNode; resetKey: string }>) { if (this.state.error && previous.resetKey !== this.props.resetKey) this.setState({ error: null }); }
   override render() {
     if (!this.state.error) return this.props.children;
-    return <main className="grid min-h-screen place-items-center bg-surface p-6 text-primary"><section className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-8 shadow-soft"><p className="text-xs font-bold uppercase tracking-widest text-muted">Renvia Admin</p><h1 className="mt-3 text-2xl font-semibold">This screen hit a problem</h1><p className="mt-2 text-sm leading-6 text-muted">We’ve recorded the technical details. Reload to continue safely.</p><button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white">Reload admin</button></section></main>;
+    return <main className="grid min-h-screen place-items-center bg-surface p-6 text-primary"><section className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-8 shadow-soft"><p className="text-xs font-bold uppercase tracking-widest text-muted">Ramah Studio Admin</p><h1 className="mt-3 text-2xl font-semibold">This screen hit a problem</h1><p className="mt-2 text-sm leading-6 text-muted">We’ve recorded the technical details. Reload to continue safely.</p><button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white">Reload admin</button></section></main>;
   }
 }
 

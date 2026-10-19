@@ -5,7 +5,7 @@ export const KINDS: { value: BetaFeedbackKind; label: string; hint: string }[] =
   { value: "visual_quality", label: "Render looks wrong", hint: "Structure, materials or an edit came out wrong" },
   { value: "bug", label: "Something broke", hint: "An error, a stuck render or a button that does nothing" },
   { value: "usability", label: "Hard to use", hint: "Confusing, slow or hard to find" },
-  { value: "suggestion", label: "Idea", hint: "Something you'd like Renvia to do" },
+  { value: "suggestion", label: "Idea", hint: "Something you'd like Ramah Studio to do" },
   { value: "praise", label: "Something great", hint: "Tell us what's working well" },
 ];
 

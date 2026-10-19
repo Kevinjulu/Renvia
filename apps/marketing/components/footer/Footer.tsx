@@ -94,7 +94,7 @@ export function Footer() {
 
         <div className="mt-14 grid grid-cols-2 gap-10 sm:grid-cols-5 sm:gap-8">
           <div className="col-span-2 sm:col-span-1">
-            <Link href="/" aria-label="Renvia home" className="inline-flex items-center">
+            <Link href="/" aria-label="Ramah Studio International home" className="inline-flex items-center">
               <Logo />
             </Link>
             <p className="mt-3 max-w-[26ch] text-sm text-muted">
@@ -134,12 +134,12 @@ export function Footer() {
                 <ArrowIcon />
               </button>
             </form>
-            {subscribed && <p className="mt-2 text-xs text-secondary" role="status">You’re on the list. Welcome to Renvia.</p>}
+            {subscribed && <p className="mt-2 text-xs text-secondary" role="status">You’re on the list. Welcome to Ramah Studio.</p>}
           </div>
         </div>
 
         <div className="mt-14 flex flex-col gap-2 border-t border-hairline pt-6 text-xs text-muted sm:flex-row sm:justify-between">
-          <span>© {new Date().getFullYear()} Renvia. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Ramah Studio International. All rights reserved.</span>
           <div className="flex gap-4">
             <Link href="/privacy" className="transition-colors hover:text-primary">
               Privacy

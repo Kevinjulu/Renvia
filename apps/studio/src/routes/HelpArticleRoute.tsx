@@ -12,7 +12,7 @@ const ACCENT_DOT = {
 function TopNav() {
   return (
     <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-hairline bg-canvas/90 px-6 backdrop-blur sm:px-10">
-      <Link to="/dashboard" aria-label="Renvia dashboard" className="inline-flex items-center">
+      <Link to="/dashboard" aria-label="Ramah Studio dashboard" className="inline-flex items-center">
         <Logo />
       </Link>
       <AccountMenu />

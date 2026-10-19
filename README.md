@@ -30,6 +30,7 @@ apps/
 packages/
   db/          Drizzle schema, client (Neon HTTP driver) and SQL migrations
   types/       Shared TypeScript types: API contracts and status enums
+  brand/       Brand names, colour tokens and logo/watermark artwork (plain JS, no build)
   config/      Shared tsconfig / eslint base configs
 tests/
   render-fidelity/   Source-fidelity regression pack and fixtures

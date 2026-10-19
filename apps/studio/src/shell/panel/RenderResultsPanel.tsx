@@ -200,7 +200,7 @@ export function RenderResultsPanel() {
       void refreshAccount(apiClient.getMe);
     } catch (error) {
       if (error instanceof RenderNotConfirmedError) {
-        setActionError("Renvia didn't confirm the retry in time. Check the list before trying again — retrying won't charge twice.");
+        setActionError("Ramah Studio didn't confirm the retry in time. Check the list before trying again — retrying won't charge twice.");
       } else if (!reportLimit(error)) setActionError("Couldn't start the retry. Try again.");
     } finally {
       setIsRetrying(false);
@@ -235,7 +235,7 @@ export function RenderResultsPanel() {
       void refreshAccount(apiClient.getMe);
     } catch (error) {
       if (error instanceof RenderNotConfirmedError) {
-        setActionError("Renvia didn't confirm the upscale in time. Check the list before trying again — trying again won't charge twice.");
+        setActionError("Ramah Studio didn't confirm the upscale in time. Check the list before trying again — trying again won't charge twice.");
       } else if (!reportLimit(error)) setActionError("Couldn't start the upscale. Try again.");
     } finally {
       setUpscaling(null);

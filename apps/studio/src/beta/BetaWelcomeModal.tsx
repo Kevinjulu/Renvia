@@ -39,7 +39,7 @@ export function BetaWelcomeModal() {
   const featureBenefits = program.featureGrants.map((key) => `${STUDIO_FEATURES.find((feature) => feature.key === key)?.label ?? key} included`);
   const benefits = welcome?.benefits.length
     ? welcome.benefits
-    : [`${credits.granted} beta credits to render with`, ...(program.downloadsUnlocked ? ["Downloads included while you test"] : []), ...featureBenefits, "A direct line to the Renvia team"];
+    : [`${credits.granted} beta credits to render with`, ...(program.downloadsUnlocked ? ["Downloads included while you test"] : []), ...featureBenefits, "A direct line to the Ramah Studio team"];
   const expectations = welcome?.expectations.length ? welcome.expectations : DEFAULT_EXPECTATIONS;
 
   return (
@@ -58,10 +58,10 @@ export function BetaWelcomeModal() {
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-blueprint">{program.name}</p>
         <h2 id="beta-welcome-title" className="mt-1 font-display text-2xl font-semibold text-primary">
-          {welcome?.heading || "Welcome to the Renvia beta"}
+          {welcome?.heading || "Welcome to the Ramah Studio beta"}
         </h2>
         <p className="mt-2 text-sm text-muted">
-          {welcome?.body || "You're one of a small group helping shape Renvia before it opens to everyone. Render your own work, push the tools, and tell us what breaks."}
+          {welcome?.body || "You're one of a small group helping shape Ramah Studio before it opens to everyone. Render your own work, push the tools, and tell us what breaks."}
         </p>
 
         <dl className="mt-5 grid grid-cols-3 gap-2.5 text-center">

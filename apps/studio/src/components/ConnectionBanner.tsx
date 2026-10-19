@@ -58,13 +58,13 @@ export function ConnectionBanner() {
       <span className="connection-banner-dot" aria-hidden="true" />
       {online ? (
         <>
-          <span>Can't reach Renvia right now. Your renders keep running; we'll reconnect automatically.</span>
+          <span>Can't reach Ramah Studio right now. Your renders keep running; we'll reconnect automatically.</span>
           <button type="button" onClick={() => void check()} disabled={checking}>
             {checking ? "Checking…" : "Retry now"}
           </button>
         </>
       ) : (
-        <span>You're offline. Renvia will reconnect when your connection is back.</span>
+        <span>You're offline. Ramah Studio will reconnect when your connection is back.</span>
       )}
     </div>
   );

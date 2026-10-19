@@ -12,7 +12,7 @@ export function AppLoader() {
   }, []);
 
   return (
-    <main className="app-loader" aria-busy="true" aria-label="Preparing your Renvia workspace">
+    <main className="app-loader" aria-busy="true" aria-label="Preparing your Ramah Studio workspace">
       <div className="app-loader-content" role="status" aria-live="polite">
         <div className="app-loader-brand" aria-hidden="true">
           <Logo wordmarkClassName="app-loader-wordmark" />

@@ -14,11 +14,13 @@ import {
   putObject,
   renderIdForKey,
   storageWouldExceed,
+  thumbnailKeyFor,
   type AssetViewer,
   type ServedImage,
   watermarkedKeyFor,
 } from "./storage.js";
 import { getSettings } from "./settings.js";
+import { overlaySvg } from "./watermarkOverlay.js";
 
 /**
  * Free-plan model output is watermarked everywhere it is shown or downloaded. The clean
@@ -48,71 +50,7 @@ export function requestAssetViewer(request: Request, db: Database, clerkId: stri
   return viewer;
 }
 
-// The mark is drawn as paths, so it renders without any fonts installed. Units are pixels on a
-// 1536px-wide image; the overlay scales them to the image's long side.
-const BASE_SIDE = 1536;
-
-// The faceted R monogram on a 42 x 49 grid: top bar and bowl running into the leg, plus a
-// separate stem with slanted cuts.
-const MONOGRAM_PATH = [
-  "M0 0H26A12.75 12.75 0 0 1 26 25.5H22.5L41.7 49H30.5L6.5 19H26A6 6 0 0 0 26 7H6.7Z", // bar, bowl, leg
-  "M0 22L6.7 27.3V46.5L0 42Z", // stem
-].join("");
-
-// The RENVIA wordmark as strokes on a 127 x 20 grid, a light geometric sans with wide tracking.
-const WORDMARK_PATH = [
-  "M1 19V1H8.5A5.25 5.25 0 0 1 8.5 11.5H1M8.5 11.5L14.8 19", // R
-  "M37.3 1H24.3V19H37.3M24.3 10H36", // E
-  "M48.5 19V1L62.3 19V1", // N
-  "M72.6 1L80.8 19L89 1", // V
-  "M99.2 1V19", // I
-  "M108.4 19L117.1 1L125.8 19M111.5 12.6H122.7", // A
-].join("");
-
-// The monogram and wordmark side by side; the wordmark sits centred on the monogram.
-const MARK = `<path d="${MONOGRAM_PATH}" fill="#fff"/><path d="${WORDMARK_PATH}" transform="translate(64.7 16.5)" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>`;
-
-// Marks repeat on a straight grid, offset so the first sits just inside the top-left corner.
-const COLUMN_STEP = 326;
-const ROW_STEP = 179;
-const FIRST_MARK = { x: 65, y: 56 };
-
-// A dashed X sits in each gap between four marks, its arms reaching toward their corners.
-const CROSS_ARM = { x: 70, y: 61 };
-// Where each cross sits relative to the mark below and to the right of it.
-const CROSS_OFFSET = { x: -71, y: -63 };
-const CROSS = `<path d="M${-CROSS_ARM.x} ${-CROSS_ARM.y}L${CROSS_ARM.x} ${CROSS_ARM.y}M${CROSS_ARM.x} ${-CROSS_ARM.y}L${-CROSS_ARM.x} ${CROSS_ARM.y}" stroke="#fff" stroke-width="1" stroke-dasharray="14 5"/>`;
-
-/** The overlay for a w x h image: a grid of RENVIA marks laced with dashed crosses. */
-function overlaySvg(width: number, height: number): string {
-  // The mark scales with the image so it reads the same on a thumbnail and on an 8K export.
-  const scale = Math.max(width, height) / BASE_SIDE;
-  const cols = Math.ceil(width / scale / COLUMN_STEP) + 1;
-  const rows = Math.ceil(height / scale / ROW_STEP) + 1;
-  const marks: string[] = [];
-  const crosses: string[] = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const x = FIRST_MARK.x + col * COLUMN_STEP;
-      const y = FIRST_MARK.y + row * ROW_STEP;
-      marks.push(`<use xlink:href="#mark" x="${x}" y="${y}"/>`);
-      // Each cross sits up and to the left of its mark, so the top row and left column get one too.
-      crosses.push(`<use xlink:href="#cross" x="${x + CROSS_OFFSET.x}" y="${y + CROSS_OFFSET.y}"/>`);
-    }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}">
-  <defs>
-    <g id="mark">${MARK}</g>
-    <g id="cross">${CROSS}</g>
-  </defs>
-  <g transform="scale(${scale})">
-    <g opacity="0.5">${crosses.join("")}</g>
-    <g opacity="0.45">${marks.join("")}</g>
-  </g>
-</svg>`;
-}
-
-/** The image with the RENVIA watermark, in the same format it came in. */
+/** The image with the brand watermark (see watermarkOverlay.ts), in the same format it came in. */
 export async function watermarkImage(bytes: Uint8Array, contentType: string): Promise<Uint8Array> {
   // Metadata describes the stored pixels; orientations 5-8 swap the axes once rotated upright.
   const { width = 0, height = 0, orientation = 1 } = await sharp(bytes).metadata();
@@ -124,14 +62,28 @@ export async function watermarkImage(bytes: Uint8Array, contentType: string): Pr
 }
 
 // Bump when the overlay changes, so copies made with an earlier design are remade on next open.
-const WATERMARK_VERSION = 2;
+// 2: RENVIA artwork. 3: RAMAH STUDIO artwork on the same grid.
+export const WATERMARK_VERSION = 3;
 
 /** Where the copy behind a watermarked/ link is stored; links stay the same across versions. */
-const storedCopyKey = (key: string) => `watermarked-v${WATERMARK_VERSION}/${originalKeyFor(key)}`;
+const storedCopyKey = (key: string, version = WATERMARK_VERSION) => `watermarked-v${version}/${originalKeyFor(key)}`;
 
-/** Every stored watermarked copy of a model-output key, current and from earlier designs. */
+/**
+ * Every stored watermarked copy of a model-output key, current and from earlier designs: the
+ * unversioned copy the first design stored under the link's own key, then each versioned one.
+ */
 export function watermarkedCopyKeys(key: string): string[] {
-  return [watermarkedKeyFor(key), storedCopyKey(key)];
+  const versions = Array.from({ length: WATERMARK_VERSION - 1 }, (_, i) => storedCopyKey(key, i + 2));
+  return [watermarkedKeyFor(originalKeyFor(key)), ...versions];
+}
+
+/**
+ * Where the grid thumbnail of a served key is stored. A watermarked link's thumbnail is named
+ * after the versioned copy it is made from, so a new design never reuses an old thumbnail; any
+ * other key's thumbnail is named after the key itself.
+ */
+export function servedThumbnailKey(key: string): string {
+  return thumbnailKeyFor(isWatermarkedKey(key) ? storedCopyKey(key) : key);
 }
 
 /**

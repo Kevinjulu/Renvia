@@ -146,7 +146,7 @@ function Triage({ id, onChanged, siblings }: { id: string; onChanged: () => void
         {report.attachmentUrl && <a href={report.attachmentUrl} target="_blank" rel="noreferrer"><img src={report.attachmentUrl} alt="Tester's screenshot" className="max-h-56 rounded-xl border border-hairline" /></a>}
         {report.diagnostics && (
           <details className="rounded-xl border border-hairline bg-surface px-3 py-2 text-xs">
-            <summary className="cursor-pointer font-medium text-primary">Diagnostics (from Renvia's records)</summary>
+            <summary className="cursor-pointer font-medium text-primary">Diagnostics (from Ramah Studio's records)</summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] text-secondary">{JSON.stringify(report.diagnostics, null, 2)}</pre>
           </details>
         )}

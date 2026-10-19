@@ -61,12 +61,12 @@ export function SmallScreenNotice() {
           <rect x="33" y="19" width="11" height="20" rx="2" />
           <path d="M37.5 35.5h2" />
         </svg>
-        <h2 id="small-screen-title">Renvia Studio works best on a computer</h2>
+        <h2 id="small-screen-title">Ramah Studio works best on a computer</h2>
         <p>
           The Studio's canvas, panels and editing tools are built for a larger screen. On a phone some controls are cramped or hard
           to reach, so you won't get the best experience here.
         </p>
-        <p>For the full Studio, open Renvia on a laptop or desktop.</p>
+        <p>For the full Studio, open Ramah Studio on a laptop or desktop.</p>
         <div className="small-screen-actions">
           <button type="button" className="is-primary" onClick={dismiss}>
             Continue anyway

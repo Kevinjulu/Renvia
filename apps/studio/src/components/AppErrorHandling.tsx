@@ -68,15 +68,15 @@ class Boundary extends Component<{ children: ReactNode; resetKey: string }, { er
     return (
       <main className="app-error">
         <section>
-          <p className="app-error-brand">Renvia</p>
-          <h1>{outdated ? "Renvia has been updated" : "This screen hit a problem"}</h1>
+          <p className="app-error-brand">Ramah Studio</p>
+          <h1>{outdated ? "Ramah Studio has been updated" : "This screen hit a problem"}</h1>
           <p>
             {outdated
               ? "A new version is available. Reload to continue — your projects are saved."
               : "We've recorded what happened. Your projects are saved — reload to carry on, or go back to your projects."}
           </p>
           <div>
-            <button type="button" onClick={() => window.location.reload()}>Reload Renvia</button>
+            <button type="button" onClick={() => window.location.reload()}>Reload Ramah Studio</button>
             {!outdated && <a href="/dashboard">Back to projects</a>}
           </div>
         </section>

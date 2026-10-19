@@ -157,7 +157,7 @@ export function LoginRoute() {
       ) : (
         <>
           <h1 className="font-display text-2xl font-semibold text-primary">Sign in</h1>
-          <p className="mt-2 text-sm text-muted">Welcome back to Renvia Studio.</p>
+          <p className="mt-2 text-sm text-muted">Welcome back to Ramah Studio.</p>
 
           <div className="mt-8 flex flex-col gap-5">
             <SocialButtons onSelect={(strategy) => void handleSocial(strategy)} disabled={submitting} />

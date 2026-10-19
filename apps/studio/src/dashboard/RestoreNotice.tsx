@@ -46,7 +46,7 @@ export function RestoreNotice() {
       <div className="restore-notice-body">
         <h2 id="restore-notice-title">Your earlier work is on its way back</h2>
         <p>
-          We've moved Renvia to new infrastructure after a database issue with our provider. Your account works as normal, but projects, renders and credits from
+          We've moved Ramah Studio to new infrastructure after a database issue with our provider. Your account works as normal, but projects, renders and credits from
           before 11 October aren't showing yet.
         </p>
         <ul>

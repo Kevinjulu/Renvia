@@ -158,7 +158,7 @@ export function BetaProgramSection() {
               {tester.missions.length > 0 && <span className="text-xs text-faint">{Math.round(missionPercent)}% complete</span>}
             </div>
             {tester.missions.length === 0 ? (
-              <p className="mt-2 rounded-xl border border-dashed border-hairline px-4 py-6 text-center text-sm text-muted">No missions yet. Use Renvia as you normally would, and report anything that looks wrong.</p>
+              <p className="mt-2 rounded-xl border border-dashed border-hairline px-4 py-6 text-center text-sm text-muted">No missions yet. Use Ramah Studio as you normally would, and report anything that looks wrong.</p>
             ) : (
               <ul className="mt-3 space-y-2">
                 {tester.missions.map((mission) => (
@@ -184,7 +184,7 @@ export function BetaProgramSection() {
           <section className="rounded-2xl border border-hairline bg-white px-4 py-4">
             <h2 className="font-display text-base font-semibold text-primary">Announcements</h2>
             {tester.announcements.length === 0 ? (
-              <p className="mt-2 text-sm text-muted">Nothing yet. Updates from the Renvia team will appear here.</p>
+              <p className="mt-2 text-sm text-muted">Nothing yet. Updates from the Ramah Studio team will appear here.</p>
             ) : (
               <ul className="mt-3 space-y-2.5">
                 {tester.announcements.map((announcement) => (

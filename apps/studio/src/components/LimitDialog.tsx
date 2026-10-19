@@ -155,7 +155,7 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
     case "storage_full":
       return {
         title: "Storage is full",
-        body: "Renvia can't save new images right now. Everything you've already made is safe — try again a little later.",
+        body: "Ramah Studio can't save new images right now. Everything you've already made is safe — try again a little later.",
         icon: "pause",
         tone: "amber",
       };

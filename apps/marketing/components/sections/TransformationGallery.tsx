@@ -61,9 +61,9 @@ export function TransformationGallery() {
           <div className="min-h-[380px] bg-white sm:min-h-[560px] lg:min-h-[650px]">
             <CompareSlider
               before={<div className="relative h-full w-full bg-white"><Image src={story.before} alt={`${story.tab} original architectural drawing`} fill sizes="(min-width:1024px) 850px,100vw" className="object-cover" style={{ objectPosition: story.position, transform: story.beforeTransform }} /></div>}
-              after={<div className="relative h-full w-full"><Image src={story.after} alt={`${story.tab} photorealistic Renvia visualization`} fill sizes="(min-width:1024px) 850px,100vw" className="object-cover" style={{ objectPosition: story.position }} /></div>}
+              after={<div className="relative h-full w-full"><Image src={story.after} alt={`${story.tab} photorealistic Ramah Studio visualization`} fill sizes="(min-width:1024px) 850px,100vw" className="object-cover" style={{ objectPosition: story.position }} /></div>}
               beforeLabel="Original design"
-              afterLabel="Renvia vision"
+              afterLabel="Ramah Studio vision"
               initialPosition={43}
               fill
             />
@@ -80,7 +80,7 @@ export function TransformationGallery() {
             </div>
 
             <div className="mt-7 border-t border-hairline pt-6">
-              <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-faint">What Renvia protected</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[.14em] text-faint">What Ramah Studio protected</p>
               <ul className="mt-3 space-y-2.5">{story.preserved.map((item) => <li key={item} className="flex items-center gap-2.5 text-[11px] text-secondary"><span className="grid h-4 w-4 place-items-center rounded-full border border-[#9ecbad] bg-[#eef8f1] text-[8px] text-[#388356]">✓</span>{item}</li>)}</ul>
             </div>
 

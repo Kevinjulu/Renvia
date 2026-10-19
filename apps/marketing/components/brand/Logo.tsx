@@ -1,49 +1,27 @@
+import { brand, brandColors, logoArt, type LogoVariant } from "@renvia/brand";
+
 interface LogoProps {
+  /** "wordmark" (default): RAMAH STUDIO over "international". "official": the RS symbol above it. "symbol": the RS symbol alone. */
+  variant?: LogoVariant;
   className?: string;
+  /** Font size and text colour: the logo is sized in em, and its charcoal parts take the text colour. */
   wordmarkClassName?: string;
-  showWordmark?: boolean;
 }
 
-/** A bar-stack "E", drawn to match the weight and width of the surrounding letters. */
-function StylizedE() {
-  return (
-    <svg viewBox="0 0 9 12" className="inline-block h-[0.78em] w-[0.62em] align-[-0.05em]" aria-hidden="true">
-      <path d="M0.5 1H8.5M0.5 6H8.5M0.5 11H8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
+// Heights in em of the surrounding font size; the wordmark's capitals come out at about 0.73em.
+const HEIGHT: Record<LogoVariant, string> = { wordmark: "1.6em", official: "4.6em", symbol: "1.2em" };
 
-/** An open "A" whose crossbar is cut free of the legs — a floating datum line rather than a typeset bar, echoing the E's stroke construction. */
-function StylizedA() {
+export function Logo({ variant = "wordmark", className = "", wordmarkClassName = "" }: LogoProps) {
+  const art = logoArt[variant];
   return (
-    <svg viewBox="0 0 12 12" className="inline-block h-[0.78em] w-[0.78em] align-[-0.05em]" aria-hidden="true">
-      <path
-        d="M6 1L1 11M6 1L11 11M4.2 7H7.8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
-export function Logo({
-  className = "",
-  wordmarkClassName = "",
-  showWordmark = true,
-}: LogoProps) {
-  return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      {showWordmark && (
-        <span className={`inline-flex items-baseline font-display font-medium uppercase tracking-[0.25em] text-primary ${wordmarkClassName || "text-xl"}`}>
-          <span className="sr-only">Renvia</span>
-          <span aria-hidden="true" className="inline-flex items-baseline">
-            R<StylizedE />NVI<StylizedA />
-          </span>
-        </span>
-      )}
+    <span className={`inline-flex items-center ${className}`}>
+      <span className={`inline-flex text-primary ${wordmarkClassName || "text-xl"}`}>
+        <svg viewBox={art.viewBox} role="img" aria-label={brand.name} className="block shrink-0" style={{ height: HEIGHT[variant], width: "auto" }}>
+          {art.layers.map((layer) => (
+            <path key={layer.tone} d={layer.d} fill={layer.tone === "gold" ? brandColors.gold : "currentColor"} fillRule="evenodd" />
+          ))}
+        </svg>
+      </span>
     </span>
   );
 }

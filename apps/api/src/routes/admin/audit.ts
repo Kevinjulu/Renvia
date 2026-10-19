@@ -176,6 +176,6 @@ auditRoutes.get("/audit/exports/:id", async (c) => {
   const id = z.string().uuid().parse(c.req.param("id"));
   const [exported] = await c.get("db").select().from(schema.auditExports).where(eq(schema.auditExports.id, id));
   if (!exported) return c.json({ error: "Audit export not found" }, 404);
-  c.header("Content-Type", "text/csv; charset=utf-8"); c.header("Content-Disposition", `attachment; filename=renvia-audit-${id}.csv`); c.header("X-Content-SHA256", exported.sha256);
+  c.header("Content-Type", "text/csv; charset=utf-8"); c.header("Content-Disposition", `attachment; filename=ramah-studio-audit-${id}.csv`); c.header("X-Content-SHA256", exported.sha256);
   return c.body(exported.content);
 });

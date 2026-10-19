@@ -241,7 +241,7 @@ function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; ru
             {mode === "link" && <label className="text-sm text-primary">Places on this link<input type="number" min={1} max={100} className={inputClass()} value={places} onChange={(event) => setPlaces(Number(event.target.value))} /></label>}
             <label className="text-sm text-primary">Cohort (optional)<input className={inputClass()} value={cohort} onChange={(event) => setCohort(event.target.value)} placeholder="architects" /></label>
             {mode !== "link" && <label className="flex items-center gap-2 text-sm text-primary"><input type="checkbox" checked={sendEmail} onChange={(event) => setSendEmail(event.target.checked)} /> Send a Clerk invitation email to new addresses</label>}
-            <p className="text-xs text-faint md:col-span-2">An address that already has a Renvia account is invited to that account and accepts in the Studio; nobody gets a second account. Each invitation holds a place until it's used, revoked or expires.</p>
+            <p className="text-xs text-faint md:col-span-2">An address that already has a Ramah Studio account is invited to that account and accepts in the Studio; nobody gets a second account. Each invitation holds a place until it's used, revoked or expires.</p>
             {error && <p className="text-sm text-rose-600 md:col-span-2">{error}</p>}
             <div className="md:col-span-2"><Button type="submit" variant="primary" disabled={busy}>{busy ? "Inviting…" : "Create invitation"}</Button></div>
           </form>}

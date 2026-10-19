@@ -37,7 +37,7 @@ export class RegionBoundary extends Component<RegionBoundaryProps, { error: Erro
     const outdated = isChunkLoadError(error);
     return (
       <div className="region-error" role="alert">
-        <strong>{outdated ? "Renvia has been updated" : `${this.props.name} hit a problem`}</strong>
+        <strong>{outdated ? "Ramah Studio has been updated" : `${this.props.name} hit a problem`}</strong>
         <p>{outdated ? "Reload to get the latest version. Your project is saved." : "The rest of the Studio still works, and your project is saved."}</p>
         <div>
           {!outdated && (

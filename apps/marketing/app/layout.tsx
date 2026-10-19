@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
+import { brand } from "@renvia/brand";
 import { BackToTop } from "@/components/nav/BackToTop";
 import "./globals.css";
 
@@ -10,7 +11,7 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const title = "Renvia — AI Architectural Visualization";
+const title = `${brand.name} — AI Architectural Visualization`;
 const description =
   "Turn your architectural models and sketches into photoreal visualizations while keeping your original geometry intact.";
 
@@ -21,9 +22,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title,
   description,
+  applicationName: brand.name,
   openGraph: {
     title,
     description,
+    siteName: brand.name,
     type: "website",
   },
   twitter: {

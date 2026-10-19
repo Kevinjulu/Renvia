@@ -29,7 +29,7 @@ const STATUS_MESSAGE: Partial<Record<BetaFeedbackStatus, string>> = {
   ready_to_verify: "We think this is fixed — can you check and let us know?",
   resolved: "This is resolved. Thank you for reporting it.",
   duplicate: "This is the same problem as another report; we're tracking it there.",
-  expected: "This is how Renvia is meant to work at the moment.",
+  expected: "This is how Ramah Studio is meant to work at the moment.",
   cannot_reproduce: "We couldn't make this happen ourselves. Tell us if you see it again.",
   declined: "We've decided not to change this for now.",
 };

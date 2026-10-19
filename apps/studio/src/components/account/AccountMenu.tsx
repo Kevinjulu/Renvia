@@ -219,7 +219,7 @@ export function AccountMenu({ showName = false }: AccountMenuProps) {
               <MenuIcon name="help" /> Help center
             </button>
             <a role="menuitem" href={websiteUrl("/", "signed-in")}>
-              <MenuIcon name="website" /> Renvia website
+              <MenuIcon name="website" /> Ramah Studio website
             </a>
           </div>
 

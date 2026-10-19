@@ -21,7 +21,7 @@ const TABS: { id: AccountTab; label: string; hint: string }[] = [
 const LEDGER_LABEL: Record<CreditLedgerReason, string> = {
   signup_bonus: "Welcome credits",
   initial_grant: "Starting credits",
-  admin_grant: "Credits added by Renvia",
+  admin_grant: "Credits added by Ramah Studio",
   render: "Render",
   render_refund: "Refund for a failed render",
   segment: "Automatic selection",
@@ -270,7 +270,7 @@ function SecurityTab() {
       </Section>
 
       {user.externalAccounts.length > 0 && (
-        <Section title="Connected accounts" description="Sign-in methods linked to your Renvia account.">
+        <Section title="Connected accounts" description="Sign-in methods linked to your Ramah Studio account.">
           <ul className="account-list">
             {user.externalAccounts.map((account) => (
               <li key={account.id}>

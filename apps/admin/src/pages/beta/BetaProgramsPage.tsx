@@ -68,7 +68,7 @@ function CreateProgram({ onDone }: { onDone: () => void }) {
   const api = useAdminApi();
   const today = toDateInput(new Date());
   const [form, setForm] = useState({
-    name: "Renvia Private Beta",
+    name: "Ramah Studio Private Beta",
     slug: "private-beta",
     description: "",
     startDay: today,

@@ -128,7 +128,7 @@ export function InviteAccounts({ data, onInvited }: { data: AdminBetaProgramDeta
         <div className="relative grid gap-4 px-5 py-5 text-white md:grid-cols-[1fr_auto] md:items-center">
           <div>
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/70"><Sparkles size={14} /> Invite registered users</p>
-            <h3 className="mt-1 text-lg font-semibold">Bring people who already use Renvia into {program.name}</h3>
+            <h3 className="mt-1 text-lg font-semibold">Bring people who already use Ramah Studio into {program.name}</h3>
             <p className="mt-1 max-w-xl text-sm text-white/80">They get a one-click invitation in the Studio. Their projects, renders, plan and own credits stay untouched; beta credits are added on top and only those expire when the beta ends.</p>
           </div>
           <div className="rounded-xl bg-white/10 px-4 py-3 backdrop-blur">

@@ -47,7 +47,7 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "maintenance") return maintenanceMessage?.trim() || "Renders are temporarily paused for maintenance.";
   if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
   if (code === "feature_disabled") return "That option isn't available on your account right now.";
-  if (code === "storage_full") return "Renvia can't save new images right now. Your existing work is safe.";
+  if (code === "storage_full") return "Ramah Studio can't save new images right now. Your existing work is safe.";
   return null;
 }
 
@@ -64,9 +64,9 @@ function localRefusal(
   return { code, message: messages?.[code] ?? null, limit, used };
 }
 
-const SLOW_STATUS = "Renvia is responding slowly — checking whether your render started…";
+const SLOW_STATUS = "Ramah Studio is responding slowly — checking whether your render started…";
 const NOT_CONFIRMED_STATUS =
-  "Renvia didn't confirm it in time. Check the results panel before trying again — clicking again with the same settings won't charge twice.";
+  "Ramah Studio didn't confirm it in time. Check the results panel before trying again — clicking again with the same settings won't charge twice.";
 
 function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;

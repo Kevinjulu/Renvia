@@ -36,7 +36,7 @@ export function AuthLayout({ image, label, title, description, accent = "bluepri
       <div className="relative flex flex-1 flex-col justify-start px-6 pb-16 pt-8 sm:px-12 lg:justify-center lg:px-16 lg:pb-16 lg:pt-16">
         <a
           href={MARKETING_URL}
-          aria-label="Renvia home"
+          aria-label="Ramah Studio International home"
           className="mb-8 inline-flex items-center self-start lg:absolute lg:left-16 lg:top-16 lg:mb-0"
         >
           <Logo />

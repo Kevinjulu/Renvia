@@ -33,7 +33,8 @@ export function DashboardSidebar({ view, onChangeView, activeSection }: Dashboar
   const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your account";
   return (
     <aside className="dashboard-sidebar">
-      <Logo className="dashboard-logo" wordmarkClassName="text-[20px] text-white" />
+      <Logo className="dashboard-logo dashboard-logo-full" wordmarkClassName="text-[20px] text-white" />
+      <Logo variant="symbol" className="dashboard-logo dashboard-logo-compact" wordmarkClassName="text-[20px] text-white" />
       <nav className="dashboard-nav">
         <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="favorites" label="Favorites" active={!activeSection && view === "favorites"} onClick={() => { onChangeView("favorites"); navigate("/dashboard?view=favorites"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>{showBeta && <NavItem name="beta" label="Beta Program" active={activeSection === "beta"} onClick={() => navigate("/beta")}/>}
       </nav>

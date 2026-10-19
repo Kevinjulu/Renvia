@@ -129,7 +129,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
   const active = navForPath(location.pathname);
 
   useEffect(() => {
-    document.title = `${active.title} · Renvia Admin`;
+    document.title = `${active.title} · Ramah Studio Admin`;
   }, [active.title]);
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setPalette((value) => !value); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
 
@@ -150,7 +150,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
             <Menu size={18} />
           </button>
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Renvia Admin</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Ramah Studio Admin</p>
             <h2 className="truncate text-[15px] font-semibold text-primary">{active.title}</h2>
           </div>
           <div className="ml-auto flex items-center gap-3 lg:hidden">

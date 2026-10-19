@@ -91,7 +91,7 @@ export function BetaInvitationModal({ invitation }: { invitation: BetaPendingInv
         className="grid w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl outline-none md:grid-cols-[1.05fr_1fr]"
       >
         <div className="relative h-56 overflow-hidden bg-neutral-900 md:h-auto md:min-h-[560px]">
-          <img src="/beta/invite-brick.jpg" alt="A brick and render house with a circular window, rendered in Renvia" className="absolute inset-0 h-full w-full object-cover object-[center_35%]" />
+          <img src="/beta/invite-brick.jpg" alt="A brick and render house with a circular window, rendered in Ramah Studio" className="absolute inset-0 h-full w-full object-cover object-[center_35%]" />
           <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
           <p className="pointer-events-none absolute bottom-4 left-4 right-4 text-sm font-medium text-white/95 drop-shadow">From elevation to photoreal render, in minutes.</p>
           <span className="pointer-events-none absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-blueprint shadow">
@@ -104,7 +104,7 @@ export function BetaInvitationModal({ invitation }: { invitation: BetaPendingInv
             <p className="text-xs font-semibold uppercase tracking-wider text-blueprint">You're invited</p>
             <h2 id="beta-invite-title" className="mt-1 font-display text-2xl font-semibold leading-tight text-primary">Join {invitation.programName}</h2>
             <p className="mt-2 text-sm text-secondary">
-              {invitation.programDescription || "Get early access to what we're building next, render on us, and help shape Renvia with your feedback."}
+              {invitation.programDescription || "Get early access to what we're building next, render on us, and help shape Ramah Studio with your feedback."}
             </p>
 
             <div className="mt-5 grid grid-cols-3 gap-2">

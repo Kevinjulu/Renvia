@@ -19,7 +19,7 @@ async function downloadImage(url: string, title: string) {
     const extension = blob.type.split("/")[1]?.replace("jpeg", "jpg") ?? "png";
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "renvia-image"}.${extension}`;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "ramah-studio-image"}.${extension}`;
     document.body.appendChild(link);
     link.click();
     link.remove();

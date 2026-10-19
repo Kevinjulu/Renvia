@@ -12,10 +12,9 @@ import {
   putObject,
   signedUploadUrl,
   storageWouldExceed,
-  thumbnailKeyFor,
   type ServedImage,
 } from "../lib/storage.js";
-import { watermarkedCopy } from "../lib/watermark.js";
+import { servedThumbnailKey, watermarkedCopy } from "../lib/watermark.js";
 import { makeThumbnail, optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
@@ -114,7 +113,7 @@ async function bytesOf(env: Env, served: ServedImage): Promise<Uint8Array | null
 
 /** The thumbnail of `key`, made from `full()` and stored the first time it is asked for. */
 async function thumbnail(env: Env, key: string, full: () => Promise<ServedImage | null>): Promise<ServedImage | null> {
-  const thumbnailKey = thumbnailKeyFor(key);
+  const thumbnailKey = servedThumbnailKey(key);
   if (await objectExists(env, thumbnailKey)) return { key: thumbnailKey };
   const original = await full();
   const source = original && (await bytesOf(env, original));

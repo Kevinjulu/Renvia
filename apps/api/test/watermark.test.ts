@@ -27,6 +27,9 @@ vi.mock("../src/lib/storage.js", async () => {
     deleteObject: vi.fn(async (_env: unknown, key: string) => {
       objects.delete(key);
     }),
+    objectExists: vi.fn(async (_env: unknown, key: string) => objects.has(key)),
+    // Stored images are served as a redirect to the bucket; here the link just names the key.
+    directObjectUrl: vi.fn(async (_env: unknown, key: string) => ({ url: `https://r2.test/${key}`, maxAge: 60 })),
   };
 });
 
@@ -92,11 +95,30 @@ describe("serving watermarked copies", () => {
 
     const res = await fetchUpload(job!.resultImageUrl);
 
-    expect(res.status).toBe(200);
-    const served = new Uint8Array(await res.arrayBuffer());
+    // Stored under the current design's version and served from the bucket.
+    const stored = `watermarked-v3/${fixture.resultKey}`;
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`https://r2.test/${stored}`);
+    const served = objects.get(stored)!;
     expect(Buffer.compare(Buffer.from(served), Buffer.from(objects.get(fixture.resultKey)!))).not.toBe(0);
     expect(await sharp(served).metadata()).toMatchObject({ width: 320, height: 200 });
-    expect(objects.has(`watermarked-v2/${fixture.resultKey}`)).toBe(true);
+  });
+
+  it("names a watermarked thumbnail after the current design, never reusing an older one", async () => {
+    const [job] = await listRenders();
+    // A thumbnail made with an earlier design, under the old unversioned name.
+    objects.set(`thumbs/watermarked/${fixture.resultKey}.webp`, new Uint8Array([1, 2, 3]));
+    const url = new URL(job!.resultImageUrl);
+    url.searchParams.set("size", "thumb");
+
+    const res = await fetchUpload(url.toString());
+
+    const thumbnail = `thumbs/watermarked-v3/${fixture.resultKey}.webp`;
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`https://r2.test/${thumbnail}`);
+    expect(await sharp(objects.get(thumbnail)!).metadata()).toMatchObject({ format: "webp" });
+    // Made from the current watermarked copy, which now exists too.
+    expect(objects.has(`watermarked-v3/${fixture.resultKey}`)).toBe(true);
   });
 
   it("refuses unsigned links and watermarked keys that aren't model output", async () => {

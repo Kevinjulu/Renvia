@@ -1,8 +1,8 @@
 const FAQS = [
   {
-    question: "How does Renvia preserve my geometry?",
+    question: "How does Ramah Studio preserve my geometry?",
     answer:
-      "Renvia treats your uploaded source as the architectural authority. Strict source fidelity adds Canny guidance and protected geometry controls for silhouette, roof, openings, massing, and camera. AI output still needs a final design review before client delivery.",
+      "Ramah Studio treats your uploaded source as the architectural authority. Strict source fidelity adds Canny guidance and protected geometry controls for silhouette, roof, openings, massing, and camera. AI output still needs a final design review before client delivery.",
   },
   {
     question: "What file formats can I upload?",

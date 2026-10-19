@@ -19,7 +19,7 @@ const wentUnanswered = (error: unknown) => error instanceof Error && error.name 
 
 export class RenderNotConfirmedError extends Error {
   constructor() {
-    super("Renvia didn't confirm whether the render started");
+    super("Ramah Studio didn't confirm whether the render started");
     this.name = "RenderNotConfirmedError";
   }
 }

@@ -172,7 +172,7 @@ export async function cancelProviderSubscription(env: Env, entitlement: Pick<Ent
   if (!id) return;
   if (entitlement.provider === "paypal") {
     if (!paypalReady(env)) throw new Error("PayPal is not configured");
-    await paypalRequest(env, `/v1/billing/subscriptions/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason: "Cancelled in Renvia" }) }).catch((error: unknown) => {
+    await paypalRequest(env, `/v1/billing/subscriptions/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason: "Cancelled in Ramah Studio" }) }).catch((error: unknown) => {
       // PayPal answers a successful cancel with 204 and no body, which paypalRequest reports as a failure.
       if (!(error instanceof Error && error.message.includes("(204)"))) throw error;
     });

@@ -1,0 +1,27 @@
+{
+  "name": "@renvia/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./watermark": {
+      "types": "./src/watermark.d.ts",
+      "default": "./src/watermark.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.mjs\"",
+    "vectorize": "node scripts/vectorize.mjs",
+    "export-assets": "node scripts/export-assets.mjs"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.4"
+  }
+}

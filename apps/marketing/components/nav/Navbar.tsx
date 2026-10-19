@@ -54,12 +54,10 @@ export function Navbar() {
   return <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-4">
     <div className={`mx-auto max-w-[1400px] rounded-[18px] border transition-all duration-300 ${scrolled || menuOpen ? "border-black/[0.09] bg-[#fdfdfc]/92 shadow-[0_18px_55px_-28px_rgba(20,20,18,.38)] backdrop-blur-xl" : "border-black/[0.06] bg-[#fdfdfc]/78 shadow-[0_12px_40px_-30px_rgba(20,20,18,.28)] backdrop-blur-md"}`}>
       <div className="flex h-[62px] items-center justify-between px-4 sm:px-5">
-        <Link href="/" aria-label="Renvia home" className="group flex items-center gap-3.5">
-          <span className="grid h-9 w-9 place-items-center rounded-[11px] border border-black/[0.08] bg-[#151716] text-[10px] font-semibold text-white shadow-[0_8px_20px_-12px_rgba(0,0,0,.8)] transition-transform duration-300 group-hover:-rotate-3">R</span>
-          <span className="flex flex-col gap-0.5">
-            <Logo wordmarkClassName="text-[17px]" />
-            <span className="font-mono text-[8px] font-medium uppercase tracking-[0.22em] text-[#8b8b85]">Visual intelligence</span>
-          </span>
+        <Link href="/" aria-label="Ramah Studio International home" className="group flex items-center gap-3.5">
+          {/* The app icon (app/icon.svg): the RS symbol on its charcoal tile. */}
+          <img src="/icon.svg" alt="" width={36} height={36} className="h-9 w-9 rounded-[11px] shadow-[0_8px_20px_-12px_rgba(0,0,0,.8)] transition-transform duration-300 group-hover:-rotate-3" />
+          <Logo wordmarkClassName="text-[19px]" />
         </Link>
 
         <nav aria-label="Primary navigation" className="hidden items-center rounded-[13px] border border-black/[0.06] bg-black/[0.035] p-1 lg:flex">

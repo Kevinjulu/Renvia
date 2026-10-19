@@ -56,7 +56,7 @@ function BeforeAfterVisual() {
       before={<ArchitecturalVisual treatment="geometry" alt="Original CAD geometry, uploaded model" className="h-full w-full" />}
       after={<ArchitecturalVisual treatment="render" alt="Photoreal render, same locked geometry" className="h-full w-full" />}
       beforeLabel="Original geometry"
-      afterLabel="Renvia Rendered"
+      afterLabel="Ramah Studio render"
       initialPosition={50}
       fill
     />
@@ -66,7 +66,7 @@ function BeforeAfterVisual() {
 const FEATURED = [
   {
     title: "Structure locked",
-    description: "Your geometry stays exactly as drawn. Renvia changes only materials, lighting, and context.",
+    description: "Your geometry stays exactly as drawn. Ramah Studio changes only materials, lighting, and context.",
     icon: <LockIcon />,
     visual: <StructureLockedVisual />,
   },
@@ -90,7 +90,7 @@ export function CapabilityGrid() {
             Nothing about your design changes. Everything about how it looks does.
           </h2>
           <p className="mt-4 max-w-md mx-auto text-base leading-relaxed text-muted sm:text-lg">
-            Renvia keeps every render accurate to the design you drew, so what you present matches what you built.
+            Ramah Studio keeps every render accurate to the design you drew, so what you present matches what you built.
           </p>
         </div>
 

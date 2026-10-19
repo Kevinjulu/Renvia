@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/react": "^6.14.8",
+    "@renvia/brand": "workspace:*",
     "@renvia/types": "workspace:*",
     "lucide-react": "^1.47.0",
     "react": "^18.3.1",

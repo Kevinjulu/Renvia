@@ -144,7 +144,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     id: "beta.button",
     title: "Beta Program",
     short: "Your beta credits, missions and announcements — and where to report problems.",
-    body: "This is your line to the Renvia team. It shows your beta credits and how long your access lasts, your testing missions, and announcements from us.",
+    body: "This is your line to the Ramah Studio team. It shows your beta credits and how long your access lasts, your testing missions, and announcements from us.",
     how: "Open it any time to check your missions or replay this introduction. When something looks wrong in a render, report it from here so we can see exactly what happened.",
   },
 };

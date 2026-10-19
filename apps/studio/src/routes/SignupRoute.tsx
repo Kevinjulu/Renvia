@@ -85,7 +85,7 @@ export function SignupRoute() {
       {step === "details" ? (
         <>
           <h1 className="font-display text-2xl font-semibold text-primary">Create your account</h1>
-          <p className="mt-2 text-sm text-muted">Start rendering with Renvia Studio.</p>
+          <p className="mt-2 text-sm text-muted">Start rendering with Ramah Studio.</p>
 
           <div className="mt-8 flex flex-col gap-5">
             <SocialButtons onSelect={(strategy) => void handleSocial(strategy)} disabled={submitting} />

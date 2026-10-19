@@ -46,6 +46,9 @@ importers:
       '@clerk/react':
         specifier: ^6.14.8
         version: 6.14.8(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@renvia/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@renvia/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -107,6 +110,9 @@ importers:
       '@fal-ai/client':
         specifier: ^1.10.1
         version: 1.10.1
+      '@renvia/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@renvia/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -144,6 +150,9 @@ importers:
 
   apps/marketing:
     dependencies:
+      '@renvia/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       next:
         specifier: ^15.1.3
         version: 15.5.25(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@22.20.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -187,6 +196,9 @@ importers:
       '@fontsource/ibm-plex-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@renvia/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@renvia/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -254,6 +266,12 @@ importers:
       vite:
         specifier: ^6.0.7
         version: 6.4.3(@types/node@22.20.1)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.9.0)
+
+  packages/brand:
+    devDependencies:
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4(@types/node@22.20.1)
 
   packages/config:
     dependencies:

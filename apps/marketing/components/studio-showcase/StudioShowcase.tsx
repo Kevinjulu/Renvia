@@ -39,7 +39,7 @@ export function StudioShowcase() {
           <div className="relative z-10 aspect-[1672/941] overflow-hidden rounded-[18px] border border-black/10 bg-[#e9e7e2] shadow-[0_55px_110px_-52px_rgba(20,20,18,.68)] sm:rounded-[26px]">
             <Image
               src="/studio/renvia-studio-showcase.webp"
-              alt="Renvia Studio comparing a front elevation before and after a photorealistic render, with style, prompt and reference image controls on the left and render history on the right"
+              alt="Ramah Studio comparing a front elevation before and after a photorealistic render, with style, prompt and reference image controls on the left and render history on the right"
               fill
               sizes="(min-width: 1440px) 1400px, 100vw"
               className="object-cover"
@@ -60,9 +60,9 @@ export function StudioShowcase() {
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-6 sm:flex-row">
-          <p className="text-center text-[11px] text-faint sm:text-left">This is Renvia Studio—not a mockup. What you see is what you work in.</p>
+          <p className="text-center text-[11px] text-faint sm:text-left">This is Ramah Studio—not a mockup. What you see is what you work in.</p>
           <a href={STUDIO_URL} className="group inline-flex h-12 items-center gap-3 rounded-full bg-primary px-6 text-xs font-semibold text-white shadow-[0_10px_25px_-14px_rgba(0,0,0,.7)] transition hover:-translate-y-0.5 hover:bg-black">
-            Open Renvia Studio <span className="transition-transform group-hover:translate-x-1">→</span>
+            Open Ramah Studio <span className="transition-transform group-hover:translate-x-1">→</span>
           </a>
         </div>
       </div>

@@ -47,6 +47,6 @@ export function DashboardPanels({ projects, onCreate, isCreating }: { projects: 
     <PlanPanel />
     <section className="dashboard-panel quick-panel"><h3>Quick actions</h3><button type="button" onClick={onCreate} disabled={isCreating}><span className="quick-dark"><PlusIcon /></span>{isCreating ? "Creating…" : "New project"}</button><button type="button" onClick={() => navigate("/assets?upload=1")}><span><Icon><path d="M4 10 12 4l8 6v9H4Z"/><path d="M12 8v7m-3-3 3 3 3-3"/></Icon></span>Upload file</button><button type="button" onClick={() => navigate("/templates")}><span><Icon><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></Icon></span>Browse templates</button><button type="button" onClick={() => navigate("/team")}><span><Icon><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M17 6a3 3 0 0 1 0 6M17 15a5 5 0 0 1 4 5"/></Icon></span>Invite team</button></section>
     <ActivityPanel projects={projects} />
-    <blockquote className="dashboard-quote">“Better spaces for a brighter tomorrow.”<span>— Renvia</span></blockquote>
+    <blockquote className="dashboard-quote">“Better spaces for a brighter tomorrow.”<span>— Ramah Studio International</span></blockquote>
   </aside>;
 }

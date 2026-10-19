@@ -38,7 +38,7 @@ export function StudioPreferencesSection({ onSaved }: StudioPreferencesSectionPr
   const resetDefaults = () => {
     localStorage.removeItem(STUDIO_PREFERENCES_STORAGE_KEY);
     setPrefs({ ...DEFAULT_STUDIO_PREFERENCES });
-    onSaved("Preferences reset to Renvia's defaults.");
+    onSaved("Preferences reset to Ramah Studio's defaults.");
   };
 
   return (

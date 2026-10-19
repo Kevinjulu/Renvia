@@ -71,7 +71,7 @@ export function AuditPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `renvia-audit-${created.id}.csv`;
+    link.download = `ramah-studio-audit-${created.id}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     setExported({ rows: created.rows, sha256: created.sha256 });

@@ -570,7 +570,7 @@ describe("audit exports", () => {
     expect(download.status).toBe(200);
     expect(download.headers.get("content-type")).toContain("text/csv");
     expect(download.headers.get("x-content-sha256")).toBe(sha256);
-    expect(download.headers.get("content-disposition")).toContain(`renvia-audit-${id}.csv`);
+    expect(download.headers.get("content-disposition")).toContain(`ramah-studio-audit-${id}.csv`);
     const csv = await download.text();
     expect(csv.split("\n")[0]).toBe("id,created_at,action,actor_email,target_type,target_id,summary");
     expect(csv).toContain("Granted 2 credits for customer@example.test");

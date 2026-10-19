@@ -11,7 +11,7 @@ import { rememberJoinToken } from "./joinToken";
 
 const STATE_COPY: Record<Exclude<BetaInvitationPreview["state"], "pending">, string> = {
   redeemed: "This invitation has already been used.",
-  expired: "This invitation has expired. Ask the Renvia team for a new one.",
+  expired: "This invitation has expired. Ask the Ramah Studio team for a new one.",
   revoked: "This invitation has been withdrawn.",
   closed: "This beta program isn't accepting testers right now.",
 };

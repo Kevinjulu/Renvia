@@ -59,7 +59,7 @@ export function PlansSection({
   const currentInterval = entitlement?.billingInterval ?? null;
   const currentPrice = plans.find((plan) => plan.slug === currentSlug)?.priceCents ?? 0;
   const contact = catalog.salesContactEmail
-    ? `mailto:${catalog.salesContactEmail}?subject=${encodeURIComponent("Renvia Enterprise")}`
+    ? `mailto:${catalog.salesContactEmail}?subject=${encodeURIComponent("Ramah Studio Enterprise")}`
     : websiteUrl("/pricing#pricing", "signed-in");
 
   return (

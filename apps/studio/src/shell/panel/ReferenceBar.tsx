@@ -373,7 +373,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
           ) : shownTab !== "yours" ? (
             <>
               <p className="reference-modal-lead reference-library-lead">
-                Samples picked by the Renvia team. Click one to use it as a reference for this render.
+                Samples picked by the Ramah Studio team. Click one to use it as a reference for this render.
               </p>
               <div className="reference-image-grid">
                 {stock

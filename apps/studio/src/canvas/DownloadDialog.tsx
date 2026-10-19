@@ -106,7 +106,7 @@ export function DownloadDialog() {
     setNotice(null);
     setName(
       slug(
-        ["renvia", job.viewLabel ?? "render", job.settings?.edit ? "edit" : null, highRes?.imageUrl ? highRes.target : null, job.createdAt.slice(0, 10)]
+        ["ramah-studio", job.viewLabel ?? "render", job.settings?.edit ? "edit" : null, highRes?.imageUrl ? highRes.target : null, job.createdAt.slice(0, 10)]
           .filter(Boolean)
           .join(" "),
       ),
@@ -226,7 +226,7 @@ export function DownloadDialog() {
     setBusy("download");
     setNotice(null);
     try {
-      saveBlob(await buildBlob(), `${name || "renvia-render"}.${formatSpec.ext}`);
+      saveBlob(await buildBlob(), `${name || "ramah-studio-render"}.${formatSpec.ext}`);
       close();
     } catch {
       setNotice("Download failed. Try again, or pick another format.");

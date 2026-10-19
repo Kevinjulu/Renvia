@@ -13,7 +13,7 @@ interface PageHeroProps {
  * Full-width photo banner for each admin tab — product imagery with a dark wash so
  * title and description stay readable. Keeps one composition: brand context + purpose.
  */
-export function PageHero({ title, description, image, eyebrow = "Renvia Admin", actions }: PageHeroProps) {
+export function PageHero({ title, description, image, eyebrow = "Ramah Studio Admin", actions }: PageHeroProps) {
   return (
     <header className="relative mb-8 overflow-hidden rounded-2xl border border-hairline shadow-card">
       <div className="absolute inset-0">
