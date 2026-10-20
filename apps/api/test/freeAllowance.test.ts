@@ -95,7 +95,7 @@ describe("the rules", () => {
   });
 
   it("approves a clean account and holds risky ones, never denying on its own", () => {
-    const clean = { emailVerified: true, emailDomain: "studio.co.ke", disposableDomain: false, sameMailboxAccounts: 0, approvalsToday: 0, dailyApprovalLimit: 100 };
+    const clean = { emailVerified: true, emailDomain: "studio.co.ke", disposableDomain: false, sameMailboxAccounts: 0, approvalsToday: 0, dailyApprovalLimit: 100, sameBrowserAccounts: 0, networkSignups24h: 0, signupSpike: false };
     expect(decideFreeAllowance(clean).outcome).toBe("approved");
     expect(decideFreeAllowance({ ...clean, sameMailboxAccounts: 1 })).toMatchObject({ outcome: "review_required", score: 60 });
     expect(decideFreeAllowance({ ...clean, disposableDomain: true })).toMatchObject({ outcome: "verification_required", score: 40 });
@@ -113,7 +113,7 @@ describe("granting the Free allowance", () => {
     const account = await me("first");
 
     expect(account.creditBalance).toBe(ALLOWANCE);
-    expect(account.freeCredits).toEqual({ status: "pending", held: false });
+    expect(account.freeCredits).toMatchObject({ status: "pending", held: false });
     expect(await assessments(account.id)).toHaveLength(0);
   });
 
@@ -141,7 +141,7 @@ describe("granting the Free allowance", () => {
     signUp("second", "architect+2@gmail.com");
     const second = await me("second");
     expect(second.creditBalance).toBe(0);
-    expect(second.freeCredits).toEqual({ status: "review_required", held: true });
+    expect(second.freeCredits).toMatchObject({ status: "review_required", held: true });
     expect(await grants(second.id)).toBe(0);
 
     // Later requests don't grant it either, or assess it again within the period.

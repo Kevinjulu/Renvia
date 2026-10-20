@@ -76,6 +76,15 @@ export interface Env {
    * from it, and Clerk invitation emails are sent only when it is set.
    */
   STUDIO_URL?: string;
+  /**
+   * Key for the keyed hashes of browser ids and network prefixes (lib/securitySignals.ts): 32+
+   * random characters, server-only. Without it no browser or network evidence is recorded.
+   */
+  SECURITY_HASH_KEY?: string;
+  /** The header the host sets to the client's IP (default x-real-ip, which Vercel sets). */
+  TRUSTED_IP_HEADER?: string;
+  /** Cloudflare Turnstile secret, for the free-credit human check. Unset hides the check. */
+  TURNSTILE_SECRET_KEY?: string;
 }
 
 export interface AuthVariables {
@@ -106,7 +115,7 @@ app.use("*", async (c, next) => {
   c.header("X-Request-Id", id);
   return cors({
     origin: allowedOrigins(c.env),
-    allowHeaders: ["Content-Type", "Authorization", "X-Request-Id", "X-Upload-Kind"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Request-Id", "X-Upload-Kind", "X-Client-Id"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["X-Request-Id"],
     credentials: true,

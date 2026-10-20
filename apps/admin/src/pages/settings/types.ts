@@ -36,6 +36,7 @@ export interface Draft {
   promoBudgetUsd: string;
   promoWarningPercent: string;
   promoCriticalPercent: string;
+  securitySignalsEnabled: boolean;
 }
 
 export type FieldErrors = Partial<Record<keyof Draft, string>>;

@@ -8,6 +8,7 @@ import { endLapsedSubscriptions } from "../lib/subscriptions.js";
 import { OPERATIONS_SYNC_JOB, runScheduledJob } from "../lib/scheduledJobs.js";
 import { runBetaHousekeeping } from "../lib/betaHousekeeping.js";
 import { runStorageCleanup } from "../lib/storageCleanup.js";
+import { purgeSecurityLinks } from "../lib/securitySignals.js";
 
 export const cron = new Hono<{ Bindings: Env }>();
 
@@ -58,5 +59,7 @@ cron.get("/sweep-renders", async (c) => {
   const beta = await runBetaHousekeeping(c.env, db);
   // Uploads nothing uses any more, and files of renders removed from history or deleted.
   const storage = await runStorageCleanup(c.env, db);
-  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), subscriptions, credits, beta, storage });
+  // Browser and network links past their retention (30 and 180 days after last seen).
+  const securityLinks = await purgeSecurityLinks(db);
+  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), subscriptions, credits, beta, storage, securityLinks });
 });

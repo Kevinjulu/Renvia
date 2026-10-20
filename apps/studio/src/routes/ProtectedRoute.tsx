@@ -9,6 +9,7 @@ import { LimitDialog } from "../components/LimitDialog";
 import { AccountDialog } from "../components/account/AccountDialog";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
+import { FreeCreditsBanner } from "../components/FreeCreditsBanner";
 import { UpgradeDialog } from "../components/upgrade/UpgradeDialog";
 import { PlansDialog } from "../components/upgrade/PlansDialog";
 import { BetaBridge } from "../beta/BetaBridge";
@@ -62,6 +63,7 @@ export function ProtectedRoute() {
       <Outlet />
       <ConnectionBanner />
       <MaintenanceBanner />
+      <FreeCreditsBanner />
       {refusal && (
         <LimitDialog
           refusal={refusal}

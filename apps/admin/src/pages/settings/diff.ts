@@ -183,9 +183,10 @@ export type ExtraKey = Extract<
   | "promoBudgetUsd"
   | "promoWarningPercent"
   | "promoCriticalPercent"
+  | "securitySignalsEnabled"
 >;
 
-export type ExtraValue = number | string | null;
+export type ExtraValue = number | string | boolean | null;
 
 export const countOr = (suffix: string) => (value: ExtraValue) =>
   value === null ? "Unlimited" : `${formatNumber(Number(value))}${suffix}`;
@@ -215,6 +216,7 @@ export const EXTRA_CHANGE_FIELDS: { key: ExtraKey; label: string; format: (value
   { key: "promoBudgetUsd", label: "Promotional budget", format: (value) => (value === null ? "No cap" : `${formatUsd(Number(value))}/mo`) },
   { key: "promoWarningPercent", label: "Promotional warning", format: plain("%") },
   { key: "promoCriticalPercent", label: "Promotional critical", format: plain("%") },
+  { key: "securitySignalsEnabled", label: "Browser & network signals", format: (value) => (value ? "On" : "Off") },
 ];
 
 export function isDangerous(settings: AdminSettings, draft: Draft): string | null {
@@ -244,6 +246,9 @@ export function isDangerous(settings: AdminSettings, draft: Draft): string | nul
 
   if (result.body.freeAllowanceMode === "enforce" && settings.freeAllowanceMode !== "enforce") {
     return "You're enforcing the free-credit checks: Free accounts that aren't approved stop receiving their monthly credits until someone approves them.";
+  }
+  if (result.body.securitySignalsEnabled === true && !settings.securitySignalsEnabled) {
+    return "You're turning on browser and network signals. Confirm the published privacy notice covers them before saving.";
   }
   if (result.body.freeAllowanceMode === "paused" && settings.freeAllowanceMode !== "paused") {
     return "You're pausing free credits: no Free account starts a new month of credits until you change this back.";

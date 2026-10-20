@@ -718,6 +718,11 @@ export const appSettings = pgTable(
     /** Promotional budget warning and critical thresholds (percent), raised as incidents. */
     promoWarningPercent: integer("promo_warning_percent").notNull().default(50),
     promoCriticalPercent: integer("promo_critical_percent").notNull().default(80),
+    /**
+     * Records browser and network evidence (as keyed hashes) for the Free-allowance rules. Off by
+     * default: turn it on once the privacy notice covers it. Needs SECURITY_HASH_KEY as well.
+     */
+    securitySignalsEnabled: boolean("security_signals_enabled").notNull().default(false),
     falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
     falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -972,8 +977,8 @@ export const freeAllowanceAssessments = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id),
-    /** signup (first period) | renewal (a later period) | evidence (new facts, e.g. a verified email) | operator. */
-    kind: text("kind", { enum: ["signup", "renewal", "evidence", "operator"] }).notNull(),
+    /** signup (first period) | renewal (a later period) | evidence (new facts, e.g. a verified email) | claim (the human check) | operator. */
+    kind: text("kind", { enum: ["signup", "renewal", "evidence", "claim", "operator"] }).notNull(),
     outcome: text("outcome", { enum: ["approved", "verification_required", "review_required", "denied"] }).notNull(),
     /** The mode in force: in observe, the outcome was recorded but never withheld anything. */
     mode: text("mode", { enum: ["off", "observe", "enforce", "paused"] }).notNull(),
@@ -987,6 +992,30 @@ export const freeAllowanceAssessments = pgTable(
   (table) => [
     index("free_allowance_assessments_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("free_allowance_assessments_kind_created_idx").on(table.kind, table.createdAt.desc()),
+  ],
+);
+
+/**
+ * Which accounts were used from which browser and network, as keyed hashes only (never a raw
+ * browser id or IP address): the evidence for the Free-allowance rules' "same browser" and "burst
+ * from one network" signals. Written only while app_settings.security_signals_enabled is on and
+ * SECURITY_HASH_KEY is set; network links are kept 30 days and browser links 180 days after last
+ * seen (lib/securitySignals.ts).
+ */
+export const securityLinks = pgTable(
+  "security_links",
+  {
+    /** device: the Studio's first-party browser id. network: the IP's /24 (IPv4) or /48 (IPv6). */
+    kind: text("kind", { enum: ["device", "network"] }).notNull(),
+    hash: text("hash").notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.kind, table.hash, table.userId] }),
+    index("security_links_user_idx").on(table.userId),
+    index("security_links_kind_last_seen_idx").on(table.kind, table.lastSeenAt),
   ],
 );
 

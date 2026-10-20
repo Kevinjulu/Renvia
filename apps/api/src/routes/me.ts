@@ -9,7 +9,10 @@ import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { currentStudioRevision, effectiveCreditPrices, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
 import { settleBetaCredits, type BetaContext } from "../lib/beta.js";
-import { freeCreditsStatus } from "../lib/freeAllowance.js";
+import { canClaimFreeAllowance, claimFreeAllowance, freeCreditsStatus } from "../lib/freeAllowance.js";
+import { ensureCreditPeriod } from "../lib/planCredits.js";
+import { hashSignals, requestSignals } from "../lib/securitySignals.js";
+import { z } from "zod";
 import type { MeBeta, StudioFeatureKey } from "@renvia/types";
 
 export const me = new Hono<AppContext>();
@@ -32,8 +35,11 @@ me.get("/", async (c) => {
   const { clerkId } = c.get("auth");
   const db = createDb(c.env.DATABASE_URL);
 
-  // Called once per studio load, so it also refreshes the stored email from Clerk.
-  const [synced, settings] = await Promise.all([syncUser(c.env, db, clerkId), getSettings(db)]);
+  // Called once per studio load, so it also refreshes the stored email from Clerk, and (while
+  // the operator has switched signals on) notes the hashed browser and network it came from.
+  const settings = await getSettings(db);
+  const signals = settings.securitySignalsEnabled ? await hashSignals(c.env, requestSignals(c.env, (name) => c.req.header(name))) : null;
+  const synced = await syncUser(c.env, db, clerkId, signals);
   // Closes a beta enrollment past its end and expires its credits before reporting the balance.
   const { context: beta, expired } = await settleBetaCredits(db, synced.id, { betaCredits: synced.betaCredits });
   const user = expired > 0 ? await getOrCreateUser(c.env, db, clerkId) : synced;
@@ -72,10 +78,44 @@ me.get("/", async (c) => {
       : null,
     features: featureAvailability(revision.config, user, billing.plan.slug, effectiveEngineMode(c.env, settings), betaProgram?.featureGrants),
     beta: beta ? presentBeta(beta) : null,
-    freeCredits: freeCreditsStatus(billing, settings.freeAllowanceMode),
+    freeCredits: freeCreditsStatus(billing, settings.freeAllowanceMode, canClaimFreeAllowance(c.env, billing.entitlement, user.emailVerified, settings.freeAllowanceMode)),
     creditPrices: effectiveCreditPrices(revision.config, settings),
     configVersion: revision.version,
   });
+});
+
+const claimSchema = z.object({ turnstileToken: z.string().trim().min(1).max(2048) }).strict();
+
+const CLAIM_REFUSALS = {
+  not_claimable: { status: 409, error: "Your free credits can't be released this way. Contact support if you think this is a mistake." },
+  too_many_attempts: { status: 429, error: "Too many attempts. Try again in an hour." },
+  check_failed: { status: 400, error: "The check didn't pass. Please try again." },
+  check_unavailable: { status: 503, error: "The check isn't available right now. Please try again in a few minutes." },
+} as const;
+
+/**
+ * Clears a verification hold on the Free plan's monthly credits with the Cloudflare Turnstile
+ * check. Only the token comes from the browser; whether the account may claim, and what it gets,
+ * is decided here. A pass grants the month that's due, once.
+ */
+me.post("/free-credits/claim", async (c) => {
+  const { clerkId } = c.get("auth");
+  const { turnstileToken } = claimSchema.parse(await c.req.json());
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  if (user.disabled) return c.json({ error: "Account disabled", code: "account_disabled" }, 403);
+  const billing = await ensureEntitlement(db, user.id);
+  const trusted = (c.env.TRUSTED_IP_HEADER?.trim() || "x-real-ip").toLowerCase();
+  const remoteIp = c.req.header(trusted)?.split(",")[0]?.trim() || null;
+  const result = await claimFreeAllowance(c.env, db, user.id, billing.entitlement, user.emailVerified, turnstileToken, remoteIp);
+  if (!result.ok) {
+    const refusal = CLAIM_REFUSALS[result.code];
+    return c.json({ error: refusal.error, code: result.code }, refusal.status);
+  }
+  const fresh = await ensureEntitlement(db, user.id);
+  const granted = await ensureCreditPeriod(db, user.id, user.createdAt, fresh);
+  const after = granted ? await getOrCreateUser(c.env, db, clerkId) : user;
+  return c.json({ status: result.status, granted, creditBalance: after.creditBalance });
 });
 
 /** Balance plus the most recent ledger entries, for the studio's credits page. */

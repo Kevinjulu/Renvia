@@ -1,6 +1,8 @@
+import { clientId } from "./clientId";
 import { useMemo, useRef } from "react";
 import { useAuth } from "@clerk/react";
 import type {
+  FreeCreditsClaimResponse,
   BetaFeedbackDetail,
   BetaFeedbackSummary,
   BetaKnownIssue,
@@ -117,6 +119,8 @@ async function request<T>(getToken: GetToken, path: string, init?: RequestInit):
     const headers = new Headers(init?.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
     headers.set("X-Request-Id", crypto.randomUUID());
+    const browser = clientId();
+    if (browser) headers.set("X-Client-Id", browser);
     const response = await fetchWithTimeout(`${API_BASE_URL}/api${path}`, { ...init, headers });
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as
@@ -225,6 +229,8 @@ export function useApiClient(): ApiClient {
 function createApiClient(getToken: GetToken) {
   return {
     getMe: () => request<MeResponse>(getToken, "/me"),
+    claimFreeCredits: (turnstileToken: string) =>
+      request<FreeCreditsClaimResponse>(getToken, "/me/free-credits/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ turnstileToken }) }),
     getMyCredits: () => request<MeCreditsResponse>(getToken, "/me/credits"),
     getBillingCatalog: () => request<BillingCatalogResponse>(getToken, "/billing/catalog"),
     createPaypalCheckout: (body: { kind: "credit_pack" | "subscription"; product: string; idempotencyKey: string }) => request<{ checkoutId: string; status: string; approvalUrl: string | null }>(getToken, "/billing/checkouts/paypal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),

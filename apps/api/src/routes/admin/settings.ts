@@ -105,6 +105,9 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     promoWarningPercent: row.promoWarningPercent,
     promoCriticalPercent: row.promoCriticalPercent,
     promoSpentUsd: promoSpent / MICROS_PER_USD,
+    securitySignalsEnabled: row.securitySignalsEnabled,
+    securityHashKeyConfigured: (env.SECURITY_HASH_KEY?.trim().length ?? 0) >= 32,
+    turnstileConfigured: Boolean(env.TURNSTILE_SECRET_KEY?.trim()),
     effectiveMode,
     effectiveBudgetUsd: effectiveBudgetUsd(env, row),
     spentUsd: (Number(renderSpend?.spentMicros ?? 0) + Number(segSpend?.spentMicros ?? 0) + Number(polishSpend?.spentMicros ?? 0)) / MICROS_PER_USD,
@@ -170,6 +173,7 @@ const updateSettingsSchema = z
     promoBudgetUsd: z.number().min(0).max(10_000).multipleOf(0.01).nullable().optional(),
     promoWarningPercent: z.number().int().min(1).max(99).optional(),
     promoCriticalPercent: z.number().int().min(2).max(100).optional(),
+    securitySignalsEnabled: z.boolean().optional(),
     /** Why; kept in the audit row, and required context for a change that needs approval. */
     reason: z.string().trim().max(300).optional(),
   })
@@ -278,6 +282,7 @@ settingsRoutes.put("/settings", async (c) => {
             promoBudgetUsd: before.promoBudgetUsd === null ? null : Number(before.promoBudgetUsd),
             promoWarningPercent: before.promoWarningPercent,
             promoCriticalPercent: before.promoCriticalPercent,
+            securitySignalsEnabled: before.securitySignalsEnabled,
           },
           after: applied,
           ...(reason ? { reason } : {}),

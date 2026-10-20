@@ -1402,6 +1402,8 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "promoSpentUsd": 0,
       "promoWarningPercent": 50,
       "recentChanges": [],
+      "securityHashKeyConfigured": false,
+      "securitySignalsEnabled": false,
       "spentUsd": 0.095,
       "storage": {
         "byKind": {
@@ -1419,6 +1421,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "storageCapMb": 9000,
       "storagePerUserMb": 500,
       "stuckTimeoutMinutes": 15,
+      "turnstileConfigured": false,
       "updatedAt": "<timestamp>",
       "updatedByEmail": null,
     },

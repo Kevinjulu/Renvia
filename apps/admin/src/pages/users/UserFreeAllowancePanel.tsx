@@ -15,7 +15,7 @@ const STATUS: Record<FreeAllowanceStatus, { label: string; tone: "emerald" | "am
   denied: { label: "Denied", tone: "red" },
 };
 
-const KIND_LABEL = { signup: "Sign-up check", renewal: "Monthly check", evidence: "New evidence", operator: "Operator" } as const;
+const KIND_LABEL = { signup: "Sign-up check", renewal: "Monthly check", evidence: "New evidence", claim: "Human check", operator: "Operator" } as const;
 
 /**
  * Whether this account may receive the Free plan's monthly credits, why, and the decisions behind

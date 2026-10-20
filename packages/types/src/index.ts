@@ -649,6 +649,16 @@ export interface MeFreeCredits {
   status: FreeAllowanceStatus;
   /** True when the Free plan's monthly credits are being withheld from this account right now. */
   held: boolean;
+  /** True when the account can clear a verification hold itself with the human check. */
+  canClaim: boolean;
+}
+
+/** POST /me/free-credits/claim */
+export interface FreeCreditsClaimResponse {
+  status: FreeAllowanceStatus;
+  /** True when the month's free credits were granted by this claim. */
+  granted: boolean;
+  creditBalance: number;
 }
 
 /** A tester's program as /me reports it. */
@@ -1202,6 +1212,12 @@ export interface AdminSettings {
   promoCriticalPercent: number;
   /** This UTC month's promotional spend, against promoBudgetUsd. */
   promoSpentUsd: number;
+  /** Records hashed browser and network evidence for the checks; needs the privacy notice first. */
+  securitySignalsEnabled: boolean;
+  /** SECURITY_HASH_KEY is set (32+ characters); without it nothing is recorded. */
+  securityHashKeyConfigured: boolean;
+  /** TURNSTILE_SECRET_KEY is set, so held accounts can clear a verification hold themselves. */
+  turnstileConfigured: boolean;
   /** What's actually in force after env fallbacks. */
   effectiveMode: RenderEngineMode;
   effectiveBudgetUsd: number;
@@ -1271,6 +1287,7 @@ export type AdminUpdateSettingsRequest = Partial<
     | "promoBudgetUsd"
     | "promoWarningPercent"
     | "promoCriticalPercent"
+    | "securitySignalsEnabled"
   > & {
     /** Plan slug to monthly credits; plans left out are unchanged. */
     planMonthlyCredits: Record<string, number>;
@@ -2502,7 +2519,7 @@ export function thumbnailUrl<T extends string | null | undefined>(url: T): T {
 /** One Free-allowance assessment or operator decision, as the admin console lists it. */
 export interface AdminFreeAllowanceAssessment {
   id: string;
-  kind: "signup" | "renewal" | "evidence" | "operator";
+  kind: "signup" | "renewal" | "evidence" | "claim" | "operator";
   outcome: Exclude<FreeAllowanceStatus, "pending">;
   mode: FreeAllowanceMode;
   score: number | null;

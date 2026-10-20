@@ -4,6 +4,7 @@ import { schema, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
 import { ensureEntitlement, getBillingEntitlement } from "./billing.js";
 import { normalizeEmail, reassessOnVerifiedEmail } from "./freeAllowance.js";
+import { recordSecurityLinks, type HashedSignals } from "./securitySignals.js";
 import { ensureCreditPeriod } from "./planCredits.js";
 
 type UserRow = typeof schema.users.$inferSelect;
@@ -38,7 +39,7 @@ async function withCurrentCredits(db: Database, user: UserRow, emailNewlyVerifie
  * starts at 0 and receives its plan's monthly allowance as its first credit period, once it is
  * eligible for it; if that step fails, the next request (or the daily renewal) starts it.
  */
-export async function syncUser(env: Env, db: Database, clerkId: string): Promise<UserRow> {
+export async function syncUser(env: Env, db: Database, clerkId: string, signals: HashedSignals | null = null): Promise<UserRow> {
   const { email, verified } = await fetchClerkEmail(env, clerkId);
   const emailNormalized = normalizeEmail(email);
   const [row] = await db
@@ -49,6 +50,9 @@ export async function syncUser(env: Env, db: Database, clerkId: string): Promise
     .returning({ ...getTableColumns(schema.users), wasVerified: sql<boolean | null>`(select u.email_verified from users u where u.clerk_id = ${clerkId})` });
   if (!row) throw new Error("Failed to sync user");
   const { wasVerified, ...user } = row;
+  // Browser and network evidence goes in before any credit period starts, so a new account's
+  // first assessment can see it. A failure here never blocks the account.
+  if (signals) await recordSecurityLinks(db, user.id, signals).catch((error: unknown) => console.error("security links not recorded", error));
   return withCurrentCredits(db, user, verified && wasVerified === false);
 }
 

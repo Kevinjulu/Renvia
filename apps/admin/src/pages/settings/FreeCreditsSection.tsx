@@ -51,9 +51,23 @@ export function FreeCreditsSection({ data, draft, fieldErrors, update }: { data:
           ))}
         </div>
         <p className="mt-2 text-xs text-faint">
-          The checks use only the account's email: whether it's verified, whether the same mailbox already had free credits on another account, and whether it's a throwaway domain. Decide individual accounts on their user page.
+          The checks use the account's email (verified, a mailbox that already had free credits elsewhere, throwaway domains) and, when switched on below, its browser and network. Decide individual accounts on their user page.
         </p>
       </fieldset>
+
+      <label className="mt-5 flex cursor-pointer gap-3 rounded-xl border border-hairline px-3 py-2.5">
+        <input type="checkbox" checked={draft.securitySignalsEnabled} onChange={(event) => update({ securitySignalsEnabled: event.target.checked })} className="mt-1 accent-[#2F6FED]" />
+        <span>
+          <span className="block text-sm font-medium text-primary">Use browser and network signals</span>
+          <span className="block text-xs text-muted">
+            Notes which accounts share a browser or a network, stored only as keyed hashes (never the browser id or IP address) and deleted after 180 and 30 days. Turn on only once the privacy notice says so.
+            {!data.securityHashKeyConfigured && " SECURITY_HASH_KEY isn't set, so nothing is recorded yet."}
+          </span>
+        </span>
+      </label>
+      <p className="mt-2 text-xs text-faint">
+        Human check (Cloudflare Turnstile): {data.turnstileConfigured ? "on — accounts held for verification can clear it themselves." : "off — set TURNSTILE_SECRET_KEY in the API and VITE_TURNSTILE_SITE_KEY in the Studio."}
+      </p>
 
       <div className="mt-5">
         <Field label="Automatic approvals per day" hint="New accounts the checks may approve per UTC day. Past it, more wait for review, which caps a burst of sign-ups." error={fieldErrors.freeAllowanceDailyApprovals}>

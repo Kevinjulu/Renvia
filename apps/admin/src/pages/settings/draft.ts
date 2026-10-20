@@ -38,6 +38,7 @@ export function toDraft(settings: AdminSettings): Draft {
     promoBudgetUsd: settings.promoBudgetUsd === null ? "" : String(settings.promoBudgetUsd),
     promoWarningPercent: String(settings.promoWarningPercent),
     promoCriticalPercent: String(settings.promoCriticalPercent),
+    securitySignalsEnabled: settings.securitySignalsEnabled,
   };
 }
 
@@ -210,6 +211,7 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
       promoBudgetUsd: promoBudget,
       promoWarningPercent: promoWarning.value,
       promoCriticalPercent: promoCritical.value,
+      securitySignalsEnabled: draft.securitySignalsEnabled,
       messageInsufficientCredits: messages.messageInsufficientCredits.value,
       messageDailyLimit: messages.messageDailyLimit.value,
       messageMonthlyLimit: messages.messageMonthlyLimit.value,

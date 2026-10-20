@@ -1,5 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
+import type { Env } from "../index.js";
 import type { BillingEntitlement, EntitlementRow } from "./billing.js";
 import { getSettings, type AppSettingsRow } from "./settings.js";
 
@@ -12,16 +13,25 @@ import { getSettings, type AppSettingsRow } from "./settings.js";
  * user_entitlements.free_allowance_status; every assessment and operator decision is kept in
  * free_allowance_assessments with the evidence behind it.
  *
- * The rules (version FREE_ALLOWANCE_RULES_VERSION) use only what the platform already holds —
- * the account's email and whether Clerk verified it — so no device or network data is collected.
- * Their scores are starting hypotheses to tune in observe mode, not measured accuracy:
+ * The rules (version FREE_ALLOWANCE_RULES_VERSION) use the account's email, whether Clerk
+ * verified it, and — only while browser and network signals are switched on — the hashed links
+ * in security_links (lib/securitySignals.ts). Their scores are starting hypotheses to tune in
+ * observe mode, not measured accuracy:
  *
  *   email not verified                                          → verification_required
  *   same mailbox (normalizeEmail) as an account that already
  *   received monthly credits                                    +60
  *   disposable email domain                                     +40
+ *   same browser as other accounts that received monthly
+ *   credits in the last 90 days                                 +25 each, at most +60
+ *   20+ / 5+ other accounts first seen on its network in 24h    +35 / +20
+ *   sign-ups in the last hour over 3x the 7-day hourly average  +15
  *   score ≥ 60 → review_required; ≥ 30 → verification_required; else approved, unless the day's
  *   automatic approvals (app_settings.free_allowance_daily_approvals) are used up → verification.
+ *
+ * Network evidence alone never reaches review: offices, campuses and mobile carriers share
+ * addresses. A verification_required account with a verified email can clear it by passing the
+ * Cloudflare Turnstile check (claimFreeAllowance).
  *
  * "denied" is never automatic: only an operator sets it. An account is assessed when its first
  * Free period is due, again before each later one (once per period), and when new evidence
@@ -29,7 +39,7 @@ import { getSettings, type AppSettingsRow } from "./settings.js";
  * approved-until date passes. Accounts from before migration 0041 were approved without rules and
  * stay approved until an operator asks for a reassessment.
  */
-export const FREE_ALLOWANCE_RULES_VERSION = 1;
+export const FREE_ALLOWANCE_RULES_VERSION = 2;
 
 export type FreeAllowanceStatus = EntitlementRow["freeAllowanceStatus"];
 export type FreeAllowanceMode = AppSettingsRow["freeAllowanceMode"];
@@ -40,6 +50,13 @@ const VERIFY_AT = 30;
 const REVIEW_AT = 60;
 const EMAIL_HISTORY_POINTS = 60;
 const DISPOSABLE_POINTS = 40;
+const BROWSER_POINTS_EACH = 25;
+const BROWSER_POINTS_MAX = 60;
+const NETWORK_BURST = { accounts: 5, points: 20 } as const;
+const NETWORK_FLOOD = { accounts: 20, points: 35 } as const;
+const SPIKE_POINTS = 15;
+/** A spike needs at least this many sign-ups in the hour, as well as 3x the usual rate. */
+const SPIKE_MIN_SIGNUPS = 10;
 
 /** Throwaway-inbox domains. A starting list; Clerk can also block these at sign-up. */
 const DISPOSABLE_DOMAINS = new Set([
@@ -83,6 +100,12 @@ export interface FreeAllowanceSignals {
   sameMailboxAccounts: number;
   approvalsToday: number;
   dailyApprovalLimit: number;
+  /** Other accounts seen on this account's browser that received monthly credits (90 days). */
+  sameBrowserAccounts: number;
+  /** Other accounts first seen on this account's network in the last 24 hours. */
+  networkSignups24h: number;
+  /** Sign-ups in the last hour far above the usual rate. */
+  signupSpike: boolean;
 }
 
 /** The rules themselves, without the database: an outcome, its score and the reasons for it. */
@@ -96,6 +119,22 @@ export function decideFreeAllowance(signals: FreeAllowanceSignals): { outcome: F
   if (signals.disposableDomain) {
     score += DISPOSABLE_POINTS;
     reasons.push(`Disposable email domain (${signals.emailDomain})`);
+  }
+  if (signals.sameBrowserAccounts > 0) {
+    score += Math.min(BROWSER_POINTS_MAX, BROWSER_POINTS_EACH * signals.sameBrowserAccounts);
+    reasons.push(`Same browser as ${signals.sameBrowserAccounts} other account${signals.sameBrowserAccounts === 1 ? "" : "s"} that received monthly credits`);
+  }
+  // Network evidence is capped below the review threshold: shared networks are normal.
+  if (signals.networkSignups24h >= NETWORK_FLOOD.accounts) {
+    score += NETWORK_FLOOD.points;
+    reasons.push(`${signals.networkSignups24h} other new accounts on the same network in 24 hours`);
+  } else if (signals.networkSignups24h >= NETWORK_BURST.accounts) {
+    score += NETWORK_BURST.points;
+    reasons.push(`${signals.networkSignups24h} other new accounts on the same network in 24 hours`);
+  }
+  if (signals.signupSpike) {
+    score += SPIKE_POINTS;
+    reasons.push("Unusually many sign-ups in the last hour");
   }
   let outcome: FreeAllowanceOutcome = score >= REVIEW_AT ? "review_required" : score >= VERIFY_AT ? "verification_required" : "approved";
   if (signals.emailVerified === false) {
@@ -119,16 +158,27 @@ async function readSignals(db: Database, userId: string, settings: AppSettingsRo
     .where(eq(schema.users.id, userId));
   if (!user) throw new Error(`User ${userId} not found`);
   const mailbox = user.normalized ?? normalizeEmail(user.email);
-  const result = await db.execute<{ same_mailbox: number; approvals_today: number }>(sql`
+  const result = await db.execute<{ same_mailbox: number; approvals_today: number; same_browser: number; network_signups: number; signups_hour: number; signups_week: number }>(sql`
     select
       (select count(*)::int from users o
         where o.email_normalized = ${mailbox} and o.id <> ${userId}
           and exists (select 1 from credit_ledger l where l.user_id = o.id and l.reason = 'plan_grant')) as same_mailbox,
       (select count(*)::int from free_allowance_assessments a
-        where a.kind = 'signup' and a.outcome = 'approved' and a.decided_by is null and a.created_at >= ${UTC_DAY_START}) as approvals_today
+        where a.kind = 'signup' and a.outcome = 'approved' and a.decided_by is null and a.created_at >= ${UTC_DAY_START}) as approvals_today,
+      (select count(distinct o.user_id)::int from security_links mine
+        join security_links o on o.kind = 'device' and o.hash = mine.hash and o.user_id <> mine.user_id
+        where mine.kind = 'device' and mine.user_id = ${userId} and o.last_seen_at > now() - interval '90 days'
+          and exists (select 1 from credit_ledger l where l.user_id = o.user_id and l.reason = 'plan_grant')) as same_browser,
+      (select count(distinct o.user_id)::int from security_links mine
+        join security_links o on o.kind = 'network' and o.hash = mine.hash and o.user_id <> mine.user_id
+        where mine.kind = 'network' and mine.user_id = ${userId} and o.first_seen_at > now() - interval '24 hours') as network_signups,
+      (select count(*)::int from free_allowance_assessments where kind = 'signup' and created_at > now() - interval '1 hour') as signups_hour,
+      (select count(*)::int from free_allowance_assessments where kind = 'signup' and created_at > now() - interval '7 days') as signups_week
   `);
   const row = result.rows[0];
   const domain = emailDomain(user.email);
+  const lastHour = Number(row?.signups_hour ?? 0);
+  const hourlyAverage = Number(row?.signups_week ?? 0) / (7 * 24);
   return {
     emailVerified: user.verified,
     emailDomain: domain,
@@ -136,6 +186,9 @@ async function readSignals(db: Database, userId: string, settings: AppSettingsRo
     sameMailboxAccounts: Number(row?.same_mailbox ?? 0),
     approvalsToday: Number(row?.approvals_today ?? 0),
     dailyApprovalLimit: settings.freeAllowanceDailyApprovals,
+    sameBrowserAccounts: Number(row?.same_browser ?? 0),
+    networkSignups24h: Number(row?.network_signups ?? 0),
+    signupSpike: lastHour >= SPIKE_MIN_SIGNUPS && lastHour > 3 * hourlyAverage,
   };
 }
 
@@ -238,10 +291,79 @@ export async function reassessOnVerifiedEmail(db: Database, userId: string, enti
   return status !== entitlement.freeAllowanceStatus;
 }
 
-/** What /me reports: the status, and whether it is withholding this account's Free allowance now. */
-export function freeCreditsStatus(billing: BillingEntitlement, mode: FreeAllowanceMode): { status: FreeAllowanceStatus; held: boolean } {
+/** Whether this account may clear a hold itself with the Turnstile check. */
+export function canClaimFreeAllowance(env: Env, entitlement: EntitlementRow, emailVerified: boolean | null, mode: FreeAllowanceMode): boolean {
+  return Boolean(env.TURNSTILE_SECRET_KEY?.trim())
+    && (mode === "observe" || mode === "enforce")
+    && entitlement.freeAllowanceStatus === "verification_required"
+    && !entitlement.freeAllowanceDecidedBy
+    && emailVerified === true;
+}
+
+/**
+ * What /me reports: the status, whether it is withholding this account's Free allowance now, and
+ * whether the account can clear it with the human check.
+ */
+export function freeCreditsStatus(billing: BillingEntitlement, mode: FreeAllowanceMode, canClaim = false): { status: FreeAllowanceStatus; held: boolean; canClaim: boolean } {
   const status = billing.entitlement.freeAllowanceStatus;
   const free = isFreeAllowance(billing);
   const held = free && (mode === "paused" || (mode === "enforce" && status !== "approved" && status !== "pending"));
-  return { status, held };
+  return { status, held, canClaim: free && canClaim };
+}
+
+export type ClaimResult =
+  | { ok: true; status: FreeAllowanceStatus }
+  | { ok: false; code: "not_claimable" | "too_many_attempts" | "check_failed" | "check_unavailable" };
+
+const CLAIM_ATTEMPTS_PER_HOUR = 5;
+const TURNSTILE_ACTION = "claim_free_credits";
+
+/** Cloudflare's server-side check of a Turnstile token: single-use, valid for five minutes. */
+async function verifyTurnstile(env: Env, token: string, remoteIp: string | null): Promise<{ success: boolean; codes: string[] }> {
+  const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY!.trim(), response: token, idempotency_key: crypto.randomUUID() });
+  if (remoteIp) form.set("remoteip", remoteIp);
+  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form, signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error(`Turnstile siteverify returned ${response.status}`);
+  const body = (await response.json()) as { success?: boolean; action?: string; "error-codes"?: string[] };
+  const actionMatches = !body.action || body.action === TURNSTILE_ACTION;
+  return { success: body.success === true && actionMatches, codes: body["error-codes"] ?? (actionMatches ? [] : ["action-mismatch"]) };
+}
+
+/**
+ * The account passes the Turnstile check to clear a verification hold. Only a hold the rules
+ * placed, on a verified email, can be cleared this way (an operator's decision or a review can't),
+ * at most CLAIM_ATTEMPTS_PER_HOUR tries an hour. Every attempt is recorded; nothing in the request
+ * except the token decides anything. Turnstile being down never approves anyone.
+ */
+export async function claimFreeAllowance(env: Env, db: Database, userId: string, entitlement: EntitlementRow, emailVerified: boolean | null, token: string, remoteIp: string | null, now = new Date()): Promise<ClaimResult> {
+  const settings = await getSettings(db);
+  if (!canClaimFreeAllowance(env, entitlement, emailVerified, settings.freeAllowanceMode)) return { ok: false, code: "not_claimable" };
+  const [recent] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.freeAllowanceAssessments)
+    .where(and(eq(schema.freeAllowanceAssessments.userId, userId), eq(schema.freeAllowanceAssessments.kind, "claim"), sql`${schema.freeAllowanceAssessments.createdAt} > now() - interval '1 hour'`));
+  if ((recent?.count ?? 0) >= CLAIM_ATTEMPTS_PER_HOUR) return { ok: false, code: "too_many_attempts" };
+
+  let check: { success: boolean; codes: string[] };
+  try {
+    check = await verifyTurnstile(env, token, remoteIp);
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", event: "free_allowance.turnstile_unavailable", userId, error: error instanceof Error ? error.message : String(error) }));
+    return { ok: false, code: "check_unavailable" };
+  }
+  const base = { userId, kind: "claim" as const, mode: settings.freeAllowanceMode, ruleVersion: FREE_ALLOWANCE_RULES_VERSION, signals: { turnstile: { success: check.success, codes: check.codes } }, createdAt: now };
+  if (!check.success) {
+    await db.insert(schema.freeAllowanceAssessments).values({ ...base, outcome: "verification_required", reason: `Human check failed${check.codes.length ? ` (${check.codes.join(", ")})` : ""}` });
+    return { ok: false, code: "check_failed" };
+  }
+  const reason = "Passed the human check";
+  const [updated] = await db.batch([
+    db
+      .update(schema.userEntitlements)
+      .set({ freeAllowanceStatus: "approved", freeAllowanceReason: reason, freeAllowanceDecidedAt: now, freeAllowanceDecidedBy: null, freeAllowanceRuleVersion: FREE_ALLOWANCE_RULES_VERSION, freeAllowanceAssessedAt: now, updatedAt: now })
+      .where(and(eq(schema.userEntitlements.userId, userId), eq(schema.userEntitlements.freeAllowanceStatus, "verification_required"), isNull(schema.userEntitlements.freeAllowanceDecidedBy)))
+      .returning({ status: schema.userEntitlements.freeAllowanceStatus }),
+    db.insert(schema.freeAllowanceAssessments).values({ ...base, outcome: "approved", reason }),
+  ]);
+  return { ok: true, status: updated[0]?.status ?? entitlement.freeAllowanceStatus };
 }
