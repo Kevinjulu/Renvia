@@ -42,6 +42,20 @@ const RANGES: { days: Days; label: string }[] = [
   { days: 30, label: "30 days" },
 ];
 
+/**
+ * The admin and API deploy separately, so for a while the page may get an older response without
+ * the newer fields. Fill them with zeros rather than rendering NaN.
+ */
+function withDefaults(raw: AdminOverviewResponse): AdminOverviewResponse {
+  const zeroKinds = { upload: 0, render: 0, watermark: 0, feedback: 0, stock: 0, thumbnail: 0 };
+  return {
+    ...raw,
+    daily: raw.daily.map((day) => ({ ...day, segmentations: day.segmentations ?? 0, signups: day.signups ?? 0 })),
+    previousPeriod: raw.previousPeriod ?? { renders: 0, spentUsd: 0, segmentations: 0, signups: 0 },
+    storage: raw.storage ?? { usedBytes: 0, capBytes: 0, objects: 0, byKind: zeroKinds },
+  };
+}
+
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 const formatBytes = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${(bytes / 1e6).toFixed(bytes >= 1e8 ? 0 : 1)} MB`);
 
@@ -74,7 +88,7 @@ export function OverviewPage() {
     for (const section of [core, financials, billing, incidents, approvals, security, performance, failures, credits]) section.reload();
   };
 
-  const data = core.data;
+  const data = useMemo(() => (core.data ? withDefaults(core.data) : null), [core.data]);
   if (core.error && !data) return <ErrorNote onRetry={core.reload}>{core.error}</ErrorNote>;
 
   return (
@@ -452,6 +466,7 @@ function PerformancePanel({ summary, failures }: { summary: ReturnType<typeof us
 function StoragePanel({ storage }: { storage: AdminOverviewResponse["storage"] }) {
   const ratio = storage.capBytes > 0 ? storage.usedBytes / storage.capBytes : 0;
   const kinds = Object.entries(storage.byKind).filter(([, bytes]) => bytes > 0).sort((a, b) => b[1] - a[1]);
+  if (storage.capBytes <= 0) return <p className="text-xs text-muted">Storage figures aren't available from the API yet.</p>;
   return (
     <div>
       <div className="flex flex-col items-center"><Gauge ratio={ratio} warning={0.7} critical={0.9} label="Image storage against cap" size={150} /></div>
