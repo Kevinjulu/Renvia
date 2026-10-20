@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { thumbnailUrl, type AdminProjectOrder, type AdminProjectSort } from "@renvia/types";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, CircleOff, FolderKanban, Search, Wallet } from "lucide-react";
-import { Card, EmptyState, ErrorNote, Pagination, Skeleton, StatCard } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { ArrowDown, ArrowUp, FolderKanban, Search } from "lucide-react";
+import { Card, EmptyState, ErrorNote, Pagination, Skeleton } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type HealthFilter, HEALTH, SORTABLE } from "./projects/helpers";
 import { HealthPills } from "./projects/parts";
 import { FilterChip, FilterGroup } from "../components/FilterControls";
 import { RowActions } from "./projects/RowActions";
 import { ProjectDetailDrawer } from "./projects/ProjectDetailDrawer";
+
+/** Columns hidden on narrow screens; sorting still works from the URL. */
+const SECONDARY = new Set<AdminProjectSort>(["spentUsd", "lastRenderAt", "updatedAt"]);
 
 export function ProjectsPage() {
   const api = useAdminApi();
@@ -47,7 +50,7 @@ export function ProjectsPage() {
     setParams(next);
   };
 
-  const { data, error, loading, reload } = useLoad(
+  const { data, error, loading, reload, lastUpdated } = useLoad(
     () =>
       api.listProjects({
         search: search || undefined,
@@ -83,13 +86,13 @@ export function ProjectsPage() {
 
   return (
     <>
-      <PageHero title={navForPath("/projects").title} description={navForPath("/projects").description} image={navForPath("/projects").banner} />
+      <PageTop title="Projects" description="Every studio workspace with its owner, spend and render health." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
       {!data ? (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {Array.from({ length: 5 }, (_, index) => (
               <Skeleton key={index} className="h-32 rounded-2xl" />
             ))}
@@ -100,35 +103,19 @@ export function ProjectsPage() {
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard label="Total" value={formatNumber(data.summary.total)} icon={FolderKanban} accent="blue" />
-            <StatCard
-              label="Active"
-              value={formatNumber(data.summary.activeLast7Days)}
-              icon={Activity}
-              accent="emerald"
-              detail="Updated or rendered in 7d"
-            />
-            <StatCard
-              label="With failures"
-              value={formatNumber(data.summary.withFailures)}
-              icon={AlertTriangle}
-              accent={data.summary.withFailures > 0 ? "rose" : "neutral"}
-            />
-            <StatCard
-              label="Never rendered"
-              value={formatNumber(data.summary.neverRendered)}
-              icon={CircleOff}
-              accent="neutral"
-            />
-            <StatCard label="Spend" value={formatUsd(data.summary.spentUsd)} icon={Wallet} accent="amber" detail="Non-failed renders" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <KpiTile label="Total" value={formatNumber(data.summary.total)} />
+            <KpiTile label="Active" value={formatNumber(data.summary.activeLast7Days)} tone="good" detail="Updated or rendered in 7d" />
+            <KpiTile label="With failures" value={formatNumber(data.summary.withFailures)} tone={data.summary.withFailures > 0 ? "bad" : "default"} />
+            <KpiTile label="Never rendered" value={formatNumber(data.summary.neverRendered)} />
+            <KpiTile label="Spend" value={formatUsd(data.summary.spentUsd)} detail="Non-failed renders" />
           </div>
 
           <Card
             icon={FolderKanban}
             title={`${formatNumber(data.total)} ${data.total === 1 ? "project" : "projects"}`}
             actions={
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                 <input
                   type="search"
@@ -136,7 +123,7 @@ export function ProjectsPage() {
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder="Search name or owner…"
                   aria-label="Search projects"
-                  className="w-64 rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
+                  className="w-full rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 sm:w-64 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
                 />
               </div>
             }
@@ -158,13 +145,13 @@ export function ProjectsPage() {
             ) : (
               <>
                 <div className="-mx-5 overflow-x-auto">
-                  <table className="w-full min-w-[1040px] text-left text-sm">
+                  <table className="w-full min-w-[600px] text-left text-sm lg:min-w-[1040px]">
                     <thead>
                       <tr className="border-b border-hairline text-xs font-medium uppercase tracking-wide text-faint">
                         <th className="px-5 py-3 font-medium">Project</th>
-                        <th className="px-5 py-3 font-medium">Owner</th>
+                        <th className="hidden px-5 py-3 font-medium lg:table-cell">Owner</th>
                         {SORTABLE.map((column) => (
-                          <th key={column.key} className="px-5 py-3 font-medium">
+                          <th key={column.key} className={`px-5 py-3 font-medium ${SECONDARY.has(column.key) ? "hidden lg:table-cell" : ""}`}>
                             <button
                               type="button"
                               onClick={() => toggleSort(column.key)}
@@ -201,16 +188,16 @@ export function ProjectsPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-3" onClick={(event) => event.stopPropagation()}>
+                          <td className="hidden px-5 py-3 lg:table-cell" onClick={(event) => event.stopPropagation()}>
                             <Link to={`/users/${project.ownerId}`} className="text-primary hover:text-blueprint">
                               {project.ownerEmail}
                             </Link>
                           </td>
                           <td className="px-5 py-3 tabular-nums">{formatNumber(project.renderCount)}</td>
                           <td className="px-5 py-3 tabular-nums">{formatNumber(project.failedCount)}</td>
-                          <td className="px-5 py-3 tabular-nums">{formatUsd(project.spentUsd)}</td>
-                          <td className="px-5 py-3 text-muted">{formatRelative(project.lastRenderAt)}</td>
-                          <td className="px-5 py-3 text-muted">{formatRelative(project.updatedAt)}</td>
+                          <td className="hidden px-5 py-3 tabular-nums lg:table-cell">{formatUsd(project.spentUsd)}</td>
+                          <td className="hidden px-5 py-3 text-muted lg:table-cell">{formatRelative(project.lastRenderAt)}</td>
+                          <td className="hidden px-5 py-3 text-muted lg:table-cell">{formatRelative(project.updatedAt)}</td>
                           <td className="px-5 py-3">
                             <HealthPills project={project} />
                           </td>
