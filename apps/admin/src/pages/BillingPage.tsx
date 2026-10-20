@@ -1,21 +1,20 @@
-import { AlertTriangle, CreditCard, ReceiptText, Webhook } from "lucide-react";
+import { CreditCard, Webhook } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, EmptyState, ErrorNote, Pill, StatCard } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { Card, EmptyState, ErrorNote, Pill } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 export function BillingPage() {
   const api = useAdminApi();
-  const { data, error, reload } = useLoad(() => api.getBilling(), [api], 30_000);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.getBilling(), [api], 30_000);
   const [refunding, setRefunding] = useState<string | null>(null);
   const [refundError, setRefundError] = useState<string | null>(null);
   const [replaying, setReplaying] = useState<string | null>(null);
   const [refundNotice, setRefundNotice] = useState<string | null>(null);
-  const nav = navForPath("/billing");
   const refund = async (id: string) => {
     if (!window.confirm("Refund this payment? This automatically removes the unspent purchased credits. Large refunds wait for a second admin.")) return;
     setRefunding(id); setRefundError(null); setRefundNotice(null);
@@ -34,16 +33,16 @@ export function BillingPage() {
     finally { setReplaying(null); }
   };
   return <>
-    <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+    <PageTop title="Payments & billing" description="Payments, active plans and provider-webhook delivery health." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
     {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
     {refundError && <ErrorNote onRetry={() => setRefundError(null)}>{refundError}</ErrorNote>}
     {refundNotice && <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{refundNotice} <Link to="/approvals" className="font-medium underline">Open Approvals</Link></div>}
     {!data ? null : <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Captured revenue" value={formatUsd(data.summary.paidUsd)} icon={CreditCard} accent="emerald" detail="All time" />
-        <StatCard label="Refunded" value={formatUsd(data.summary.refundedUsd)} icon={ReceiptText} accent={data.summary.refundedUsd ? "amber" : "neutral"} detail="All time" />
-        <StatCard label="Webhook failures" value={formatNumber(data.summary.failedWebhooks)} icon={AlertTriangle} accent={data.summary.failedWebhooks ? "rose" : "neutral"} detail="All events" />
-        <StatCard label="Awaiting webhook" value={formatNumber(data.summary.pendingWebhooks)} icon={Webhook} accent={data.summary.pendingWebhooks ? "amber" : "neutral"} detail="All events" />
+        <KpiTile label="Captured revenue" value={formatUsd(data.summary.paidUsd)} tone="good" detail="All time" />
+        <KpiTile label="Refunded" value={formatUsd(data.summary.refundedUsd)} tone={data.summary.refundedUsd ? "warn" : "default"} detail="All time" />
+        <KpiTile label="Webhook failures" value={formatNumber(data.summary.failedWebhooks)} tone={data.summary.failedWebhooks ? "bad" : "default"} detail="All events" />
+        <KpiTile label="Awaiting webhook" value={formatNumber(data.summary.pendingWebhooks)} tone={data.summary.pendingWebhooks ? "warn" : "default"} detail="All events" />
       </div>
       <Card title="Plans">
         <div className="-mx-5 overflow-x-auto"><table className="w-full min-w-[600px] text-left text-sm"><thead><tr className="border-b border-hairline text-xs uppercase tracking-wide text-faint"><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Subscribers</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-hairline">{data.plans.map((plan) => <tr key={plan.id}><td className="px-5 py-3"><p className="font-medium text-primary">{plan.name}</p><p className="text-xs text-faint">{plan.slug}</p></td><td className="px-5 py-3">{plan.currency} {(plan.priceCents / 100).toFixed(2)}</td><td className="px-5 py-3">{formatNumber(plan.subscribers)}</td><td className="px-5 py-3"><Pill tone={plan.active ? "emerald" : "neutral"}>{plan.active ? "Active" : "Inactive"}</Pill></td></tr>)}</tbody></table></div>

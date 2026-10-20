@@ -3,11 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import type { AdminCreditOrder, AdminCreditSort } from "@renvia/types";
 import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpRight, Search, Wallet, X } from "lucide-react";
 import { EmptyState, ErrorNote, Pagination, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { formatCreditReason } from "../lib/labels";
 import { formatNumber } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type ReasonFilter, type DirectionFilter, DIRECTIONS, SORTABLE, groupByDay, reasonBarColor, reasonDotColor } from "./credits/helpers";
 import { FlowStat } from "./credits/FlowStat";
@@ -50,7 +49,7 @@ export function CreditsPage() {
     setParams(next);
   };
 
-  const { data, error, loading, reload } = useLoad(
+  const { data, error, loading, reload, lastUpdated } = useLoad(
     () =>
       api.listCredits({
         search: search || undefined,
@@ -73,7 +72,7 @@ export function CreditsPage() {
 
   return (
     <>
-      <PageHero title={navForPath("/credits").title} description={navForPath("/credits").description} image={navForPath("/credits").banner} />
+      <PageTop title="Credits" description="The ledger of every grant, charge and refund: what is outstanding and what flowed through." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
