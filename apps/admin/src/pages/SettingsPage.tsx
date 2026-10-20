@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { ScrollText } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Activity, Gauge, ScrollText, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import { Button, ErrorNote, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import type { Draft, FieldErrors } from "./settings/types";
 import { toDraft, validateDraft } from "./settings/draft";
@@ -25,6 +23,21 @@ import { GovernanceSection } from "./settings/GovernanceSection";
 import { StorageSection } from "./settings/StorageSection";
 import { FreeCreditsSection } from "./settings/FreeCreditsSection";
 
+type GroupId = "status" | "engine" | "customers" | "safety";
+const GROUPS: { id: GroupId; label: string; hint: string; icon: LucideIcon }[] = [
+  { id: "status", label: "Status", hint: "What's in effect, health, history", icon: Activity },
+  { id: "engine", label: "Engine & spend", hint: "Mode, budget, storage, models", icon: Gauge },
+  { id: "customers", label: "Customers", hint: "Credits, free allowance, input limits", icon: Users },
+  { id: "safety", label: "Safety", hint: "Maintenance, approvals, exemptions", icon: ShieldCheck },
+];
+
+/** Which group's section owns each field, so a validation error can take the operator to it. */
+const FIELD_GROUP: Partial<Record<keyof Draft, GroupId>> = {
+  budgetWarningPercent: "engine", budgetCriticalPercent: "engine", falBudgetUsd: "engine", falMode: "engine",
+  stuckTimeoutMinutes: "engine", storageCapMb: "engine", storagePerUserMb: "engine",
+  maintenanceMessage: "safety", maintenanceRenders: "safety", maintenanceSegments: "safety",
+};
+
 export function SettingsPage() {
   const api = useAdminApi();
   const { data, error, loading, reload } = useLoad(() => api.getSettings(), [api]);
@@ -33,6 +46,11 @@ export function SettingsPage() {
   const [status, setStatus] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+
+  const requested = params.get("group");
+  const group: GroupId = GROUPS.some((item) => item.id === requested) ? (requested as GroupId) : "status";
+  const showGroup = (id: GroupId) => setParams(id === "status" ? {} : { group: id }, { replace: true });
 
   useEffect(() => {
     if (data) setDraft(toDraft(data));
@@ -45,10 +63,10 @@ export function SettingsPage() {
   if (!data || !draft) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-40 rounded-2xl" />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Skeleton className="h-80 rounded-2xl" />
-          <Skeleton className="h-80 rounded-2xl" />
+        <Skeleton className="h-10 w-48 rounded-xl" />
+        <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-96 rounded-2xl" />
         </div>
       </div>
     );
@@ -65,7 +83,11 @@ export function SettingsPage() {
     const result = validateDraft(draft);
     if (!result.body) {
       setFieldErrors(result.errors);
-      setStatus({ tone: "error", text: "Fix the highlighted fields before saving." });
+      const bad = Object.keys(result.errors) as (keyof Draft)[];
+      const groups = [...new Set(bad.map((key) => FIELD_GROUP[key] ?? "customers"))];
+      const names = groups.map((id) => GROUPS.find((item) => item.id === id)!.label);
+      if (!groups.includes(group)) showGroup(groups[0]!);
+      setStatus({ tone: "error", text: `Fix the highlighted fields before saving (${names.join(", ")}).` });
       return;
     }
     if (changes.length === 0) return;
@@ -102,105 +124,134 @@ export function SettingsPage() {
   const meterTone = ratio >= criticalRatio ? "bg-rose-500" : ratio >= warningRatio ? "bg-[#c45c26]" : "bg-emerald-500";
   const maintenanceOn = data.maintenanceRenders || data.maintenanceSegments;
 
-  const nav = navForPath("/settings");
+  // Groups stay mounted (hidden, not unmounted) so nothing typed is lost when switching.
+  const panelProps = (id: GroupId) => ({ hidden: group !== id, className: "space-y-6" });
 
   return (
     <>
-      <PageHero
-        title={nav.title}
-        description={nav.description}
-        image={nav.banner}
-        actions={
-          <Link
-            to="/audit?action=settings.update"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
-          >
-            <ScrollText size={15} />
-            Audit trail
-          </Link>
-        }
-      />
-
-      <form onSubmit={attemptSave} className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
-        {/* Live ops hero */}
-        <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} meterTone={meterTone} maintenanceOn={maintenanceOn} />
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <CreditsLimitsSection draft={draft} plans={data.planMonthlyCredits} fieldErrors={fieldErrors} update={update} pricesPublished={data.creditPricesPublished} />
-
-          <EngineBudgetSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <MaintenanceSection draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <InputLimitsSection draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <BlockedMessagesSection draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <StuckDetectionSection draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <StorageSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
-
-          <FreeCreditsSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-bold leading-tight tracking-tight text-primary">Settings</h1>
+          <p className="mt-0.5 text-xs text-muted">Live ops controls. Changes apply to the next request, with no redeploy.</p>
         </div>
+        <Link
+          to="/audit?action=settings.update"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-hairline bg-canvas px-3 py-2 text-xs font-medium text-secondary transition hover:text-primary"
+        >
+          <ScrollText size={14} />
+          Audit trail
+        </Link>
+      </header>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <SystemHealthSection data={data} />
-
-          <ModelsSection data={data} />
-
-          <ExemptionsSection />
-        </div>
-
-        {/* Sticky save bar when dirty */}
-        {(dirty || status) && (
-          <div className="sticky bottom-4 z-20 rounded-2xl border border-hairline bg-canvas/95 p-4 shadow-lift backdrop-blur">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                {dirty ? (
-                  <div>
-                    <p className="text-sm font-medium text-primary">
-                      {changes.length} {changes.length === 1 ? "change" : "changes"} ready to save
-                    </p>
-                    <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
-                      {changes.map((change) => (
-                        <li key={change.key}>
-                          <span className="text-faint">{change.label}:</span> {change.from} → {change.to}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  status && (
-                    <p role="status" className={`text-sm ${status.tone === "error" ? "text-red-600" : "text-emerald-700"}`}>
-                      {status.text}
-                    </p>
-                  )
-                )}
-              </div>
-              <Button
+      <div className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
+        <nav aria-label="Settings groups" className="mb-5 flex gap-1 overflow-x-auto lg:sticky lg:top-24 lg:mb-0 lg:flex-col lg:self-start lg:overflow-visible">
+          {GROUPS.map((item) => {
+            const active = item.id === group;
+            return (
+              <button
+                key={item.id}
                 type="button"
-                onClick={() => {
-                  setDraft(toDraft(data));
-                  setFieldErrors({});
-                  setStatus(null);
-                }}
-                disabled={!dirty || saving}
+                aria-current={active ? "page" : undefined}
+                onClick={() => showGroup(item.id)}
+                className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition lg:w-full ${active ? "bg-blueprint-soft text-blueprint" : "text-secondary hover:bg-surface"}`}
               >
-                Reset
-              </Button>
-              <Button type="submit" variant="primary" disabled={!dirty || saving}>
-                {saving ? "Saving…" : "Review & save"}
-              </Button>
+                <item.icon size={17} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium leading-tight">{item.label}</span>
+                  <span className="mt-0.5 hidden text-[11px] leading-tight text-muted lg:block">{item.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="min-w-0">
+          <form onSubmit={attemptSave} className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
+            <div {...panelProps("status")}>
+              <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} meterTone={meterTone} maintenanceOn={maintenanceOn} />
+              <div className="grid items-start gap-6 xl:grid-cols-2">
+                <SystemHealthSection data={data} />
+                <RecentChangesSection data={data} />
+              </div>
             </div>
+
+            <div {...panelProps("engine")}>
+              <div className="grid items-start gap-6 xl:grid-cols-2">
+                <EngineBudgetSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
+                <div className="space-y-6">
+                  <StuckDetectionSection draft={draft} fieldErrors={fieldErrors} update={update} />
+                  <StorageSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
+                </div>
+              </div>
+              <ModelsSection data={data} />
+            </div>
+
+            <div {...panelProps("customers")}>
+              <div className="grid items-start gap-6 xl:grid-cols-2">
+                <CreditsLimitsSection draft={draft} plans={data.planMonthlyCredits} fieldErrors={fieldErrors} update={update} pricesPublished={data.creditPricesPublished} />
+                <div className="space-y-6">
+                  <FreeCreditsSection data={data} draft={draft} fieldErrors={fieldErrors} update={update} />
+                  <InputLimitsSection draft={draft} fieldErrors={fieldErrors} update={update} />
+                </div>
+              </div>
+              <BlockedMessagesSection draft={draft} fieldErrors={fieldErrors} update={update} />
+            </div>
+
+            <div {...panelProps("safety")}>
+              <MaintenanceSection draft={draft} fieldErrors={fieldErrors} update={update} />
+              <ExemptionsSection />
+            </div>
+
+            {/* One save bar for every group, so a change made in one group is never lost in another. */}
+            {(dirty || status) && (
+              <div className="sticky bottom-4 z-20 rounded-2xl border border-hairline bg-canvas/95 p-4 shadow-lift backdrop-blur">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    {dirty ? (
+                      <div>
+                        <p className="text-sm font-medium text-primary">
+                          {changes.length} {changes.length === 1 ? "change" : "changes"} ready to save
+                        </p>
+                        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+                          {changes.map((change) => (
+                            <li key={change.key}>
+                              <span className="text-faint">{change.label}:</span> {change.from} → {change.to}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      status && (
+                        <p role="status" className={`text-sm ${status.tone === "error" ? "text-red-600" : "text-emerald-700"}`}>
+                          {status.text}
+                        </p>
+                      )
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setDraft(toDraft(data));
+                      setFieldErrors({});
+                      setStatus(null);
+                    }}
+                    disabled={!dirty || saving}
+                  >
+                    Reset
+                  </Button>
+                  <Button type="submit" variant="primary" disabled={!dirty || saving}>
+                    {saving ? "Saving…" : "Review & save"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </form>
+
+          {/* Approval rules save on their own, so they live outside the settings form. */}
+          <div hidden={group !== "safety"} className="mt-6">
+            <GovernanceSection />
           </div>
-        )}
-
-        {/* Recent settings changes */}
-        <RecentChangesSection data={data} />
-      </form>
-
-      <div className="mt-6">
-        <GovernanceSection />
+        </div>
       </div>
 
       {confirmOpen && (
