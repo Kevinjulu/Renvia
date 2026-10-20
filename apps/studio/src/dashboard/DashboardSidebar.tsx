@@ -4,7 +4,7 @@ import { Logo } from "../components/brand/Logo";
 import { Avatar } from "../components/account/Avatar";
 import { planLabel, useAccountStore } from "../lib/useAccountStore";
 import { CreditIcon, SettingsIcon } from "./icons";
-import { useBetaStore } from "../beta/useBetaStore";
+import { daysLeft, useBetaStore } from "../beta/useBetaStore";
 
 export type DashboardView = "home" | "all" | "favorites";
 interface DashboardSidebarProps { view: DashboardView; onChangeView: (view: DashboardView) => void; activeSection?: string; }
@@ -28,13 +28,22 @@ export function DashboardSidebar({ view, onChangeView, activeSection }: Dashboar
   const navigate = useNavigate();
   const { user } = useUser();
   const me = useAccountStore((state) => state.me);
+  // Testers whose program is running now get a BETA tag by the logo; nobody else does.
+  const betaTag = me?.beta?.running ? `${me.beta.programName} · ${daysLeft(me.beta.endsAt)} days left` : null;
   // Shown to testers, and to anyone with an invitation waiting.
   const showBeta = useBetaStore((state) => state.tester !== null || state.invitations.length > 0);
   const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your account";
   return (
     <aside className="dashboard-sidebar">
-      <Logo className="dashboard-logo dashboard-logo-full" wordmarkClassName="text-[20px] text-white" />
-      <Logo variant="symbol" className="dashboard-logo dashboard-logo-compact" wordmarkClassName="text-[20px] text-white" />
+      <div className="dashboard-brand">
+        <Logo className="dashboard-logo dashboard-logo-full" wordmarkClassName="text-[17px] text-white" />
+        <Logo variant="symbol" className="dashboard-logo dashboard-logo-compact" wordmarkClassName="text-[20px] text-white" />
+        {betaTag && (
+          <button type="button" className="dashboard-beta-tag" onClick={() => navigate("/beta")} title={betaTag} aria-label={`${betaTag}. Open Beta Program`}>
+            Beta
+          </button>
+        )}
+      </div>
       <nav className="dashboard-nav">
         <NavItem name="home" label="Home" active={!activeSection && view === "home"} onClick={() => { onChangeView("home"); navigate("/dashboard"); }}/><NavItem name="projects" label="Projects" active={!activeSection && view === "all"} onClick={() => { onChangeView("all"); navigate("/dashboard?view=all"); }}/><NavItem name="favorites" label="Favorites" active={!activeSection && view === "favorites"} onClick={() => { onChangeView("favorites"); navigate("/dashboard?view=favorites"); }}/><NavItem name="explore" label="Explore" active={activeSection === "explore"} onClick={() => navigate("/explore")}/><NavItem name="templates" label="Templates" active={activeSection === "templates"} onClick={() => navigate("/templates")}/><NavItem name="assets" label="Assets" active={activeSection === "assets"} onClick={() => navigate("/assets")}/><NavItem name="tools" label="AI Tools" active={activeSection === "ai-tools"} onClick={() => navigate("/ai-tools")}/>{showBeta && <NavItem name="beta" label="Beta Program" active={activeSection === "beta"} onClick={() => navigate("/beta")}/>}
       </nav>
