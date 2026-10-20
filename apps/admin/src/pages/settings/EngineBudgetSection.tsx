@@ -3,20 +3,11 @@ import type { AdminSettings } from "@renvia/types";
 import { formatUsd } from "../../lib/format";
 import type { Draft, FieldErrors } from "./types";
 import { MODES } from "./constants";
-import { Field, inputClass } from "./components";
+import { Field, inputClass, SettingsCard } from "./components";
 
 export function EngineBudgetSection({ data, draft, fieldErrors, update }: { data: AdminSettings; draft: Draft; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
-          <Cpu size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Engine & budget</h2>
-          <p className="text-xs text-muted">Mode, spend cap, and alert thresholds</p>
-        </div>
-      </div>
+    <SettingsCard icon={Cpu} title="Engine & budget" hint="Mode, spend cap, and alert thresholds" accent="blue" tone="caution" badge="Spends money" warning="Production mode charges fal for every successful render. The budget cap is what stops spend.">
       <div className="space-y-5">
         <fieldset>
           <legend className="text-sm font-medium text-primary">Render mode</legend>
@@ -118,6 +109,6 @@ export function EngineBudgetSection({ data, draft, fieldErrors, update }: { data
           </Field>
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

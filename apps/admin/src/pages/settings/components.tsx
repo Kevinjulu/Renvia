@@ -1,7 +1,64 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, type LucideIcon } from "lucide-react";
 import { Button } from "../../components/ui";
 import { type ChangeItem, asRecord, stringify } from "./diff";
+
+type CardTone = "default" | "caution" | "danger";
+type CardAccent = "blue" | "amber" | "emerald" | "rose" | "neutral";
+
+const ACCENT_CHIP: Record<CardAccent, string> = {
+  blue: "bg-blueprint-soft text-blueprint",
+  amber: "bg-glow-soft text-[#8a5a17]",
+  emerald: "bg-emerald-50 text-emerald-700",
+  rose: "bg-rose-50 text-rose-600",
+  neutral: "bg-surface-muted text-muted",
+};
+
+const TONE_STYLES: Record<CardTone, { frame: string; badge: string }> = {
+  default: { frame: "border-hairline", badge: "" },
+  caution: { frame: "border-amber-300", badge: "bg-amber-50 text-amber-800 ring-amber-600/20" },
+  danger: { frame: "border-rose-300", badge: "bg-rose-50 text-rose-700 ring-rose-600/20" },
+};
+
+/**
+ * The one frame every settings section uses: icon, title, hint, and an optional badge and warning
+ * line. "caution" and "danger" mark controls that spend money or pause the product, so they can't
+ * be mistaken for an ordinary input limit.
+ */
+export function SettingsCard({ icon: Icon, title, hint, accent = "neutral", tone = "default", badge, warning, bodyClassName = "p-5", children }: {
+  icon: LucideIcon;
+  title: ReactNode;
+  hint?: ReactNode;
+  accent?: CardAccent;
+  tone?: CardTone;
+  badge?: string;
+  warning?: ReactNode;
+  bodyClassName?: string;
+  children: ReactNode;
+}) {
+  const styles = TONE_STYLES[tone];
+  return (
+    <section className={`overflow-hidden rounded-2xl border bg-canvas shadow-card ${styles.frame}`}>
+      <div className="flex items-start gap-3 border-b border-hairline px-5 py-4">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${ACCENT_CHIP[tone === "danger" ? "rose" : tone === "caution" ? "amber" : accent]}`}>
+          <Icon size={17} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-primary">{title}</h2>
+          {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
+        </div>
+        {badge && <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${styles.badge}`}>{badge}</span>}
+      </div>
+      {warning && (
+        <p className={`flex items-start gap-2 border-b px-5 py-2.5 text-xs font-medium ${tone === "danger" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+          <AlertTriangle size={14} className="mt-px shrink-0" aria-hidden="true" />
+          <span>{warning}</span>
+        </p>
+      )}
+      <div className={bodyClassName}>{children}</div>
+    </section>
+  );
+}
 
 export function ToggleRow({
   label,

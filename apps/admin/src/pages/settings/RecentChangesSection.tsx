@@ -3,20 +3,16 @@ import { ScrollText, Settings } from "lucide-react";
 import type { AdminSettings } from "@renvia/types";
 import { EmptyState } from "../../components/ui";
 import { formatDateTime, formatRelative } from "../../lib/format";
-import { ChangeSnippet } from "./components";
+import { ChangeSnippet, SettingsCard } from "./components";
 
 export function RecentChangesSection({ data }: { data: AdminSettings }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas shadow-card">
-      <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
-        <div className="flex items-center gap-2">
-          <Settings size={16} className="text-muted" />
-          <h2 className="text-sm font-semibold text-primary">Recent settings changes</h2>
-        </div>
-        <Link to="/audit?action=settings.update" className="text-xs font-medium text-muted hover:text-blueprint">
-          View all
-        </Link>
-      </div>
+    <SettingsCard
+      icon={Settings}
+      title="Recent settings changes"
+      hint={<Link to="/audit?action=settings.update" className="font-medium text-blueprint hover:underline">View all in the audit trail</Link>}
+      bodyClassName="p-0"
+    >
       {data.recentChanges.length === 0 ? (
         <div className="p-5">
           <EmptyState icon={ScrollText}>No settings changes recorded yet.</EmptyState>
@@ -37,6 +33,6 @@ export function RecentChangesSection({ data }: { data: AdminSettings }) {
           ))}
         </ul>
       )}
-    </section>
+    </SettingsCard>
   );
 }

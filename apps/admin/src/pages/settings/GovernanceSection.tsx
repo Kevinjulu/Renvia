@@ -6,7 +6,7 @@ import { Button, ErrorNote } from "../../components/ui";
 import { useAdminApi } from "../../lib/api";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
-import { Field, ToggleRow, inputClass } from "./components";
+import { Field, ToggleRow, inputClass, SettingsCard } from "./components";
 
 type Thresholds = AdminGovernanceResponse["settings"];
 
@@ -88,21 +88,13 @@ export function GovernanceSection() {
   };
 
   return (
-    <form onSubmit={(event) => void save(event)} className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
-          <ClipboardCheck size={17} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-primary">Approval rules</h2>
-          <p className="text-xs text-muted">Which high-risk actions wait for a second admin. 0 or off turns a rule off.</p>
-        </div>
-        {data.pending.length > 0 && (
-          <Link to="/approvals" className="text-xs font-medium text-blueprint hover:underline">
-            {data.pending.length} waiting for approval
-          </Link>
-        )}
-      </div>
+    <form onSubmit={(event) => void save(event)}>
+      <SettingsCard
+        icon={ClipboardCheck}
+        title="Approval rules"
+        accent="blue"
+        hint={<>Which high-risk actions wait for a second admin. 0 or off turns a rule off.{data.pending.length > 0 && (<> <Link to="/approvals" className="font-medium text-blueprint hover:underline">{data.pending.length} waiting for approval</Link></>)}</>}
+      >
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Bulk credit grants (credits)" hint="Credits per user × users. At or above this, the grant waits for approval." error={bulkError}>
@@ -128,6 +120,7 @@ export function GovernanceSection() {
         <Button type="submit" variant="primary" disabled={!canSave}>{saving ? "Saving…" : "Save rules"}</Button>
       </div>
       {status && <p role="status" className={`mt-3 text-sm ${status.tone === "error" ? "text-red-600" : "text-emerald-700"}`}>{status.text}</p>}
+    </SettingsCard>
     </form>
   );
 }

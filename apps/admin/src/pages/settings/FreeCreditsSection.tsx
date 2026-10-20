@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 import type { AdminSettings, FreeAllowanceMode } from "@renvia/types";
 import { formatUsd } from "../../lib/format";
 import type { Draft, FieldErrors } from "./types";
-import { Field, inputClass } from "./components";
+import { Field, inputClass, SettingsCard } from "./components";
 
 const MODES: { value: FreeAllowanceMode; label: string; hint: string }[] = [
   { value: "off", label: "Off", hint: "Every Free account gets its monthly credits, as before. The checks don't run." },
@@ -21,16 +21,7 @@ export function FreeCreditsSection({ data, draft, fieldErrors, update }: { data:
   const tone = ratio * 100 >= data.promoCriticalPercent ? "bg-rose-500" : ratio * 100 >= data.promoWarningPercent ? "bg-[#c45c26]" : "bg-emerald-500";
 
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
-          <ShieldCheck size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Free credits</h2>
-          <p className="text-xs text-muted">Eligibility checks and the promotional budget</p>
-        </div>
-      </div>
+    <SettingsCard icon={ShieldCheck} title="Free credits" hint="Eligibility checks and the promotional budget" accent="blue">
 
       <fieldset>
         <legend className="text-sm font-medium text-primary">Eligibility checks</legend>
@@ -103,6 +94,6 @@ export function FreeCreditsSection({ data, draft, fieldErrors, update }: { data:
           <input type="number" min={2} max={100} value={draft.promoCriticalPercent} onChange={(event) => update({ promoCriticalPercent: event.target.value })} className={inputClass(fieldErrors.promoCriticalPercent)} />
         </Field>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

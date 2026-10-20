@@ -1,19 +1,10 @@
 import { SlidersHorizontal } from "lucide-react";
 import type { Draft, FieldErrors } from "./types";
-import { Field, inputClass } from "./components";
+import { Field, inputClass, SettingsCard } from "./components";
 
 export function InputLimitsSection({ draft, fieldErrors, update }: { draft: Draft; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
-          <SlidersHorizontal size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Input limits</h2>
-          <p className="text-xs text-muted">What a single request may carry</p>
-        </div>
-      </div>
+    <SettingsCard icon={SlidersHorizontal} title="Input limits" hint="What a single request may carry" accent="blue">
       <div className="space-y-5">
         <div className="grid gap-5 sm:grid-cols-2">
           <Field
@@ -91,6 +82,6 @@ export function InputLimitsSection({ draft, fieldErrors, update }: { draft: Draf
           />
         </Field>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

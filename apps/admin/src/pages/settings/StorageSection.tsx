@@ -2,7 +2,7 @@ import { HardDrive } from "lucide-react";
 import type { AdminSettings } from "@renvia/types";
 import { formatNumber } from "../../lib/format";
 import type { Draft, FieldErrors } from "./types";
-import { Field, inputClass } from "./components";
+import { Field, inputClass, SettingsCard } from "./components";
 
 /** Bytes as Cloudflare counts them: 1 GB = 10^9 bytes. */
 function formatBytes(bytes: number): string {
@@ -23,16 +23,7 @@ export function StorageSection({ data, draft, fieldErrors, update }: { data: Adm
   const tone = ratio >= 0.9 ? "bg-rose-500" : ratio >= 0.7 ? "bg-[#c45c26]" : "bg-emerald-500";
 
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blueprint-soft text-blueprint">
-          <HardDrive size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Image storage</h2>
-          <p className="text-xs text-muted">Cloudflare R2 — free up to 10 GB</p>
-        </div>
-      </div>
+    <SettingsCard icon={HardDrive} title="Image storage" hint="Cloudflare R2 — free up to 10 GB" accent="blue">
 
       <div className="mb-1 flex items-baseline justify-between text-sm">
         <span className="font-semibold tabular-nums text-primary">{formatBytes(usedBytes)}</span>
@@ -69,6 +60,6 @@ export function StorageSection({ data, draft, fieldErrors, update }: { data: Adm
           <input type="number" min={10} max={10000} value={draft.storagePerUserMb} onChange={(event) => update({ storagePerUserMb: event.target.value })} className={inputClass(fieldErrors.storagePerUserMb)} />
         </Field>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

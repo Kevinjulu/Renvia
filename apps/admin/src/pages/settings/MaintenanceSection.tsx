@@ -1,20 +1,11 @@
 import { Link } from "react-router-dom";
 import { PauseCircle } from "lucide-react";
 import type { Draft, FieldErrors } from "./types";
-import { ToggleRow, Field, inputClass } from "./components";
+import { ToggleRow, Field, inputClass, SettingsCard } from "./components";
 
 export function MaintenanceSection({ draft, fieldErrors, update }: { draft: Draft; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-rose-50 text-rose-600">
-          <PauseCircle size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Maintenance</h2>
-          <p className="text-xs text-muted">Instant pause for non-admins, no redeploy. To schedule a window ahead of time, use <Link to="/studio-control" className="text-blueprint underline">Studio Control</Link>; either one pauses work.</p>
-        </div>
-      </div>
+    <SettingsCard icon={PauseCircle} title="Maintenance" hint={<>Instant pause for non-admins, no redeploy. To schedule a window ahead of time, use <Link to="/studio-control" className="text-blueprint underline">Studio Control</Link>; either one pauses work.</>} accent="rose" tone="danger" badge="Live switch" warning="Takes effect immediately and blocks new renders and selections for every non-admin.">
       <div className="space-y-4">
         <ToggleRow
           label="Pause renders"
@@ -43,6 +34,6 @@ export function MaintenanceSection({ draft, fieldErrors, update }: { draft: Draf
           />
         </Field>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

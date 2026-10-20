@@ -2,20 +2,11 @@ import { Link } from "react-router-dom";
 import { Coins } from "lucide-react";
 import type { AdminPlanCredits } from "@renvia/types";
 import type { Draft, FieldErrors } from "./types";
-import { Field, inputClass } from "./components";
+import { Field, inputClass, SettingsCard } from "./components";
 
 export function CreditsLimitsSection({ draft, plans, fieldErrors, update, pricesPublished }: { draft: Draft; plans: AdminPlanCredits[]; fieldErrors: FieldErrors; update: (patch: Partial<Draft>) => void; pricesPublished: boolean }) {
   return (
-    <section className="rounded-2xl border border-hairline bg-canvas p-5 shadow-card">
-      <div className="mb-5 flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-glow-soft text-[#8a5a17]">
-          <Coins size={17} />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold text-primary">Credits & limits</h2>
-          <p className="text-xs text-muted">Monthly plan credits, per-job costs, and daily caps</p>
-        </div>
-      </div>
+    <SettingsCard icon={Coins} title="Credits & limits" hint="Monthly plan credits, per-job costs, and daily caps" accent="amber">
       <div className="space-y-5">
         <Field
           label="Monthly plan credits"
@@ -174,6 +165,6 @@ export function CreditsLimitsSection({ draft, plans, fieldErrors, update, prices
           .
         </p>
       </div>
-    </section>
+    </SettingsCard>
   );
 }
