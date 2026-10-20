@@ -9,7 +9,7 @@ export function KpiTile({ label, value, detail, tone = "default" }: { label: str
     <div className="min-w-0 rounded-2xl border border-hairline bg-canvas p-3 shadow-card sm:p-4">
       <p className="truncate text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
       <p className={`mt-2 truncate text-[22px] font-bold leading-none tabular-nums tracking-tight sm:text-[26px] ${VALUE_TONE[tone]}`}>{value}</p>
-      {detail && <p className="mt-1.5 truncate text-xs text-muted">{detail}</p>}
+      {detail && <p className="mt-1.5 line-clamp-2 text-xs text-muted">{detail}</p>}
     </div>
   );
 }

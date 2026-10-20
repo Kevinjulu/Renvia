@@ -3,10 +3,9 @@ import { CheckCircle2, ClipboardCheck, History, Play, XCircle } from "lucide-rea
 import type { AdminApproval, ApprovalStatus } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill } from "../components/ui";
 import { NoteDialog } from "../components/NoteDialog";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { formatRelative } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const STATUS_TONE: Record<ApprovalStatus, "amber" | "blue" | "emerald" | "red" | "neutral"> = {
@@ -37,8 +36,7 @@ type Decision = { approval: AdminApproval; kind: "approve" | "reject" };
  */
 export function ApprovalsPage() {
   const api = useAdminApi();
-  const nav = navForPath("/approvals");
-  const { data, error, reload, lastUpdated } = useLoad(() => api.listApprovals(), [api], 30_000);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.listApprovals(), [api], 30_000);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [confirmExecute, setConfirmExecute] = useState<string | null>(null);
   const [executing, setExecuting] = useState<string | null>(null);
@@ -52,7 +50,7 @@ export function ApprovalsPage() {
   };
 
   return <>
-    <PageHero title={nav.title} description={nav.description} image={nav.banner} actions={lastUpdated ? <span className="text-xs text-white/70">Updated {formatRelative(lastUpdated.toISOString())}</span> : undefined} />
+    <PageTop title="Approvals" description="High-risk actions held for a second administrator: approve, reject, then execute." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
     {(error || actionError) && <div className="mb-6"><ErrorNote onRetry={actionError ? () => setActionError(null) : reload}>{actionError ?? error}</ErrorNote></div>}
     {!data ? null : <div className="space-y-6">
       <Card title="Waiting on someone" icon={ClipboardCheck}>

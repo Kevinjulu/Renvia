@@ -1,11 +1,11 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { Activity, AlertTriangle, Clock, Coins, Gauge, Scan } from "lucide-react";
+import { AlertTriangle, Clock, Gauge, Scan } from "lucide-react";
 import type { AdminFailureCategory, AdminLatencyStats, AdminPerformanceRange, AdminPerformanceTimeseriesResponse } from "@renvia/types";
-import { Card, EmptyState, ErrorNote, Pill, Skeleton, StatCard } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { useAdminApi } from "../lib/api";
 import { formatModel, formatNumber, formatPercent, formatRelative, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const RANGES: { value: AdminPerformanceRange; label: string }[] = [
@@ -67,7 +67,6 @@ export function PerformancePage() {
   const api = useAdminApi();
   const [params, setParams] = useSearchParams();
   const range = (RANGES.some((item) => item.value === params.get("range")) ? params.get("range") : "7d") as AdminPerformanceRange;
-  const nav = navForPath("/performance");
 
   // Recent numbers move quickly; history only needs an occasional refresh.
   const summary = useLoad(() => api.getPerformanceSummary(range), [api, range], 60_000);
@@ -83,26 +82,25 @@ export function PerformancePage() {
 
   return (
     <>
-      <PageHero
-        title={nav.title}
-        description={nav.description}
-        image={nav.banner}
+      <PageTop
+        title="Performance"
+        description="How fast and how reliably jobs finish: latency by job type and model, failure groups and cost per result."
+        lastUpdated={summary.lastUpdated ?? null}
+        loading={summary.loading}
+        onRefresh={() => { summary.reload(); series.reload(); failures.reload(); }}
         actions={
-          <div className="flex flex-wrap items-center gap-3">
-            {summary.lastUpdated && <span className="text-xs text-white/70">Updated {formatRelative(summary.lastUpdated.toISOString())}</span>}
-            <div className="inline-flex rounded-xl border border-white/25 bg-white/10 p-0.5 backdrop-blur" role="group" aria-label="Time range">
-              {RANGES.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  aria-pressed={range === item.value}
-                  onClick={() => setRange(item.value)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${range === item.value ? "bg-white text-ink-950" : "text-white hover:bg-white/15"}`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+          <div className="inline-flex rounded-xl border border-hairline bg-canvas p-0.5" role="group" aria-label="Time range">
+            {RANGES.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                aria-pressed={range === item.value}
+                onClick={() => setRange(item.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${range === item.value ? "bg-ink-950 text-white" : "text-muted hover:text-primary"}`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         }
       />
@@ -111,7 +109,7 @@ export function PerformancePage() {
 
       {!data ? (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[0, 1, 2, 3].map((key) => <Skeleton key={key} className="h-32 rounded-2xl" />)}</div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((key) => <Skeleton key={key} className="h-32 rounded-2xl" />)}</div>
           <Skeleton className="h-72 rounded-2xl" />
         </div>
       ) : (
@@ -123,27 +121,21 @@ export function PerformancePage() {
             </p>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiTile
               label="Success rate"
-              value={data.totals.successRate === null ? "—" : formatPercent(data.totals.successRate)}
-              icon={Activity}
-              accent={data.totals.successRate !== null && data.totals.successRate < 0.9 ? "rose" : "emerald"}
+              value={data.totals.successRate === null ? "—" : formatPercent(data.totals.successRate)} tone={data.totals.successRate !== null && data.totals.successRate < 0.9 ? "bad" : "good"}
               detail={`${formatNumber(data.totals.succeeded)} ok · ${formatNumber(data.totals.failed)} failed · ${formatNumber(data.totals.cancelled)} cancelled`}
             />
             <TimeCard measured={data.totals.endToEnd} estimated={data.totals.estimatedEndToEnd} />
-            <StatCard
+            <KpiTile
               label="Cost per result"
-              value={data.totals.costPerSuccessUsd === null ? "—" : formatUsd(data.totals.costPerSuccessUsd)}
-              icon={Coins}
-              accent="amber"
+              value={data.totals.costPerSuccessUsd === null ? "—" : formatUsd(data.totals.costPerSuccessUsd)} tone="warn"
               detail={`${formatUsd(data.totals.generationUsd)} generation · ${formatUsd(data.totals.upscaleUsd)} upscale (estimated)`}
             />
-            <StatCard
+            <KpiTile
               label="In flight · upscale failures"
-              value={`${formatNumber(data.totals.inFlight)} · ${formatNumber(data.totals.upscaleFailed)}`}
-              icon={AlertTriangle}
-              accent={data.totals.upscaleFailed > 0 ? "rose" : "neutral"}
+              value={`${formatNumber(data.totals.inFlight)} · ${formatNumber(data.totals.upscaleFailed)}`} tone={data.totals.upscaleFailed > 0 ? "bad" : "default"}
               detail="Upscale failures kept their standard result and were refunded"
             />
           </div>
@@ -261,11 +253,9 @@ function TimeCard({ measured, estimated }: { measured: AdminLatencyStats; estima
   const best = bestLatency(measured, estimated);
   const prefix = best.estimated ? "~" : "";
   return (
-    <StatCard
+    <KpiTile
       label="Time to result · p50"
-      value={best.stats.samples ? `${prefix}${formatDuration(best.stats.p50Ms)}` : "—"}
-      icon={Clock}
-      accent="blue"
+      value={best.stats.samples ? `${prefix}${formatDuration(best.stats.p50Ms)}` : "—"} tone="default"
       detail={
         best.stats.samples
           ? `p95 ${prefix}${formatDuration(best.stats.p95Ms)} · ${formatNumber(best.stats.samples)} ${best.estimated ? "estimated" : "measured"}${best.stats.weak ? " · few samples" : ""}`
