@@ -119,9 +119,7 @@ export function SettingsPage() {
   const spent = data.spentUsd;
   const remaining = Math.max(0, budget - spent);
   const ratio = budget > 0 ? Math.min(1, spent / budget) : spent > 0 ? 1 : 0;
-  const warningRatio = data.budgetWarningPercent / 100;
   const criticalRatio = data.budgetCriticalPercent / 100;
-  const meterTone = ratio >= criticalRatio ? "bg-rose-500" : ratio >= warningRatio ? "bg-[#c45c26]" : "bg-emerald-500";
   const maintenanceOn = data.maintenanceRenders || data.maintenanceSegments;
 
   // Groups stay mounted (hidden, not unmounted) so nothing typed is lost when switching.
@@ -168,7 +166,7 @@ export function SettingsPage() {
         <div className="min-w-0">
           <form onSubmit={attemptSave} className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
             <div {...panelProps("status")}>
-              <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} meterTone={meterTone} maintenanceOn={maintenanceOn} />
+              <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} maintenanceOn={maintenanceOn} />
               <div className="grid items-start gap-6 xl:grid-cols-2">
                 <SystemHealthSection data={data} />
                 <RecentChangesSection data={data} />

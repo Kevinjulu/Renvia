@@ -3,26 +3,6 @@ import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "../../components/ui";
 import { type ChangeItem, asRecord, stringify } from "./diff";
 
-export function HeroMeta({
-  label,
-  value,
-  detail,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  className?: string;
-}) {
-  return (
-    <div className={`bg-canvas p-5 ${className}`}>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
-      <p className="mt-2 text-base font-semibold text-primary">{value}</p>
-      <p className="mt-1 text-xs text-muted">{detail}</p>
-    </div>
-  );
-}
-
 export function ToggleRow({
   label,
   hint,
