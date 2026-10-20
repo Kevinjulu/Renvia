@@ -162,7 +162,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <div key={location.pathname} className="mx-auto max-w-6xl animate-rise-in">{children}</div>
+          <div key={location.pathname} className="mx-auto max-w-[1600px] animate-rise-in">{children}</div>
         </main>
       </div>
       {palette && <CommandPalette me={me} onClose={() => setPalette(false)} />}
