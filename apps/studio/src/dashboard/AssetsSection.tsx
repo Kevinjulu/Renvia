@@ -8,13 +8,11 @@ type Filter = "all" | ReferenceImageSource;
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "upload", label: "Uploads" },
-  { id: "unsplash", label: "Unsplash" },
   { id: "url", label: "Links" },
 ];
 
 const SOURCE_LABEL: Record<ReferenceImageSource, string> = {
   upload: "Uploaded",
-  unsplash: "Unsplash",
   url: "From a link",
 };
 
@@ -72,7 +70,6 @@ export function AssetsSection({ autoOpenUpload, query = "", onNotice }: AssetsSe
   const counts = {
     all: assets.length,
     upload: assets.filter((asset) => asset.source === "upload").length,
-    unsplash: assets.filter((asset) => asset.source === "unsplash").length,
     url: assets.filter((asset) => asset.source === "url").length,
   };
   const needle = query.trim().toLowerCase();

@@ -317,7 +317,6 @@ button { color: inherit; }
 .asset-tile figcaption{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px}
 .asset-tile figcaption small{color:#8b8883;font-size:10.5px}
 .asset-badge{border-radius:999px;padding:2px 8px;background:#f0eee9;color:#61584d;font-size:10px;font-weight:600}
-.asset-badge.is-unsplash{background:#f4f2ee;color:#3a3733}
 .asset-badge.is-url{background:#fdf3e7;color:#a86a1f}
 .asset-tile-delete{position:absolute;top:7px;right:7px;display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:50%;background:rgba(20,20,20,.55);color:#fff;cursor:pointer;opacity:0;transition:opacity .15s ease}
 .asset-tile:hover .asset-tile-delete{opacity:1}

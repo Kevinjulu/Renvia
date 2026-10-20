@@ -775,7 +775,7 @@ export interface ListProjectsResponse {
   projects: Project[];
 }
 
-export type ReferenceImageSource = "upload" | "unsplash" | "url";
+export type ReferenceImageSource = "upload" | "url";
 
 export interface ReferenceImage {
   id: string;

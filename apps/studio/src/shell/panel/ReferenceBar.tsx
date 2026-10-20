@@ -2,10 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { thumbnailUrl, REFERENCE_CATEGORIES, type ReferenceCategory, type ReferenceImage, type StockReference } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
-import { isUnsplashConfigured, searchUnsplash, type UnsplashPhoto } from "../../lib/unsplash";
 import { viewImage } from "../../canvas/utils/viewImage";
 
-type Panel = "library" | "unsplash" | "more" | null;
+type Panel = "library" | "more" | null;
 /** The library modal shows the user's own images or one category of the team's samples. */
 type LibraryTab = "yours" | ReferenceCategory;
 
@@ -83,12 +82,6 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
 
   const [isUploading, setIsUploading] = useState(false);
 
-  const [unsplashQuery, setUnsplashQuery] = useState("");
-  const [unsplashResults, setUnsplashResults] = useState<UnsplashPhoto[]>([]);
-  const [unsplashLoading, setUnsplashLoading] = useState(false);
-  const [unsplashError, setUnsplashError] = useState<string | null>(null);
-  const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
-
   const [pasteUrl, setPasteUrl] = useState("");
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [isPasting, setIsPasting] = useState(false);
@@ -161,35 +154,6 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
       reportLimit(error);
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  const runUnsplashSearch = async () => {
-    if (!unsplashQuery.trim()) return;
-    setUnsplashLoading(true);
-    setUnsplashError(null);
-    try {
-      const results = await searchUnsplash(unsplashQuery.trim());
-      setUnsplashResults(results);
-    } catch {
-      setUnsplashError("Couldn't reach Unsplash. Check your connection and try again.");
-    } finally {
-      setUnsplashLoading(false);
-    }
-  };
-
-  const handlePickUnsplashPhoto = async (photo: UnsplashPhoto) => {
-    setSavingPhotoId(photo.id);
-    try {
-      const reference = await apiClient.createReference({ url: photo.fullUrl, source: "unsplash" });
-      setLibrary((current) => [reference, ...current]);
-      setLibraryLoaded(true);
-      attach(reference);
-      setOpenPanel(null);
-    } catch {
-      // Keep open for retry.
-    } finally {
-      setSavingPhotoId(null);
     }
   };
 
@@ -306,24 +270,6 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
 
           <button
             type="button"
-            className={`reference-action ${openPanel === "unsplash" ? "is-active" : ""}`}
-            onClick={() => openPanelSafe("unsplash")}
-            aria-pressed={openPanel === "unsplash"}
-            disabled={atCap}
-            title={atCap ? capHint : undefined}
-          >
-            <span className="reference-action-icon" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                <rect x="2" y="3" width="12" height="10" rx="1.3" stroke="currentColor" strokeWidth="1.2" />
-                <path d="M2.5 12 6 7.5l2 2.2L11 6l2.5 4.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="6" cy="5.8" r="0.9" stroke="currentColor" strokeWidth="1" />
-              </svg>
-            </span>
-            <span className="reference-action-label">Unsplash</span>
-          </button>
-
-          <button
-            type="button"
             className={`reference-action ${openPanel === "more" ? "is-active" : ""}`}
             onClick={() => openPanelSafe("more")}
             aria-pressed={openPanel === "more"}
@@ -405,7 +351,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
               </div>
               <p className="reference-modal-blank-title">Your library is empty</p>
               <p className="reference-modal-blank-copy">
-                Upload an image or pick one from Unsplash — everything you save shows up here so you don&apos;t have to
+                Upload an image or add one from a link — everything you save shows up here so you don&apos;t have to
                 upload it again.
                 {stockCategories.length > 0 && " Or start with one of our samples in the sections above."}
               </p>
@@ -425,78 +371,6 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
                   <img src={thumbnailUrl(reference.url)} alt="" loading="lazy" />
                 </button>
               ))}
-            </div>
-          )}
-        </ReferenceModal>
-      )}
-
-      {openPanel === "unsplash" && (
-        <ReferenceModal title="Search Unsplash" titleId="reference-unsplash-title" onClose={() => setOpenPanel(null)} wide>
-          {isUnsplashConfigured() ? (
-            <>
-              <div className="reference-search-row">
-                <input
-                  value={unsplashQuery}
-                  onChange={(event) => setUnsplashQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void runUnsplashSearch();
-                  }}
-                  placeholder="Search materials, lighting, landscapes…"
-                  autoFocus
-                  className="reference-search-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => void runUnsplashSearch()}
-                  disabled={unsplashLoading || !unsplashQuery.trim()}
-                  className="reference-search-submit"
-                >
-                  {unsplashLoading ? "Searching…" : "Search"}
-                </button>
-              </div>
-
-              {unsplashError && <p className="reference-modal-error">{unsplashError}</p>}
-
-              {!unsplashLoading && !unsplashError && unsplashResults.length === 0 && (
-                <div className="reference-modal-blank">
-                  <p className="reference-modal-blank-title">Find reference photos</p>
-                  <p className="reference-modal-blank-copy">
-                    Search Unsplash for finishes, context, or atmosphere. Click a photo to attach it to this render.
-                  </p>
-                </div>
-              )}
-
-              {unsplashResults.length > 0 && (
-                <div className="reference-image-grid is-dense">
-                  {unsplashResults.map((photo) => (
-                    <button
-                      key={photo.id}
-                      type="button"
-                      onClick={() => void handlePickUnsplashPhoto(photo)}
-                      disabled={savingPhotoId === photo.id}
-                      className="reference-image-tile"
-                      title={photo.alt || "Use this photo"}
-                    >
-                      <img src={photo.thumbUrl} alt={photo.alt} />
-                      {savingPhotoId === photo.id && (
-                        <span className="reference-image-busy">
-                          <Spinner size={18} />
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <p className="reference-modal-footnote">Photos via Unsplash. Requires an internet connection.</p>
-            </>
-          ) : (
-            <div className="reference-modal-blank">
-              <p className="reference-modal-blank-title">Unsplash isn&apos;t configured</p>
-              <p className="reference-modal-blank-copy">
-                Add an Unsplash access key to enable in-app photo search. You can still upload files or browse other
-                sites.
-              </p>
             </div>
           )}
         </ReferenceModal>

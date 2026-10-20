@@ -116,7 +116,7 @@ for local work). Server-only: never give these a `VITE_` or `NEXT_PUBLIC_` prefi
 Settings page without a redeploy (blank means "use the env var").
 
 **Studio** (`apps/studio/.env.local`, public): `VITE_CLERK_PUBLISHABLE_KEY`,
-`VITE_API_BASE_URL`, `VITE_MARKETING_URL`, `VITE_UNSPLASH_ACCESS_KEY`.
+`VITE_API_BASE_URL`, `VITE_MARKETING_URL`.
 
 **Admin** (`apps/admin/.env.local`, public): `VITE_CLERK_PUBLISHABLE_KEY`,
 `VITE_API_BASE_URL`.

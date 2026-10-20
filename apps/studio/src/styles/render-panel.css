@@ -633,13 +633,8 @@
   margin-top: 16px;
 }
 
-.reference-image-grid.is-dense {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
 @media (max-width: 720px) {
-  .reference-image-grid,
-  .reference-image-grid.is-dense {
+  .reference-image-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -727,15 +722,6 @@
   margin-bottom: 0;
 }
 
-.reference-image-busy {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.72);
-  color: #4b5563;
-}
-
 .reference-modal-blank {
   display: flex;
   flex-direction: column;
@@ -781,12 +767,6 @@
   margin: 12px 0 0;
   color: #b42318;
   font-size: 13px;
-}
-
-.reference-modal-footnote {
-  margin: 14px 0 0;
-  color: #9ca3af;
-  font-size: 12px;
 }
 
 .reference-source-list {

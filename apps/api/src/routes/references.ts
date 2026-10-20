@@ -19,7 +19,7 @@ references.use("*", requireAuth);
 
 const createReferenceSchema = z.object({
   url: z.string().url(),
-  source: z.enum(["upload", "unsplash", "url"]).default("upload"),
+  source: z.enum(["upload", "url"]).default("upload"),
 });
 
 references.get("/", async (c) => {

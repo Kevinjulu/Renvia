@@ -216,7 +216,7 @@ export const referenceImages = pgTable("reference_images", {
     .notNull()
     .references(() => users.id),
   url: text("url").notNull(),
-  source: text("source", { enum: ["upload", "unsplash", "url"] })
+  source: text("source", { enum: ["upload", "url"] })
     .notNull()
     .default("upload"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
