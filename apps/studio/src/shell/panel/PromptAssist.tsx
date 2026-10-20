@@ -5,6 +5,8 @@ import { ApiError, useApiClient } from "../../lib/apiClient";
 interface PromptAssistProps {
   prompt: string;
   kind: PromptPolishKind;
+  /** The prompt textarea's id: typing in it makes the Polish button pulse. */
+  inputId: string;
   /** A render with references: the suggestion leaves out requests that would redesign the source. */
   sourceLocked?: boolean;
   onUse: (prompt: string) => void;
@@ -17,17 +19,46 @@ const TIPS: Record<PromptPolishKind, string> = {
 
 const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
+/** How long after the last keystroke the Polish button keeps pulsing. */
+const TYPING_PAUSE_MS = 1500;
+
+/**
+ * True while the person is typing in the textarea with this id, and for a moment after. Only real
+ * typing counts: a prompt filled in by "Use it" or a quick-pick chip doesn't fire input events.
+ */
+function useTyping(inputId: string): boolean {
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    let timer: number | undefined;
+    const onInput = (event: Event) => {
+      if (!(event.target instanceof HTMLElement) || event.target.id !== inputId) return;
+      setTyping(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setTyping(false), TYPING_PAUSE_MS);
+    };
+    document.addEventListener("input", onInput);
+    return () => {
+      document.removeEventListener("input", onInput);
+      window.clearTimeout(timer);
+    };
+  }, [inputId]);
+  return typing;
+}
+
 /**
  * The row under a prompt box: a friendly tip on writing prompts the model follows well, a nudge
  * when a prompt gets long, and "Polish", which suggests a short architectural rewrite the person
  * can use or ignore. Polishing is free (no credits), so the button says so.
  */
-export function PromptAssist({ prompt, kind, sourceLocked = false, onUse }: PromptAssistProps) {
+export function PromptAssist({ prompt, kind, inputId, sourceLocked = false, onUse }: PromptAssistProps) {
   const apiClient = useApiClient();
   const [suggestion, setSuggestion] = useState<PromptPolishResponse | null>(null);
   const [polishing, setPolishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isLong = wordCount(prompt) > PROMPT_LONG_WORDS;
+  // While someone types, the Polish button gently pulses to suggest it.
+  const typing = useTyping(inputId);
+  const beating = typing && Boolean(prompt.trim()) && !polishing && !suggestion;
 
   // Typing again clears an earlier "isn't available" or limit message.
   useEffect(() => {
@@ -58,7 +89,7 @@ export function PromptAssist({ prompt, kind, sourceLocked = false, onUse }: Prom
       <div className="cp-prompt-tools">
         <button
           type="button"
-          className="cp-prompt-polish"
+          className={`cp-prompt-polish ${beating ? "is-beating" : ""}`}
           onClick={() => void polish()}
           disabled={polishing || !prompt.trim()}
           title="Suggests a clearer, shorter prompt. Free: it doesn't use credits."

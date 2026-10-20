@@ -282,7 +282,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
               method === "reference-prompt" ? "e.g. Make the windows match the reference" : "e.g. Replace the front door with a dark oak pivot door"
             }
           />
-          <PromptAssist prompt={editPrompt} kind="edit" onUse={(value) => setEditPrompt(value.slice(0, maxChars))} />
+          <PromptAssist prompt={editPrompt} kind="edit" inputId="edit-prompt" onUse={(value) => setEditPrompt(value.slice(0, maxChars))} />
         </div>
       )}
 

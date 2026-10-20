@@ -110,7 +110,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
               <button type="button" className="cp-hint-button" onClick={onMoveToEdit}>Edit {suggestedEditPart}</button>
             </div>
           )}
-          <PromptAssist prompt={prompt} kind="render" sourceLocked={referenceCount > 0} onUse={onPromptChange} />
+          <PromptAssist prompt={prompt} kind="render" inputId="render-prompt" sourceLocked={referenceCount > 0} onUse={onPromptChange} />
         </div>
 
         {suggestReference && <NextStepCallout step="reference" />}
