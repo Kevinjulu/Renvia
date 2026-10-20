@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { AdminUser, AdminUserOrder, AdminUserSort } from "@renvia/types";
-import { ArrowDown, ArrowUp, Ban, Coins, Search, Shield, Users, X } from "lucide-react";
-import { Button, Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { ArrowDown, ArrowUp, Coins, Search, X } from "lucide-react";
+import { Button, Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { RoleChangeModal } from "../components/RoleChangeModal";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, LOW_BALANCE, type RoleFilter, type StatusFilter, type BalanceFilter, SORTABLE } from "./users/helpers";
@@ -15,6 +15,9 @@ import { FilterGroup } from "./users/parts";
 import { FilterChip } from "../components/FilterControls";
 import { RowActions } from "./users/RowActions";
 import { GrantCreditsModal } from "./users/GrantCreditsModal";
+
+/** Columns hidden on narrow screens; sorting still works from the URL. */
+const SECONDARY = new Set<AdminUserSort>(["lastActiveAt", "createdAt", "spentUsd"]);
 
 export function UsersPage() {
   const api = useAdminApi();
@@ -117,11 +120,9 @@ export function UsersPage() {
     }
   };
 
-  const nav = navForPath("/users");
-
   return (
     <>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} actions={lastUpdated ? <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span> : undefined} />
+      <PageTop title="Users" description="Accounts, credits, roles and access." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
 
       {actionError && (
         <div className="mb-4">
@@ -129,31 +130,23 @@ export function UsersPage() {
         </div>
       )}
 
-      {!data && !error ? (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-28 rounded-2xl" />
-          ))}
-        </div>
-      ) : data ? (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Total" value={formatNumber(data.summary.total)} icon={Users} accent="blue" />
-          <StatCard label="Admins" value={formatNumber(data.summary.admins)} icon={Shield} accent="neutral" />
-          <StatCard label="Disabled" value={formatNumber(data.summary.disabled)} icon={Ban} accent={data.summary.disabled > 0 ? "rose" : "neutral"} />
-          <StatCard
-            label="Low balance"
-            value={formatNumber(data.summary.lowBalance)}
-            icon={Coins}
-            accent={data.summary.lowBalance > 0 ? "amber" : "neutral"}
-            detail={`Under ${LOW_BALANCE} credits`}
-          />
-        </div>
-      ) : null}
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {data ? (
+          <>
+            <KpiTile label="Total" value={formatNumber(data.summary.total)} />
+            <KpiTile label="Admins" value={formatNumber(data.summary.admins)} />
+            <KpiTile label="Disabled" value={formatNumber(data.summary.disabled)} tone={data.summary.disabled > 0 ? "bad" : "default"} />
+            <KpiTile label="Low balance" value={formatNumber(data.summary.lowBalance)} tone={data.summary.lowBalance > 0 ? "warn" : "default"} detail={`Under ${LOW_BALANCE} credits`} />
+          </>
+        ) : (
+          Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 rounded-2xl" />)
+        )}
+      </div>
 
       <Card
         title={data ? `${formatNumber(data.total)} ${data.total === 1 ? "match" : "matches"}` : "Users"}
         actions={
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
             <input
               type="search"
@@ -161,7 +154,7 @@ export function UsersPage() {
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Search by email…"
               aria-label="Search users by email"
-              className="w-64 rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
+              className="w-full rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 sm:w-64 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
             />
           </div>
         }
@@ -218,7 +211,7 @@ export function UsersPage() {
           data && (
             <div className={loading ? "opacity-60 transition-opacity" : ""}>
               <div className="-mx-5 overflow-x-auto">
-                <table className="w-full min-w-[960px] text-left text-sm">
+                <table className="w-full min-w-[600px] text-left text-sm lg:min-w-[960px]">
                   <thead>
                     <tr className="border-b border-hairline text-xs font-medium uppercase tracking-wide text-faint">
                       <th className="px-5 py-3">
@@ -232,7 +225,7 @@ export function UsersPage() {
                       </th>
                       <th className="px-5 py-3 font-medium">User</th>
                       {SORTABLE.map((column) => (
-                        <th key={column.key} className="px-5 py-3 font-medium">
+                        <th key={column.key} className={`px-5 py-3 font-medium ${SECONDARY.has(column.key) ? "hidden lg:table-cell" : ""}`}>
                           <button
                             type="button"
                             onClick={() => toggleSort(column.key)}
@@ -269,13 +262,13 @@ export function UsersPage() {
                             <span className="truncate font-medium text-primary group-hover:text-blueprint">{user.email}</span>
                           </Link>
                         </td>
-                        <td className="px-5 py-3 tabular-nums text-muted">{formatRelative(user.createdAt)}</td>
+                        <td className="hidden px-5 py-3 tabular-nums text-muted lg:table-cell">{formatRelative(user.createdAt)}</td>
                         <td className="px-5 py-3 tabular-nums">
                           {user.role === "admin" ? <span className="text-faint">Unlimited</span> : formatNumber(user.creditBalance)}
                         </td>
                         <td className="px-5 py-3 tabular-nums">{formatNumber(user.renderCount)}</td>
-                        <td className="px-5 py-3 tabular-nums">{formatUsd(user.spentUsd)}</td>
-                        <td className="px-5 py-3 text-muted">{formatRelative(user.lastActiveAt)}</td>
+                        <td className="hidden px-5 py-3 tabular-nums lg:table-cell">{formatUsd(user.spentUsd)}</td>
+                        <td className="hidden px-5 py-3 text-muted lg:table-cell">{formatRelative(user.lastActiveAt)}</td>
                         <td className="px-5 py-3">
                           <div className="flex flex-wrap gap-1.5">
                             {user.role !== "user" && <Pill tone="blue">{user.role}</Pill>}
@@ -320,7 +313,7 @@ export function UsersPage() {
       </Card>
 
       {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-hairline bg-canvas px-4 py-3 shadow-lift">
+        <div className="fixed bottom-6 left-1/2 z-30 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-hairline bg-canvas px-4 py-3 shadow-lift">
           <span className="text-sm font-medium text-primary">{selected.size} selected</span>
           <Button variant="primary" icon={Coins} onClick={() => setGrantTarget(selectedUsers)} disabled={selectedUsers.length === 0}>
             Grant credits

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { thumbnailUrl, type AdminRenderOrder, type AdminRenderSort } from "@renvia/types";
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, ImageIcon, Search, Timer, Wallet } from "lucide-react";
-import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatCard, StatusBadge } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { ArrowDown, ArrowUp, ImageIcon, Search } from "lucide-react";
+import { Card, EmptyState, ErrorNote, Pagination, Pill, Skeleton, StatusBadge } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 import { PAGE_SIZE, type StatusFilter, type KindFilter, STATUSES, KINDS, SORTABLE } from "./renders/helpers";
 import { ScopeChip } from "./renders/parts";
@@ -58,7 +58,7 @@ export function RendersPage() {
     setParams(next);
   };
 
-  const { data, error, loading, reload } = useLoad(
+  const { data, error, loading, reload, lastUpdated } = useLoad(
     () =>
       api.listRenders({
         search: search || undefined,
@@ -93,13 +93,13 @@ export function RendersPage() {
 
   return (
     <>
-      <PageHero title={navForPath("/renders").title} description={navForPath("/renders").description} image={navForPath("/renders").banner} />
+      <PageTop title="Renders" description="Triage the generation pipeline: stuck jobs, failures, model cost and job detail." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
 
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
       {!data ? (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {Array.from({ length: 5 }, (_, index) => (
               <Skeleton key={index} className="h-32 rounded-2xl" />
             ))}
@@ -110,36 +110,19 @@ export function RendersPage() {
         <div className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
           {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard label="Total" value={formatNumber(data.summary.total)} icon={ImageIcon} accent="blue" />
-            <StatCard
-              label="In flight"
-              value={formatNumber(data.summary.inFlight)}
-              icon={Activity}
-              accent={data.summary.inFlight > 0 ? "blue" : "neutral"}
-              detail={`${data.summary.byStatus.pending} pending · ${data.summary.byStatus.processing} processing`}
-            />
-            <StatCard
-              label="Stuck"
-              value={formatNumber(data.summary.stuckCount)}
-              icon={Timer}
-              accent={data.summary.stuckCount > 0 ? "rose" : "neutral"}
-              detail={`Pending/processing over ${data.summary.stuckTimeoutMinutes}m`}
-            />
-            <StatCard
-              label="Failed"
-              value={formatNumber(data.summary.failed)}
-              icon={AlertTriangle}
-              accent={data.summary.failed > 0 ? "rose" : "neutral"}
-            />
-            <StatCard label="Spend" value={formatUsd(data.summary.spentUsd)} icon={Wallet} accent="amber" detail="Non-failed renders" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <KpiTile label="Total" value={formatNumber(data.summary.total)} />
+            <KpiTile label="In flight" value={formatNumber(data.summary.inFlight)} tone={data.summary.inFlight > 0 ? "good" : "default"} detail={`${data.summary.byStatus.pending} pending · ${data.summary.byStatus.processing} processing`} />
+            <KpiTile label="Stuck" value={formatNumber(data.summary.stuckCount)} tone={data.summary.stuckCount > 0 ? "bad" : "default"} detail={`Over ${data.summary.stuckTimeoutMinutes}m`} />
+            <KpiTile label="Failed" value={formatNumber(data.summary.failed)} tone={data.summary.failed > 0 ? "bad" : "default"} />
+            <KpiTile label="Spend" value={formatUsd(data.summary.spentUsd)} detail="Non-failed renders" />
           </div>
 
           <Card
             icon={ImageIcon}
             title={`${formatNumber(data.total)} ${data.total === 1 ? "render" : "renders"}`}
             actions={
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
                 <input
                   type="search"
@@ -147,7 +130,7 @@ export function RendersPage() {
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder="Search email, project, prompt, model…"
                   aria-label="Search renders"
-                  className="w-72 rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
+                  className="w-full rounded-xl border border-hairline bg-surface py-2 pl-9 pr-3 sm:w-72 text-sm outline-none transition focus:border-blueprint focus:bg-canvas focus:ring-2 focus:ring-blueprint/15"
                 />
               </div>
             }
@@ -213,15 +196,15 @@ export function RendersPage() {
             ) : (
               <>
                 <div className="-mx-5 overflow-x-auto">
-                  <table className="w-full min-w-[1100px] text-left text-sm">
+                  <table className="w-full min-w-[640px] text-left text-sm lg:min-w-[1100px]">
                     <thead>
                       <tr className="border-b border-hairline text-xs font-medium uppercase tracking-wide text-faint">
                         <th className="px-5 py-3 font-medium">Image</th>
                         <th className="px-5 py-3 font-medium">User</th>
                         <th className="px-5 py-3 font-medium">Details</th>
-                        <th className="px-5 py-3 font-medium">Model</th>
+                        <th className="hidden px-5 py-3 font-medium lg:table-cell">Model</th>
                         {SORTABLE.map((column) => (
-                          <th key={column.key} className="px-5 py-3 font-medium">
+                          <th key={column.key} className="hidden px-5 py-3 font-medium lg:table-cell">
                             <button
                               type="button"
                               onClick={() => toggleSort(column.key)}
@@ -277,10 +260,10 @@ export function RendersPage() {
                               <p className="mt-1 line-clamp-2 text-xs text-red-600">{render.errorMessage}</p>
                             )}
                           </td>
-                          <td className="px-5 py-3 font-mono text-xs text-secondary">{formatModel(render.model)}</td>
-                          <td className="whitespace-nowrap px-5 py-3 text-xs text-muted">{formatDateTime(render.createdAt)}</td>
-                          <td className="px-5 py-3 tabular-nums">{formatUsd(render.costUsd)}</td>
-                          <td className="px-5 py-3 tabular-nums text-muted">{formatNumber(render.creditsCharged)}</td>
+                          <td className="hidden px-5 py-3 font-mono text-xs text-secondary lg:table-cell">{formatModel(render.model)}</td>
+                          <td className="hidden whitespace-nowrap px-5 py-3 text-xs text-muted lg:table-cell">{formatDateTime(render.createdAt)}</td>
+                          <td className="hidden px-5 py-3 tabular-nums lg:table-cell">{formatUsd(render.costUsd)}</td>
+                          <td className="hidden px-5 py-3 tabular-nums text-muted lg:table-cell">{formatNumber(render.creditsCharged)}</td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-1.5">
                               <StatusBadge status={render.status} />

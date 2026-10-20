@@ -33,7 +33,7 @@ export function Card({
   return (
     <section className={`rounded-2xl border border-hairline bg-canvas shadow-card ${className}`}>
       {(title || actions) && (
-        <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-5 py-4">
           <div className="flex items-center gap-2.5">
             {Icon && (
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-surface-muted text-muted">
