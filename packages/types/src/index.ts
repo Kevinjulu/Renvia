@@ -1119,8 +1119,12 @@ export interface AdminOverviewResponse {
     | { status: "unconfigured" }
     | { status: "error"; message: string }
     | { status: "ok"; balanceUsd: number | null; currency: string; spentLast30DaysUsd: number; measuredAt: string };
-  /** Last 14 UTC days, oldest first. */
-  daily: { date: string; renders: number; spentUsd: number }[];
+  /** Last 30 UTC days, oldest first. */
+  daily: { date: string; renders: number; spentUsd: number; segmentations: number; signups: number }[];
+  /** Totals for the 30 UTC days before `daily`, for period-over-period deltas. */
+  previousPeriod: { renders: number; spentUsd: number; segmentations: number; signups: number };
+  /** Image storage from the storage_objects ledger against the operator's cap. */
+  storage: { usedBytes: number; capBytes: number; objects: number; byKind: Record<"upload" | "render" | "watermark" | "feedback" | "stock" | "thumbnail", number> };
   topUsers: { id: string; email: string; renders: number; spentUsd: number }[];
   projects: { total: number; activeLast7Days: number };
   segmentations: {

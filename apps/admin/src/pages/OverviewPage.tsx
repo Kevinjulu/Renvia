@@ -171,10 +171,10 @@ export function OverviewPage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card title="Renders per day · last 14 days" icon={BarChart3} className="lg:col-span-2">
-              {data.daily.every((day) => day.renders === 0) ? (
+              {data.daily.slice(-14).every((day) => day.renders === 0) ? (
                 <EmptyState icon={BarChart3}>No renders in the last 14 days.</EmptyState>
               ) : (
-                <DailyChart days={data.daily} />
+                <DailyChart days={data.daily.slice(-14)} />
               )}
             </Card>
 

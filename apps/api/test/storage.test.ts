@@ -149,6 +149,10 @@ describe("the storage cap", () => {
     expect(settings).toMatchObject({ storageCapMb: 100, storage: { usedBytes: 95 * MB, capBytes: 100 * MB, objects: 1, byKind: { render: 95 * MB } } });
     const overview = (await (await callAdmin("admin", "GET", "/overview")).json()) as AdminOverviewResponse;
     expect(overview.alerts.find((alert) => alert.id === "storage_critical")).toBeTruthy();
+    expect(overview.storage).toMatchObject({ usedBytes: 95 * MB, capBytes: 100 * MB, objects: 1, byKind: { render: 95 * MB } });
+    expect(overview.daily).toHaveLength(30);
+    expect(overview.daily.at(-1)).toMatchObject({ renders: expect.any(Number), segmentations: expect.any(Number), signups: expect.any(Number) });
+    expect(overview.previousPeriod).toMatchObject({ renders: 0, spentUsd: 0, segmentations: 0, signups: 0 });
   });
 
   it("can't be set above the free 10 GB", async () => {

@@ -72,13 +72,32 @@ overviewRoutes.get("/overview", async (c) => {
         spentLast7Days: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} < 0 and ${schema.creditLedger.createdAt} >= now() - interval '7 days'), 0)::int`,
       })
       .from(schema.creditLedger),
-    db.execute<{ date: string; renders: number; spent_micros: string }>(sql`
-      select to_char(day, 'YYYY-MM-DD') as date,
-             count(r.id)::int as renders,
-             coalesce(sum(r.cost_micros), 0)::bigint as spent_micros
-      from generate_series((now() at time zone 'utc')::date - 13, (now() at time zone 'utc')::date, interval '1 day') as day
-      left join renders r on (r.created_at at time zone 'utc')::date = day::date
-      group by day order by day`),
+    // 60 days in one query: the newest 30 are returned as `daily`, the 30 before them
+    // are only summed into `previousPeriod` so the page can show period-over-period deltas.
+    db.execute<{ date: string; renders: number; spent_micros: string; segmentations: number; signups: number }>(sql`
+      with days as (
+        select day::date as d
+        from generate_series((now() at time zone 'utc')::date - 59, (now() at time zone 'utc')::date, interval '1 day') as day
+      ),
+      r as (
+        select (created_at at time zone 'utc')::date as d, count(*)::int as renders, coalesce(sum(cost_micros), 0)::bigint as spent_micros
+        from renders where created_at >= (now() at time zone 'utc')::date - 59 group by 1
+      ),
+      s as (
+        select (created_at at time zone 'utc')::date as d, count(*)::int as segmentations
+        from segmentations where created_at >= (now() at time zone 'utc')::date - 59 group by 1
+      ),
+      u as (
+        select (created_at at time zone 'utc')::date as d, count(*)::int as signups
+        from users where role = 'user' and created_at >= (now() at time zone 'utc')::date - 59 group by 1
+      )
+      select to_char(days.d, 'YYYY-MM-DD') as date,
+             coalesce(r.renders, 0) as renders,
+             coalesce(r.spent_micros, 0)::bigint as spent_micros,
+             coalesce(s.segmentations, 0) as segmentations,
+             coalesce(u.signups, 0) as signups
+      from days left join r using (d) left join s using (d) left join u using (d)
+      order by days.d`),
     db
       .select({
         id: schema.users.id,
@@ -251,6 +270,19 @@ overviewRoutes.get("/overview", async (c) => {
     };
   }));
 
+  const allDays = dailyRows.rows.map((row) => ({
+    date: row.date,
+    renders: Number(row.renders),
+    spentUsd: Number(row.spent_micros) / MICROS_PER_USD,
+    segmentations: Number(row.segmentations),
+    signups: Number(row.signups),
+  }));
+  const daily = allDays.slice(-30);
+  const previousPeriod = allDays.slice(0, -30).reduce(
+    (sum, day) => ({ renders: sum.renders + day.renders, spentUsd: sum.spentUsd + day.spentUsd, segmentations: sum.segmentations + day.segmentations, signups: sum.signups + day.signups }),
+    { renders: 0, spentUsd: 0, segmentations: 0, signups: 0 },
+  );
+
   const response: AdminOverviewResponse = {
     users: { total: users!.total, newLast7Days: users!.newLast7Days, activeNow: users!.activeNow, activeLastHour: users!.activeLastHour, activeLast24Hours: users!.activeLast24Hours, activeLast7Days: users!.activeLast7Days, disabled: users!.disabled },
     activity: { measuredAt: new Date().toISOString(), activeNow: activeNowRows.filter((row) => row.lastActiveAt).map((row) => ({ id: row.id, email: row.email, lastActiveAt: row.lastActiveAt!.toISOString() })) },
@@ -285,11 +317,8 @@ overviewRoutes.get("/overview", async (c) => {
       measuredAt: new Date().toISOString(),
     },
     falAccount: fal,
-    daily: dailyRows.rows.map((row) => ({
-      date: row.date,
-      renders: Number(row.renders),
-      spentUsd: Number(row.spent_micros) / MICROS_PER_USD,
-    })),
+    daily,
+    previousPeriod,
     topUsers: topRows.map((row) => ({
       id: row.id,
       email: row.email,
@@ -304,6 +333,7 @@ overviewRoutes.get("/overview", async (c) => {
       failureRate: segFinished > 0 ? segByStatus.failed / segFinished : 0,
       spentUsd: Number(segSpend?.spentMicros ?? 0) / MICROS_PER_USD,
     },
+    storage: { usedBytes: storage.usedBytes, capBytes: settings.storageCapMb * BYTES_PER_MB, objects: storage.objects, byKind: storage.byKind },
     recentFailures,
     alerts,
   };
