@@ -21,7 +21,6 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { BillingPage } from "./pages/BillingPage";
 import { IncidentsPage } from "./pages/IncidentsPage";
 import { FinancialsPage } from "./pages/FinancialsPage";
-import { OperationsPage } from "./pages/OperationsPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { BetaProgramsPage } from "./pages/beta/BetaProgramsPage";
 import { BetaProgramPage } from "./pages/beta/BetaProgramPage";
@@ -103,7 +102,6 @@ function AdminGate() {
           <Route path="/credits" element={<CreditsPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/financials" element={<FinancialsPage />} />
-          <Route path="/operations" element={<OperationsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/performance" element={<PerformancePage />} />
           <Route path="/studio-control" element={<StudioControlPage />} />

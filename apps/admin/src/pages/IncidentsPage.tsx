@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Bell, CheckCircle2, RefreshCw, ShieldAlert, UserRoundCheck } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import type { AdminIncident, AdminIncidentsResponse, IncidentStatus } from "@renvia/types";
-import { Card, EmptyState, ErrorNote, Pill, StatCard } from "../components/ui";
+import { Card, EmptyState, ErrorNote, Pill } from "../components/ui";
 import { NoteDialog } from "../components/NoteDialog";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
 import { useAdminApi } from "../lib/api";
 import { formatRelative } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const STATUSES: { value: "" | IncidentStatus; label: string }[] = [{ value: "", label: "All" }, { value: "open", label: "Open" }, { value: "acknowledged", label: "Acknowledged" }, { value: "resolved", label: "Resolved" }];
@@ -32,7 +32,7 @@ export function IncidentsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   // No sync on open: the cron job syncs incidents, and "Sync alerts" does it on demand.
-  const { data, error, reload } = useLoad(() => api.getIncidents(status || undefined), [api, status], 30_000);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.getIncidents(status || undefined), [api, status], 30_000);
   const [noteFor, setNoteFor] = useState<{ incident: AdminIncident; kind: "acknowledge" | "resolve" } | null>(null);
   const action = async (key: string, work: () => Promise<unknown>) => {
     setBusy(key); setActionError(null);
@@ -42,17 +42,16 @@ export function IncidentsPage() {
   };
   const resolve = (incident: AdminIncident) => setNoteFor({ incident, kind: "resolve" });
   const acknowledge = (incident: AdminIncident) => setNoteFor({ incident, kind: "acknowledge" });
-  const nav = navForPath("/incidents");
   return <>
-    <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+    <PageTop title="Incidents" description="Assign, acknowledge, recover and resolve failed operational work, with a durable response trail." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
     {(error || actionError) && <ErrorNote onRetry={reload}>{actionError ?? error}</ErrorNote>}
     {!data ? null : <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Open" value={data.summary.open} icon={ShieldAlert} accent={data.summary.open ? "rose" : "neutral"} />
-        <StatCard label="Acknowledged" value={data.summary.acknowledged} icon={UserRoundCheck} accent={data.summary.acknowledged ? "blue" : "neutral"} />
-        <StatCard label="Critical" value={data.summary.criticalOpen} icon={AlertTriangle} accent={data.summary.criticalOpen ? "rose" : "neutral"} />
-        <StatCard label="Resolved" value={data.summary.resolved} icon={CheckCircle2} accent="emerald" />
-        <StatCard label="Notification failures" value={data.summary.failedNotifications} icon={Bell} accent={data.summary.failedNotifications ? "amber" : "neutral"} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <KpiTile label="Open" value={data.summary.open} tone={data.summary.open ? "bad" : "default"} />
+        <KpiTile label="Acknowledged" value={data.summary.acknowledged} />
+        <KpiTile label="Critical" value={data.summary.criticalOpen} tone={data.summary.criticalOpen ? "bad" : "default"} />
+        <KpiTile label="Resolved" value={data.summary.resolved} tone="good" />
+        <KpiTile label="Notification failures" value={data.summary.failedNotifications} tone={data.summary.failedNotifications ? "warn" : "default"} />
       </div>
       <Card title="Needs attention" icon={ShieldAlert} actions={<div className="flex items-center gap-3"><SyncStatus sync={data.sync} /><button type="button" onClick={() => void action("sync", () => api.syncIncidents())} disabled={busy === "sync"} className="inline-flex items-center gap-2 rounded-xl border border-hairline px-3 py-2 text-xs font-medium hover:bg-surface-muted disabled:opacity-50"><RefreshCw size={14} className={busy === "sync" ? "animate-spin" : ""} />Sync alerts</button></div>}>
         <div className="mb-4 flex flex-wrap gap-2">{STATUSES.map((item) => <button key={item.label} type="button" onClick={() => setStatus(item.value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium ${status === item.value ? "bg-ink-900 text-white" : "bg-surface-muted text-muted hover:text-primary"}`}>{item.label}</button>)}</div>

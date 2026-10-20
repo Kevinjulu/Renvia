@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { ShieldCheck, FlaskConical, Images, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
+import { ShieldCheck, FlaskConical, Images, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -23,7 +23,7 @@ export interface AdminNavItem {
  * a trailing "More" section so a new page can never silently vanish from the menu.
  */
 export const ADMIN_NAV_GROUPS: { label: string; paths: string[] }[] = [
-  { label: "Monitor", paths: ["/", "/operations", "/incidents", "/performance"] },
+  { label: "Monitor", paths: ["/", "/incidents", "/performance"] },
   { label: "Customers", paths: ["/users", "/projects", "/credits", "/security"] },
   { label: "Studio jobs", paths: ["/renders", "/segmentations"] },
   { label: "Revenue", paths: ["/billing", "/plans"] },
@@ -59,9 +59,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Health & spend at a glance",
     banner: "/banners/exterior-1.jpg",
     roles: ["analyst", "support", "billing", "admin"],
-  },
-  {
-    to: "/operations", label: "My queue", icon: ListTodo, end: false, title: "Operator queue", description: "Your assigned incidents, pending approvals, and recently failed work.", hint: "Assigned work & approvals", banner: "/banners/exterior-3.jpg", roles: ["analyst", "support", "billing", "admin"],
   },
   {
     to: "/users",
