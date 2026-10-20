@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Layers } from "lucide-react";
 import type { AdminSettings } from "@renvia/types";
 import { formatUsd } from "../../lib/format";
@@ -12,7 +13,7 @@ export function ModelsSection({ data }: { data: AdminSettings }) {
         </span>
         <div>
           <h2 className="text-sm font-semibold text-primary">Models · {MODE_LABEL[data.effectiveMode]}</h2>
-          <p className="text-xs text-muted">Current mode pricing (read-only)</p>
+          <p className="text-xs text-muted">Current mode pricing (read-only). To pause a failing model or see its reliability, use the <Link to="/models" className="text-blueprint underline">Model Registry</Link>.</p>
         </div>
       </div>
       <ul className="divide-y divide-hairline rounded-xl border border-hairline">

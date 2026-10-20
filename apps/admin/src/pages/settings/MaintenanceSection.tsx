@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { PauseCircle } from "lucide-react";
 import type { Draft, FieldErrors } from "./types";
 import { ToggleRow, Field, inputClass } from "./components";
@@ -11,7 +12,7 @@ export function MaintenanceSection({ draft, fieldErrors, update }: { draft: Draf
         </span>
         <div>
           <h2 className="text-sm font-semibold text-primary">Maintenance</h2>
-          <p className="text-xs text-muted">Pause new work for non-admins without a redeploy</p>
+          <p className="text-xs text-muted">Instant pause for non-admins, no redeploy. To schedule a window ahead of time, use <Link to="/studio-control" className="text-blueprint underline">Studio Control</Link>; either one pauses work.</p>
         </div>
       </div>
       <div className="space-y-4">
