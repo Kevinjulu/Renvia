@@ -6,7 +6,7 @@ import type { MeResponse } from "@renvia/types";
 import { Logo } from "./components/brand/Logo";
 import { AppLoader } from "./components/loading/AppLoader";
 import { useAdminApi } from "./lib/api";
-import { ADMIN_NAV, ADMIN_NAV_GROUPS, navForPath } from "./lib/nav";
+import { ADMIN_NAV, ADMIN_NAV_GROUPS, ADMIN_NAV_HUBS, hubForPath, navForPath } from "./lib/nav";
 import { AdminContext } from "./lib/useAdmin";
 import { useLoad } from "./lib/useLoad";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -162,11 +162,26 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <div key={location.pathname} className="mx-auto max-w-[1600px] animate-rise-in">{children}</div>
+          <div key={location.pathname} className="mx-auto max-w-[1600px] animate-rise-in"><HubTabs pathname={location.pathname} role={me.role} />{children}</div>
         </main>
       </div>
       {palette && <CommandPalette me={me} onClose={() => setPalette(false)} />}
     </div>
+  );
+}
+
+function HubTabs({ pathname, role }: { pathname: string; role: string }) {
+  const hub = hubForPath(pathname);
+  if (!hub) return null;
+  const tabs = hub.tabs.filter((tab) => ADMIN_NAV.find((item) => item.to === tab.to)?.roles.includes(role as never));
+  if (tabs.length < 2) return null;
+  return (
+    <nav aria-label={`${hub.label} sections`} className="mb-5 flex gap-1 border-b border-hairline">
+      {tabs.map((tab) => {
+        const active = pathname === tab.to || pathname.startsWith(`${tab.to}/`);
+        return <NavLink key={tab.to} to={tab.to} aria-current={active ? "page" : undefined} className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${active ? "border-blueprint text-blueprint" : "border-transparent text-muted hover:text-primary"}`}>{tab.label}</NavLink>;
+      })}
+    </nav>
   );
 }
 
@@ -177,8 +192,12 @@ function CommandPalette({ me, onClose }: { me: MeResponse; onClose: () => void }
 }
 
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {
+  const { pathname } = useLocation();
+  /** A hub's sidebar entry stays lit on any of its tabs, not only the first. */
+  const hubActive = (path: string) => { const hub = hubForPath(pathname); return Boolean(hub && hub.tabs[0]!.to === path); };
   const visible = ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">));
-  const placed = new Set(ADMIN_NAV_GROUPS.flatMap((group) => group.paths));
+  const hubOf = (path: string) => ADMIN_NAV_HUBS.find((hub) => hub.tabs[0]!.to === path);
+  const placed = new Set([...ADMIN_NAV_GROUPS.flatMap((group) => group.paths), ...ADMIN_NAV_HUBS.flatMap((hub) => hub.tabs.map((tab) => tab.to))]);
   const groups = [...ADMIN_NAV_GROUPS, { label: "More", paths: visible.filter((item) => !placed.has(item.to)).map((item) => item.to) }]
     .map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) }))
     .filter((group) => group.items.length > 0);
@@ -220,11 +239,11 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
             onClick={onClose}
             className={({ isActive }) =>
               `group relative flex items-center gap-3 rounded-xl px-3 py-2 transition ${
-                isActive ? "bg-ink-800 text-white shadow-lift" : "text-ink-300 hover:bg-ink-800/55 hover:text-white"
+                isActive || hubActive(item.to) ? "bg-ink-800 text-white shadow-lift" : "text-ink-300 hover:bg-ink-800/55 hover:text-white"
               }`
             }
           >
-            {({ isActive }) => (
+            {({ isActive: linkActive }) => { const isActive = linkActive || hubActive(item.to); return (
               <>
                 {isActive && <span className="absolute inset-y-2 left-0 w-1 rounded-full bg-accent-sheen" />}
                 <item.icon
@@ -233,10 +252,10 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
                   className={`shrink-0 ${isActive ? "text-white" : "text-ink-400 group-hover:text-white"}`}
                 />
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium leading-tight">{item.label}</span>
+                  <span className="block text-sm font-medium leading-tight">{hubOf(item.to)?.label ?? item.label}</span>
                 </span>
               </>
-            )}
+            ); }}
           </NavLink>
         ))}</div></section>)}
       </nav>

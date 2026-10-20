@@ -26,11 +26,25 @@ export const ADMIN_NAV_GROUPS: { label: string; paths: string[] }[] = [
   { label: "Monitor", paths: ["/", "/operations", "/incidents", "/performance"] },
   { label: "Customers", paths: ["/users", "/projects", "/credits", "/security"] },
   { label: "Studio jobs", paths: ["/renders", "/segmentations"] },
-  { label: "Revenue", paths: ["/billing", "/financials", "/plans"] },
-  { label: "Beta", paths: ["/beta", "/beta-feedback"] },
+  { label: "Revenue", paths: ["/billing", "/plans"] },
+  { label: "Beta", paths: ["/beta"] },
   { label: "Platform", paths: ["/studio-control", "/models", "/library", "/settings"] },
   { label: "Governance", paths: ["/approvals", "/audit"] },
 ];
+
+/**
+ * Pages that share one sidebar entry and a tab bar. The first tab is where the entry links; every
+ * tab keeps its own route, so existing links and bookmarks still work.
+ */
+export const ADMIN_NAV_HUBS: { label: string; tabs: { to: string; label: string }[] }[] = [
+  { label: "Revenue", tabs: [{ to: "/billing", label: "Payments & billing" }, { to: "/financials", label: "Financials" }] },
+  { label: "Beta", tabs: [{ to: "/beta", label: "Programs" }, { to: "/beta-feedback", label: "Tester feedback" }] },
+];
+
+/** The hub a path belongs to, if any. */
+export function hubForPath(pathname: string) {
+  return ADMIN_NAV_HUBS.find((hub) => hub.tabs.some((tab) => pathname === tab.to || pathname.startsWith(`${tab.to}/`)));
+}
 
 /** Single source of truth for sidebar + page heroes across every tab. */
 export const ADMIN_NAV: AdminNavItem[] = [
