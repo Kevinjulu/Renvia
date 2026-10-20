@@ -123,7 +123,7 @@ export async function reserveBudget(db: Database, costMicros: number, budgetUsd:
           coalesce(sum(r.cost_micros), 0)
           + coalesce((select sum(s.cost_micros) from segmentations s), 0)
           + coalesce((select sum(p.cost_micros) from prompt_polishes p), 0)
-          + coalesce((select sum(b.cost_micros) from budget_reservations b where b.created_at >= now() - interval '15 minutes' and b.beta_program_id is null), 0)
+          + coalesce((select sum(b.cost_micros) from budget_reservations b where b.created_at >= now() - interval '15 minutes' and b.beta_program_id is null and b.pool = 'global'), 0)
           + 0 * (select count(*) from cleared) as total
         from renders r
       ),

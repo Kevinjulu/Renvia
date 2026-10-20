@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { asc, desc, eq, ne, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminSettings } from "@renvia/types";
@@ -12,6 +12,7 @@ import { governance, requestApproval } from "./governance.js";
 import { allowanceVersionWrites } from "./plans.js";
 import { currentStudioRevision } from "../../lib/studioControl.js";
 import { BYTES_PER_MB, storageConfigured, storageUsage } from "../../lib/storage.js";
+import { promoSpendMicros } from "../../lib/promotions.js";
 import type { AdminContext } from "./context.js";
 
 export const settingsRoutes = new Hono<AdminContext>();
@@ -25,19 +26,24 @@ async function planMonthlyCredits(db: Database) {
 }
 
 async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Promise<AdminSettings> {
-  const [[renderSpend], [segSpend], updaterRows, changeRows, plans, revision, storage] = await Promise.all([
+  // Spend as the budget counts it (see spentMicros in engine.ts): every job's cost, plus Polish.
+  const [[renderSpend], [segSpend], [polishSpend], promoSpent, updaterRows, changeRows, plans, revision, storage] = await Promise.all([
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
       })
-      .from(schema.renders)
-      .where(ne(schema.renders.status, "failed")),
+      .from(schema.renders),
     db
       .select({
         spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint`,
       })
-      .from(schema.segmentations)
-      .where(ne(schema.segmentations.status, "failed")),
+      .from(schema.segmentations),
+    db
+      .select({
+        spentMicros: sql<number>`coalesce(sum(${schema.promptPolishes.costMicros}), 0)::bigint`,
+      })
+      .from(schema.promptPolishes),
+    promoSpendMicros(db),
     row.updatedBy
       ? db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, row.updatedBy))
       : Promise.resolve([] as { email: string }[]),
@@ -93,9 +99,15 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     storage: { usedBytes: storage.usedBytes, capBytes: row.storageCapMb * BYTES_PER_MB, objects: storage.objects, byKind: storage.byKind },
     falMode: row.falMode,
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
+    freeAllowanceMode: row.freeAllowanceMode,
+    freeAllowanceDailyApprovals: row.freeAllowanceDailyApprovals,
+    promoBudgetUsd: row.promoBudgetUsd === null ? null : Number(row.promoBudgetUsd),
+    promoWarningPercent: row.promoWarningPercent,
+    promoCriticalPercent: row.promoCriticalPercent,
+    promoSpentUsd: promoSpent / MICROS_PER_USD,
     effectiveMode,
     effectiveBudgetUsd: effectiveBudgetUsd(env, row),
-    spentUsd: (Number(renderSpend?.spentMicros ?? 0) + Number(segSpend?.spentMicros ?? 0)) / MICROS_PER_USD,
+    spentUsd: (Number(renderSpend?.spentMicros ?? 0) + Number(segSpend?.spentMicros ?? 0) + Number(polishSpend?.spentMicros ?? 0)) / MICROS_PER_USD,
     envMode,
     envBudgetUsd,
     health: {
@@ -153,6 +165,11 @@ const updateSettingsSchema = z
     storagePerUserMb: z.number().int().min(10).max(10_000).optional(),
     falMode: z.enum(["mock", "dev", "prod"]).nullable().optional(),
     falBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
+    freeAllowanceMode: z.enum(["off", "observe", "enforce", "paused"]).optional(),
+    freeAllowanceDailyApprovals: z.number().int().min(1).max(10_000).optional(),
+    promoBudgetUsd: z.number().min(0).max(10_000).multipleOf(0.01).nullable().optional(),
+    promoWarningPercent: z.number().int().min(1).max(99).optional(),
+    promoCriticalPercent: z.number().int().min(2).max(100).optional(),
     /** Why; kept in the audit row, and required context for a change that needs approval. */
     reason: z.string().trim().max(300).optional(),
   })
@@ -180,6 +197,9 @@ settingsRoutes.put("/settings", async (c) => {
   const critical = body.budgetCriticalPercent ?? before.budgetCriticalPercent;
   if (critical <= warning) {
     return c.json({ error: "Critical percent must be greater than warning percent" }, 400);
+  }
+  if ((body.promoCriticalPercent ?? before.promoCriticalPercent) <= (body.promoWarningPercent ?? before.promoWarningPercent)) {
+    return c.json({ error: "Promotional critical percent must be greater than its warning percent" }, 400);
   }
 
   const { planMonthlyCredits: planCredits, reason, maintenanceRenders, maintenanceSegments, ...rest } = body;
@@ -210,6 +230,7 @@ settingsRoutes.put("/settings", async (c) => {
         .set({
           ...appBody,
           falBudgetUsd: appBody.falBudgetUsd === undefined ? undefined : appBody.falBudgetUsd === null ? null : appBody.falBudgetUsd.toFixed(2),
+          promoBudgetUsd: appBody.promoBudgetUsd === undefined ? undefined : appBody.promoBudgetUsd === null ? null : appBody.promoBudgetUsd.toFixed(2),
           updatedAt: new Date(),
           updatedBy: adminUser.id,
         })
@@ -252,6 +273,11 @@ settingsRoutes.put("/settings", async (c) => {
             storagePerUserMb: before.storagePerUserMb,
             falMode: before.falMode,
             falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
+            freeAllowanceMode: before.freeAllowanceMode,
+            freeAllowanceDailyApprovals: before.freeAllowanceDailyApprovals,
+            promoBudgetUsd: before.promoBudgetUsd === null ? null : Number(before.promoBudgetUsd),
+            promoWarningPercent: before.promoWarningPercent,
+            promoCriticalPercent: before.promoCriticalPercent,
           },
           after: applied,
           ...(reason ? { reason } : {}),

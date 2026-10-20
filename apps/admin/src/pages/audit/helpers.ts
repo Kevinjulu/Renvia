@@ -23,6 +23,7 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "plan.update", label: "Plans & pricing" },
   { value: "beta.update", label: "Beta program" },
   { value: "library.update", label: "Reference library" },
+  { value: "security.decision", label: "Free credit eligibility" },
 ];
 
 export const RANGES: { value: RangeFilter; label: string }[] = [
@@ -74,6 +75,7 @@ export const ACTION_META: Record<
   "plan.update": { label: "Plans & pricing", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "beta.update": { label: "Beta program", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
   "library.update": { label: "Reference library", tone: "neutral", icon: Images, chip: "bg-surface-muted text-secondary" },
+  "security.decision": { label: "Free credit eligibility", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
 };
 
 export function groupByDay(events: AdminAuditEvent[]) {

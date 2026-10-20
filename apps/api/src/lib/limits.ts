@@ -148,6 +148,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   beta_credits_exhausted: "You've used your beta credits. You can use your own credits for this instead.",
   beta_budget_exhausted: "Beta rendering is paused because the shared testing budget has been reached. Your projects and feedback are still available.",
   beta_unavailable: "Beta credits can't be used right now.",
+  promo_budget_exhausted: "Free rendering is paused for the rest of the month. Upgrade or buy credits to keep rendering; your projects are safe.",
 };
 
 function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["status"], extra: Partial<Refusal> = {}): Refusal {
@@ -245,6 +246,11 @@ export function refuseBetaBudget(settings: AppSettingsRow): Refusal {
 
 export function refuseBetaUnavailable(settings: AppSettingsRow): Refusal {
   return refuse(settings, "beta_unavailable", 403);
+}
+
+/** A job paid from the Free allowance, refused because this month's promotional budget is used. */
+export function refusePromoBudget(settings: AppSettingsRow): Refusal {
+  return refuse(settings, "promo_budget_exhausted", 402);
 }
 
 export function refuseStorage(settings: AppSettingsRow): Refusal {

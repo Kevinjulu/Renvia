@@ -389,6 +389,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "plan.update": 0,
           "render.cancel": 0,
           "render.refresh": 0,
+          "security.decision": 0,
           "segmentation.recover": 0,
           "settings.update": 0,
           "studio.publish": 0,
@@ -1329,6 +1330,8 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "envMode": null,
       "falBudgetUsd": null,
       "falMode": null,
+      "freeAllowanceDailyApprovals": 100,
+      "freeAllowanceMode": "off",
       "health": {
         "falKeyConfigured": false,
         "storageConfigured": false,
@@ -1394,6 +1397,10 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           "slug": "starter",
         },
       ],
+      "promoBudgetUsd": null,
+      "promoCriticalPercent": 80,
+      "promoSpentUsd": 0,
+      "promoWarningPercent": 50,
       "recentChanges": [],
       "spentUsd": 0.095,
       "storage": {
@@ -1916,5 +1923,7 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "PATCH /library/:id",
   "POST /library/order/:category",
   "DELETE /library/:id",
+  "GET /users/:id/free-allowance",
+  "POST /users/:id/free-allowance",
 ]
 `;

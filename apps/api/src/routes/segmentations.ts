@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { createChargedSegmentation, InsufficientBetaCreditsError, InsufficientCreditsError, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
+import { fundPromo, reportPromoSpend } from "../lib/promotions.js";
 import { releaseBudgetReservation, reserveBudget } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
 import {
@@ -19,6 +20,7 @@ import {
   refuseInput,
   resolveLimits,
   jobCaps,
+  refusePromoBudget,
   refuseRacedCap,
 } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
@@ -103,6 +105,7 @@ segmentations.post("/", async (c) => {
   const credits = isAdmin ? 0 : effectiveCreditPrices(revision.config, appSettings).selection;
   let created;
   let programHold: string | null = null;
+  let promoHold: string | null = null;
   try {
     // Testers pay from beta credits within the program budget; never silently from their own.
     const funding = await fundJob(c.env, db, beta, body.funding, credits, costMicros);
@@ -111,6 +114,13 @@ segmentations.post("/", async (c) => {
       return c.json(refusal, refusal.status);
     }
     programHold = funding.hold;
+    // Selections paid from the Free plan's credits also hold this month's promotional budget.
+    const promo = await fundPromo(c.env, db, appSettings, billing, user, credits, costMicros, Boolean(funding.charge));
+    if (!promo.ok) {
+      const refusal = refusePromoBudget(appSettings);
+      return c.json(refusal, refusal.status);
+    }
+    promoHold = promo.hold;
     created = await createChargedSegmentation(db, user.id, credits, {
       imageUrl: body.imageUrl,
       prompt: body.prompt ?? null,
@@ -119,8 +129,10 @@ segmentations.post("/", async (c) => {
       model: mode === "mock" ? "mock" : segmentationModelId(body),
       costMicros,
       configVersion: revision.version,
+      fundingPool: promo.pool,
     }, funding.charge, jobCaps(limits, "segment"));
     if (funding.program) await reportProgramSpend(c.env, db, funding.program);
+    if (promo.pool === "promo") await reportPromoSpend(c.env, db, appSettings);
   } catch (error) {
     // A parallel request took the day's or month's last selection after the pre-flight check.
     if (error instanceof JobCapError) {
@@ -140,6 +152,7 @@ segmentations.post("/", async (c) => {
     // Once the segmentation row exists its cost is visible to the next reservation check.
     await releaseBudgetReservation(db, reservation);
     await releaseBudgetReservation(db, programHold);
+    await releaseBudgetReservation(db, promoHold);
   }
 
   const { segmentation, maskDataUrl } = await runSegmentation(c.env, db, created, origin, mode);

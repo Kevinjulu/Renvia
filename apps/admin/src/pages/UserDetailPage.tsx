@@ -12,6 +12,7 @@ import { useLoad } from "../lib/useLoad";
 import { useAdmin } from "../lib/useAdmin";
 import { PlanPanel } from "./users/PlanPanel";
 import { UserBetaPanel } from "./users/UserBetaPanel";
+import { UserFreeAllowancePanel } from "./users/UserFreeAllowancePanel";
 
 export function UserDetailPage() {
   const { id = "" } = useParams();
@@ -151,6 +152,8 @@ export function UserDetailPage() {
       </Card>
 
       <UserBetaPanel user={user} projectCount={projects.length} />
+
+      {me.role !== "user" && <UserFreeAllowancePanel userId={user.id} onDone={reload} />}
 
       <Card title="Limits & overrides" icon={Gauge} className="mt-6">
         <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />

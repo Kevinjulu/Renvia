@@ -1,4 +1,4 @@
-import type { RenderEngineMode } from "@renvia/types";
+import type { FreeAllowanceMode, RenderEngineMode } from "@renvia/types";
 
 export interface Draft {
   /** Plan slug to its monthly credits, as typed. */
@@ -31,6 +31,11 @@ export interface Draft {
   storagePerUserMb: string;
   falMode: RenderEngineMode | "";
   falBudgetUsd: string;
+  freeAllowanceMode: FreeAllowanceMode;
+  freeAllowanceDailyApprovals: string;
+  promoBudgetUsd: string;
+  promoWarningPercent: string;
+  promoCriticalPercent: string;
 }
 
 export type FieldErrors = Partial<Record<keyof Draft, string>>;

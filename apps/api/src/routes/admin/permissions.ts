@@ -40,17 +40,24 @@ export type AdminPermission =
   /** Triage beta feedback and reply to testers. */
   | "beta.feedback.manage"
   /** Upload, caption, hide, order and delete the sample references every Studio user sees. */
-  | "library.manage";
+  | "library.manage"
+  /** See an account's Free-allowance eligibility and the evidence behind it. */
+  | "security.read"
+  /** Approve an account's Free allowance, send it to review, or have the rules reassess it. */
+  | "security.review"
+  /** Deny an account's Free allowance, or lift a denial. */
+  | "security.manage";
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly AdminPermission[]> = {
   user: [],
-  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read", "studio.read", "beta.read"],
-  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage", "studio.read", "beta.read", "beta.testers.manage", "beta.feedback.manage"],
-  billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "beta.read", "beta.credits.manage"],
+  analyst: ["overview.read", "renders.read", "projects.read", "segmentations.read", "credits.read", "audit.read", "incidents.read", "studio.read", "beta.read", "security.read"],
+  support: ["overview.read", "users.read", "customers.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover", "incidents.read", "incidents.manage", "studio.read", "beta.read", "beta.testers.manage", "beta.feedback.manage", "security.read", "security.review"],
+  billing: ["overview.read", "users.read", "customers.manage", "credits.read", "credits.manage", "audit.read", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "beta.read", "beta.credits.manage", "security.read"],
   admin: [
     "overview.read", "users.read", "users.manage", "renders.read", "renders.recover", "projects.read", "segmentations.read", "segmentations.recover",
     "credits.read", "credits.manage", "audit.read", "settings.read", "settings.manage", "billing.read", "billing.manage", "incidents.read", "incidents.manage", "customers.manage", "plans.manage", "studio.read", "studio.manage",
     "beta.read", "beta.testers.manage", "beta.credits.manage", "beta.programs.manage", "beta.feedback.manage", "library.manage",
+    "security.read", "security.review", "security.manage",
   ],
 };
 

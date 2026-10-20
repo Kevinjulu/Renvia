@@ -33,6 +33,11 @@ export function toDraft(settings: AdminSettings): Draft {
     storagePerUserMb: String(settings.storagePerUserMb),
     falMode: settings.falMode ?? "",
     falBudgetUsd: settings.falBudgetUsd === null ? "" : String(settings.falBudgetUsd),
+    freeAllowanceMode: settings.freeAllowanceMode,
+    freeAllowanceDailyApprovals: String(settings.freeAllowanceDailyApprovals),
+    promoBudgetUsd: settings.promoBudgetUsd === null ? "" : String(settings.promoBudgetUsd),
+    promoWarningPercent: String(settings.promoWarningPercent),
+    promoCriticalPercent: String(settings.promoCriticalPercent),
   };
 }
 
@@ -137,6 +142,19 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
   if (maxSelectionPromptChars.error) errors.maxSelectionPromptChars = maxSelectionPromptChars.error;
   const lowCreditThreshold = requiredInt(draft.lowCreditThreshold, 0, 1000);
   if (lowCreditThreshold.error) errors.lowCreditThreshold = lowCreditThreshold.error;
+  const freeAllowanceDailyApprovals = requiredInt(draft.freeAllowanceDailyApprovals, 1, 10_000);
+  if (freeAllowanceDailyApprovals.error) errors.freeAllowanceDailyApprovals = freeAllowanceDailyApprovals.error;
+  const promoBudget = draft.promoBudgetUsd.trim() === "" ? null : Number(draft.promoBudgetUsd);
+  if (promoBudget !== null && (!Number.isFinite(promoBudget) || promoBudget < 0 || promoBudget > 10_000 || Math.round(promoBudget * 100) !== promoBudget * 100)) {
+    errors.promoBudgetUsd = "Blank (no cap) or $0–$10,000, to the cent.";
+  }
+  const promoWarning = requiredInt(draft.promoWarningPercent, 1, 99);
+  if (promoWarning.error) errors.promoWarningPercent = promoWarning.error;
+  const promoCritical = requiredInt(draft.promoCriticalPercent, 2, 100);
+  if (promoCritical.error) errors.promoCriticalPercent = promoCritical.error;
+  if (!promoWarning.error && !promoCritical.error && promoCritical.value <= promoWarning.value) {
+    errors.promoCriticalPercent = "Must be greater than the warning percent.";
+  }
 
   // A daily cap above the monthly one can never be reached — flag it rather than silently ignoring it.
   if (
@@ -187,6 +205,11 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
       maxPromptChars: maxPromptChars.value,
       maxSelectionPromptChars: maxSelectionPromptChars.value,
       lowCreditThreshold: lowCreditThreshold.value,
+      freeAllowanceMode: draft.freeAllowanceMode,
+      freeAllowanceDailyApprovals: freeAllowanceDailyApprovals.value,
+      promoBudgetUsd: promoBudget,
+      promoWarningPercent: promoWarning.value,
+      promoCriticalPercent: promoCritical.value,
       messageInsufficientCredits: messages.messageInsufficientCredits.value,
       messageDailyLimit: messages.messageDailyLimit.value,
       messageMonthlyLimit: messages.messageMonthlyLimit.value,

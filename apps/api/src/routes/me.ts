@@ -9,6 +9,7 @@ import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { currentStudioRevision, effectiveCreditPrices, effectiveMaintenance, featureAvailability } from "../lib/studioControl.js";
 import { settleBetaCredits, type BetaContext } from "../lib/beta.js";
+import { freeCreditsStatus } from "../lib/freeAllowance.js";
 import type { MeBeta, StudioFeatureKey } from "@renvia/types";
 
 export const me = new Hono<AppContext>();
@@ -71,6 +72,7 @@ me.get("/", async (c) => {
       : null,
     features: featureAvailability(revision.config, user, billing.plan.slug, effectiveEngineMode(c.env, settings), betaProgram?.featureGrants),
     beta: beta ? presentBeta(beta) : null,
+    freeCredits: freeCreditsStatus(billing, settings.freeAllowanceMode),
     creditPrices: effectiveCreditPrices(revision.config, settings),
     configVersion: revision.version,
   });

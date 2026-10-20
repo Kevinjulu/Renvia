@@ -563,7 +563,9 @@ export type LimitCode =
   /** The beta program's shared provider budget can't cover this job. */
   | "beta_budget_exhausted"
   /** Beta funding was asked for, but the caller has no running enrollment (paused, suspended, ended or none). */
-  | "beta_unavailable";
+  | "beta_unavailable"
+  /** This month's promotional budget can't cover a job paid from the Free plan's credits. */
+  | "promo_budget_exhausted";
 
 /** Everything the caller is allowed, after per-user overrides and global settings. */
 export interface UserLimits {
@@ -634,8 +636,19 @@ export interface MeResponse {
   betaCredits: number;
   /** The caller's live beta enrollment; null when they aren't a tester. */
   beta: MeBeta | null;
+  /** Eligibility for the Free plan's monthly credits; `held` is true while it withholds them. */
+  freeCredits: MeFreeCredits;
   createdAt: string;
   updatedAt: string;
+}
+
+export type FreeAllowanceStatus = "approved" | "pending" | "verification_required" | "review_required" | "denied";
+export type FreeAllowanceMode = "off" | "observe" | "enforce" | "paused";
+
+export interface MeFreeCredits {
+  status: FreeAllowanceStatus;
+  /** True when the Free plan's monthly credits are being withheld from this account right now. */
+  held: boolean;
 }
 
 /** A tester's program as /me reports it. */
@@ -1179,10 +1192,20 @@ export interface AdminSettings {
   falMode: RenderEngineMode | null;
   /** Null = use the FAL_BUDGET_USD env var. */
   falBudgetUsd: number | null;
+  /** How the Free allowance's eligibility check is used (off, observe, enforce, paused). */
+  freeAllowanceMode: FreeAllowanceMode;
+  /** New accounts the rules may approve per UTC day; past it, more wait for verification or review. */
+  freeAllowanceDailyApprovals: number;
+  /** Monthly fal spend (USD) for jobs paid from the Free allowance; null = no separate cap. */
+  promoBudgetUsd: number | null;
+  promoWarningPercent: number;
+  promoCriticalPercent: number;
+  /** This UTC month's promotional spend, against promoBudgetUsd. */
+  promoSpentUsd: number;
   /** What's actually in force after env fallbacks. */
   effectiveMode: RenderEngineMode;
   effectiveBudgetUsd: number;
-  /** Non-failed render+segment spend against the fal budget. */
+  /** Render, selection and Polish spend counted against the fal budget. */
   spentUsd: number;
   /** Raw FAL_MODE env (no secrets) — used when falMode is null. */
   envMode: string | null;
@@ -1243,6 +1266,11 @@ export type AdminUpdateSettingsRequest = Partial<
     | "storagePerUserMb"
     | "falMode"
     | "falBudgetUsd"
+    | "freeAllowanceMode"
+    | "freeAllowanceDailyApprovals"
+    | "promoBudgetUsd"
+    | "promoWarningPercent"
+    | "promoCriticalPercent"
   > & {
     /** Plan slug to monthly credits; plans left out are unchanged. */
     planMonthlyCredits: Record<string, number>;
@@ -1389,7 +1417,9 @@ export type AdminAuditAction =
   /** Beta program changes: programs, invitations, enrollments, grants and budgets (see targetType). */
   | "beta.update"
   /** Sample reference images: uploads, captions, hiding, ordering and deletes. */
-  | "library.update";
+  | "library.update"
+  /** An operator's Free-allowance eligibility decision or reassessment for an account. */
+  | "security.decision";
 export type AdminAuditRange = "today" | "7d" | "30d";
 
 export interface AdminAuditEvent {
@@ -2467,4 +2497,47 @@ export interface BetaAnnotations {
 export function thumbnailUrl<T extends string | null | undefined>(url: T): T {
   if (!url || !url.includes("/api/uploads/") || !url.includes("signature=") || url.includes("size=thumb")) return url;
   return `${url}&size=thumb` as T;
+}
+
+/** One Free-allowance assessment or operator decision, as the admin console lists it. */
+export interface AdminFreeAllowanceAssessment {
+  id: string;
+  kind: "signup" | "renewal" | "evidence" | "operator";
+  outcome: Exclude<FreeAllowanceStatus, "pending">;
+  mode: FreeAllowanceMode;
+  score: number | null;
+  ruleVersion: number | null;
+  reason: string;
+  /** Derived evidence only (counts, booleans, the email domain). */
+  signals: Record<string, unknown>;
+  /** The operator who decided it; null when the rules did. */
+  decidedByEmail: string | null;
+  createdAt: string;
+}
+
+/** GET /admin/users/:id/free-allowance */
+export interface AdminFreeAllowanceResponse {
+  status: FreeAllowanceStatus;
+  reason: string | null;
+  decidedAt: string | null;
+  decidedByEmail: string | null;
+  /** An operator's approval holds until then; null when it doesn't expire or the rules decided. */
+  approvedUntil: string | null;
+  ruleVersion: number | null;
+  assessedAt: string | null;
+  mode: FreeAllowanceMode;
+  /** The account's monthly credits are the Free allowance (Free plan, no admin-granted plan). */
+  freePlan: boolean;
+  /** True when the allowance is being withheld right now. */
+  held: boolean;
+  assessments: AdminFreeAllowanceAssessment[];
+}
+
+/** POST /admin/users/:id/free-allowance */
+export interface AdminFreeAllowanceDecisionRequest {
+  /** approve, send to review, deny, or have the rules assess the account again. */
+  decision: "approve" | "review" | "deny" | "reassess";
+  reason: string;
+  /** For approve: the approval holds until then, after which the rules decide again. */
+  approvedUntil?: string | null;
 }

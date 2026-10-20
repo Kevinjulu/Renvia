@@ -32,6 +32,7 @@ const KNOWN_CODES: LimitCode[] = [
   "beta_credits_exhausted",
   "beta_budget_exhausted",
   "beta_unavailable",
+  "promo_budget_exhausted",
 ];
 
 /** Returns the refusal an error represents, or null when it's an ordinary failure. */
@@ -195,6 +196,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         icon: "ban",
         tone: "amber",
       };
+    case "promo_budget_exhausted":
+      return {
+        title: "Free rendering is paused this month",
+        body: "Free-plan rendering has reached this month's limit. Upgrade or buy credits to keep rendering now; your projects and renders are safe.",
+        icon: "pause",
+        tone: "amber",
+      };
   }
 }
 
@@ -274,7 +282,10 @@ export function LimitDialog({
   const showBalance = me !== null && ALLOWANCE_CODES.includes(refusal.code);
   // Out of credits: when the plan's monthly credits come back, and the way to get more now.
   const outOfCredits = refusal.code === "insufficient_credits" && me !== null && me.role !== "admin";
-  const renewal = outOfCredits && me.entitlement.nextCreditRenewalAt && me.entitlement.monthlyAllowance > 0
+  // The Free plan's monthly credits are on hold for this account (eligibility review): say so, and
+  // don't promise a renewal date that won't bring credits.
+  const freeCreditsHeld = outOfCredits && me.freeCredits?.held === true;
+  const renewal = outOfCredits && !freeCreditsHeld && me.entitlement.nextCreditRenewalAt && me.entitlement.monthlyAllowance > 0
     ? `${me.entitlement.monthlyAllowance} credits on ${new Date(me.entitlement.nextCreditRenewalAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
     : null;
 
@@ -296,6 +307,11 @@ export function LimitDialog({
               {copy.title}
             </h2>
             <p className="mt-1.5 text-sm text-muted">{refusal.message ?? copy.body}</p>
+            {freeCreditsHeld && (
+              <p className="mt-1.5 text-sm text-muted">
+                Your free monthly credits are on hold while we check this account. Contact support if you think this is a mistake; buying credits works as usual.
+              </p>
+            )}
           </div>
         </div>
 

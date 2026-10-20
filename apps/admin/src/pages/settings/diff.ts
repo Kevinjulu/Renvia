@@ -178,6 +178,11 @@ export type ExtraKey = Extract<
   | "messageMonthlyLimit"
   | "messageBudgetExhausted"
   | "messageAccountDisabled"
+  | "freeAllowanceMode"
+  | "freeAllowanceDailyApprovals"
+  | "promoBudgetUsd"
+  | "promoWarningPercent"
+  | "promoCriticalPercent"
 >;
 
 export type ExtraValue = number | string | null;
@@ -205,6 +210,11 @@ export const EXTRA_CHANGE_FIELDS: { key: ExtraKey; label: string; format: (value
   { key: "messageMonthlyLimit", label: "Monthly-limit message", format: asMessage },
   { key: "messageBudgetExhausted", label: "Budget message", format: asMessage },
   { key: "messageAccountDisabled", label: "Disabled-account message", format: asMessage },
+  { key: "freeAllowanceMode", label: "Free credit checks", format: (value) => String(value ?? "off") },
+  { key: "freeAllowanceDailyApprovals", label: "Automatic approvals per day", format: plain("") },
+  { key: "promoBudgetUsd", label: "Promotional budget", format: (value) => (value === null ? "No cap" : `${formatUsd(Number(value))}/mo`) },
+  { key: "promoWarningPercent", label: "Promotional warning", format: plain("%") },
+  { key: "promoCriticalPercent", label: "Promotional critical", format: plain("%") },
 ];
 
 export function isDangerous(settings: AdminSettings, draft: Draft): string | null {
@@ -230,6 +240,13 @@ export function isDangerous(settings: AdminSettings, draft: Draft): string | nul
   }
   if (typeof nextBudget === "number" && nextBudget > 0 && nextBudget < settings.spentUsd) {
     return `New budget (${formatUsd(nextBudget)}) is below current spend (${formatUsd(settings.spentUsd)}) — paid renders will pause.`;
+  }
+
+  if (result.body.freeAllowanceMode === "enforce" && settings.freeAllowanceMode !== "enforce") {
+    return "You're enforcing the free-credit checks: Free accounts that aren't approved stop receiving their monthly credits until someone approves them.";
+  }
+  if (result.body.freeAllowanceMode === "paused" && settings.freeAllowanceMode !== "paused") {
+    return "You're pausing free credits: no Free account starts a new month of credits until you change this back.";
   }
 
   const pausingRenders = result.body.maintenanceRenders === true && !settings.maintenanceRenders;

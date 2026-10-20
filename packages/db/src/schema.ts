@@ -8,6 +8,13 @@ export const users = pgTable(
   id: uuid("id").primaryKey().defaultRandom(),
   clerkId: text("clerk_id").notNull().unique(),
   email: text("email").notNull(),
+  /**
+   * The email with case, Gmail dots and any "+tag" removed: one mailbox, however it's written.
+   * Free-allowance checks compare it across accounts (a deleted and re-created account included).
+   */
+  emailNormalized: text("email_normalized"),
+  /** Whether Clerk reports the email verified; refreshed on each Studio load. Null before 0041. */
+  emailVerified: boolean("email_verified"),
   role: text("role", { enum: ["user", "analyst", "support", "billing", "admin"] }).notNull().default("user"),
   /** Spendable credits; standard renders cost 1, while premium actions can cost more. Every change is mirrored in credit_ledger. */
   creditBalance: integer("credit_balance").notNull().default(0),
@@ -41,6 +48,7 @@ export const users = pgTable(
     check("users_beta_credits_non_negative", sql`${table.betaCredits} >= 0`),
     check("users_plan_and_beta_within_balance", sql`${table.planCredits} + ${table.betaCredits} <= ${table.creditBalance}`),
     index("users_last_active_idx").on(table.lastActiveAt),
+    index("users_email_normalized_idx").on(table.emailNormalized),
     check(
       "users_daily_render_limit_override_range",
       sql`${table.dailyRenderLimitOverride} IS NULL OR ${table.dailyRenderLimitOverride} BETWEEN 0 AND 10000`,
@@ -178,6 +186,12 @@ export const renders = pgTable("renders", {
   configVersion: integer("config_version"),
   /** Set when beta credits paid for the job; its cost then counts toward that program's budget. */
   betaProgramId: uuid("beta_program_id").references((): AnyPgColumn => betaPrograms.id),
+  /**
+   * Whose money the job spent: account (bought or granted credits, or no charge), beta (a beta
+   * program's credits and budget) or promo (the Free plan's monthly allowance, which counts
+   * against the promotional budget). Set when the job is created.
+   */
+  fundingPool: text("funding_pool", { enum: ["account", "beta", "promo"] }).notNull().default("account"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -186,6 +200,9 @@ export const renders = pgTable("renders", {
       "renders_aspect_ratio_values",
       sql`${table.aspectRatio} IN ('auto', '1:1', '16:9', '4:3', '3:4', '9:16')`,
     ),
+    check("renders_funding_pool_values", sql`${table.fundingPool} IN ('account', 'beta', 'promo')`),
+    // Partial in the migration (WHERE funding_pool = 'promo'): the promotional budget's sum.
+    index("renders_promo_created_idx").on(table.createdAt),
     check("renders_cost_state_values", sql`${table.costState} IS NULL OR ${table.costState} IN ('pending', 'settled', 'uncertain', 'unresolved')`),
     check("renders_uncertain_cost_within_cost", sql`${table.uncertainCostMicros} >= 0 AND ${table.uncertainCostMicros} <= ${table.costMicros}`),
     // Partial in the migration (WHERE cost_state = 'uncertain'): the reconciliation queue.
@@ -280,9 +297,14 @@ export const budgetReservations = pgTable(
     costMicros: integer("cost_micros").notNull(),
     /** A beta program's hold; the global cap ignores these, since the job's global hold already counts. */
     betaProgramId: uuid("beta_program_id"),
+    /** global (the fal budget, or a beta program's with betaProgramId) or promo (the promotional budget). */
+    pool: text("pool", { enum: ["global", "promo"] }).notNull().default("global"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("budget_reservations_cost_non_negative", sql`${table.costMicros} >= 0`)],
+  (table) => [
+    check("budget_reservations_cost_non_negative", sql`${table.costMicros} >= 0`),
+    check("budget_reservations_pool_values", sql`${table.pool} IN ('global', 'promo')`),
+  ],
 );
 
 /**
@@ -314,9 +336,12 @@ export const segmentations = pgTable(
     configVersion: integer("config_version"),
     /** Set when beta credits paid for the selection. */
     betaProgramId: uuid("beta_program_id").references((): AnyPgColumn => betaPrograms.id),
+    /** As renders.funding_pool. */
+    fundingPool: text("funding_pool", { enum: ["account", "beta", "promo"] }).notNull().default("account"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    check("segmentations_funding_pool_values", sql`${table.fundingPool} IN ('account', 'beta', 'promo')`),
     index("segmentations_user_created_idx").on(table.userId, table.createdAt),
     index("segmentations_status_created_idx").on(table.status, table.createdAt.desc()),
   ],
@@ -466,11 +491,31 @@ export const userEntitlements = pgTable(
     periodCreditsGranted: integer("period_credits_granted").notNull().default(0),
     /** Scratch: the top-up computed by the statement that sets it, read later in the same transaction. */
     lastTopup: integer("last_topup").notNull().default(0),
+    /**
+     * Whether the Free plan's monthly allowance may be granted (see lib/freeAllowance.ts):
+     * approved | pending (not assessed yet) | verification_required | review_required | denied.
+     * Only the Free allowance depends on it; paid plans, admin-granted plans, purchases and beta
+     * credits never do, and nothing already granted is ever taken back. Accounts from before
+     * migration 0041 start approved.
+     */
+    freeAllowanceStatus: text("free_allowance_status", { enum: ["approved", "pending", "verification_required", "review_required", "denied"] }).notNull().default("pending"),
+    /** Why, in plain words: the rules that applied, or the operator's reason. */
+    freeAllowanceReason: text("free_allowance_reason"),
+    freeAllowanceDecidedAt: timestamp("free_allowance_decided_at", { withTimezone: true }),
+    /** The operator who decided it; null when the rules did (or for accounts from before 0041). */
+    freeAllowanceDecidedBy: uuid("free_allowance_decided_by").references((): AnyPgColumn => users.id),
+    /** FREE_ALLOWANCE_RULES_VERSION of the rules that decided it; null for an operator or pre-0041. */
+    freeAllowanceRuleVersion: integer("free_allowance_rule_version"),
+    /** When the rules last looked at this account. */
+    freeAllowanceAssessedAt: timestamp("free_allowance_assessed_at", { withTimezone: true }),
+    /** An operator's approval holds until then (null: until changed); afterwards the rules decide again. */
+    freeAllowanceApprovedUntil: timestamp("free_allowance_approved_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("user_entitlements_provider_subscription_unique").on(table.provider, table.providerSubscriptionId),
+    check("user_entitlements_free_allowance_status_values", sql`${table.freeAllowanceStatus} IN ('approved', 'pending', 'verification_required', 'review_required', 'denied')`),
     index("user_entitlements_grant_due_idx").on(table.status, table.nextCreditGrantAt),
     check("user_entitlements_monthly_credits_non_negative", sql`${table.monthlyCreditsRemaining} >= 0`),
   ],
@@ -657,6 +702,22 @@ export const appSettings = pgTable(
     storageCapMb: integer("storage_cap_mb").notNull().default(9000),
     /** Uploaded images one account may keep (MB of 10^6 bytes); admins and exempt users skip it. */
     storagePerUserMb: integer("storage_per_user_mb").notNull().default(500),
+    /**
+     * How the Free allowance's eligibility check is used: off (not run), observe (run and
+     * recorded, never withholds), enforce (only approved accounts get it) or paused (no account
+     * starts a new Free period). See lib/freeAllowance.ts.
+     */
+    freeAllowanceMode: text("free_allowance_mode", { enum: ["off", "observe", "enforce", "paused"] }).notNull().default("off"),
+    /** New accounts the rules may approve per UTC day; past it, more wait for review. */
+    freeAllowanceDailyApprovals: integer("free_allowance_daily_approvals").notNull().default(100),
+    /**
+     * Monthly fal spend (USD) jobs paid from the Free allowance may use, inside the global budget.
+     * Null = no separate cap. Paid and purchased usage never counts against it.
+     */
+    promoBudgetUsd: numeric("promo_budget_usd", { precision: 10, scale: 2 }),
+    /** Promotional budget warning and critical thresholds (percent), raised as incidents. */
+    promoWarningPercent: integer("promo_warning_percent").notNull().default(50),
+    promoCriticalPercent: integer("promo_critical_percent").notNull().default(80),
     falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
     falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -708,6 +769,10 @@ export const appSettings = pgTable(
     check("app_settings_stuck_timeout_range", sql`${table.stuckTimeoutMinutes} BETWEEN 1 AND 1440`),
     check("app_settings_storage_cap_range", sql`${table.storageCapMb} BETWEEN 100 AND 10000`),
     check("app_settings_storage_per_user_range", sql`${table.storagePerUserMb} BETWEEN 10 AND 10000`),
+    check("app_settings_free_allowance_mode_values", sql`${table.freeAllowanceMode} IN ('off', 'observe', 'enforce', 'paused')`),
+    check("app_settings_free_allowance_daily_approvals_range", sql`${table.freeAllowanceDailyApprovals} BETWEEN 1 AND 10000`),
+    check("app_settings_promo_budget_range", sql`${table.promoBudgetUsd} IS NULL OR ${table.promoBudgetUsd} BETWEEN 0 AND 10000`),
+    check("app_settings_promo_thresholds", sql`${table.promoWarningPercent} BETWEEN 1 AND 99 AND ${table.promoCriticalPercent} BETWEEN 2 AND 100 AND ${table.promoCriticalPercent} > ${table.promoWarningPercent}`),
     check("app_settings_fal_mode_values", sql`${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
     check("app_settings_budget_range", sql`${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
   ],
@@ -897,6 +962,34 @@ export const incidentNotifications = pgTable(
  * Published Studio configurations (feature rules). Never updated: a change or rollback is a new
  * version. The latest version is the one in force.
  */
+/**
+ * Every Free-allowance eligibility decision, append-only: the rules' assessments and operators'
+ * decisions, with the evidence behind each. Signals hold derived facts only (counts, booleans,
+ * the email domain), never another account's email.
+ */
+export const freeAllowanceAssessments = pgTable(
+  "free_allowance_assessments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    /** signup (first period) | renewal (a later period) | evidence (new facts, e.g. a verified email) | operator. */
+    kind: text("kind", { enum: ["signup", "renewal", "evidence", "operator"] }).notNull(),
+    outcome: text("outcome", { enum: ["approved", "verification_required", "review_required", "denied"] }).notNull(),
+    /** The mode in force: in observe, the outcome was recorded but never withheld anything. */
+    mode: text("mode", { enum: ["off", "observe", "enforce", "paused"] }).notNull(),
+    score: integer("score"),
+    ruleVersion: integer("rule_version"),
+    signals: jsonb("signals").$type<Record<string, unknown>>().notNull().default({}),
+    reason: text("reason").notNull(),
+    decidedBy: uuid("decided_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("free_allowance_assessments_user_created_idx").on(table.userId, table.createdAt.desc()),
+    index("free_allowance_assessments_kind_created_idx").on(table.kind, table.createdAt.desc()),
+  ],
+);
+
 export const studioConfigRevisions = pgTable(
   "studio_config_revisions",
   {

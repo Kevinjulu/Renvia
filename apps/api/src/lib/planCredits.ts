@@ -2,6 +2,7 @@ import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { BillingEntitlement } from "./billing.js";
 import { getBillingEntitlement } from "./billing.js";
+import { freeAllowanceGate, isFreeAllowance } from "./freeAllowance.js";
 
 /**
  * Monthly plan credits.
@@ -155,6 +156,10 @@ export async function ensureCreditPeriod(db: Database, userId: string, signup: D
   const { start, next } = creditPeriodFor(schedule === "signup" ? signup : schedule.anchor, now);
   // A paid period that has ended earns no further month; the lapse sweep moves it to Free.
   if (schedule !== "signup" && start >= schedule.until) return false;
+  // The Free plan's own allowance is granted only to an eligible account (freeAllowance.ts). A
+  // period held back simply doesn't start; it starts on a later request once the account is
+  // allowed, and nothing already in the balance changes either way.
+  if (schedule === "signup" && isFreeAllowance(billing) && !(await freeAllowanceGate(db, userId, billing, start, now))) return false;
   const period = { userId, allowance: billing.plan.monthlyCredits, start, next };
   if (entitlement.creditPeriodStart) await renewPeriod(db, period);
   else await startFirstPeriod(db, period);
@@ -205,13 +210,22 @@ export async function topUpPlanCredits(db: Database, userId: string, allowance: 
   return Number(added.rows[0]?.amount ?? 0);
 }
 
-/** Starts every due period. Run daily; users who sign in are also renewed on their next request. */
+/**
+ * Starts every due period. Run daily; users who sign in are also renewed on their next request.
+ * Free accounts whose allowance is held are left out, so they can't fill the batch every day:
+ * they start their period on their next request once allowed.
+ */
 export async function renewDueCreditPeriods(db: Database, now = new Date(), limit = 500): Promise<{ renewed: number }> {
+  const held = sql`(
+    ${entitlements.freeAllowanceStatus} in ('verification_required', 'review_required', 'denied')
+    and (select ${schema.billingPlans.interval} from ${schema.billingPlans} where ${schema.billingPlans.id} = ${entitlements.planId}) = 'none'
+    and (${entitlements.overridePlanId} is null or (${entitlements.overrideEndsAt} is not null and ${entitlements.overrideEndsAt} <= ${now}))
+  )`;
   const due = await db
     .select({ id: users.id, createdAt: users.createdAt })
     .from(users)
     .innerJoin(entitlements, eq(entitlements.userId, users.id))
-    .where(or(isNull(entitlements.creditPeriodStart), lte(entitlements.nextCreditGrantAt, now)))
+    .where(and(or(isNull(entitlements.creditPeriodStart), lte(entitlements.nextCreditGrantAt, now)), sql`not ${held}`))
     .limit(limit);
   let renewed = 0;
   for (const user of due) {

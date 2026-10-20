@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientBetaCreditsError, InsufficientCreditsError, isUniqueViolation, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
+import { fundPromo, reportPromoSpend } from "../lib/promotions.js";
 import { findOwnedProject } from "../lib/projects.js";
 import {
   creditsForRender,
@@ -40,6 +41,7 @@ import {
   refuseDisabled,
   jobCaps,
   refuseInput,
+  refusePromoBudget,
   refuseRacedCap,
   refuseStorage,
   resolveLimits,
@@ -378,6 +380,7 @@ renders.post("/", async (c) => {
   // from the same revision as the feature check (Settings' multipliers until prices are published).
   const credits = isAdmin ? 0 : creditsForRender(generationSettings, effectiveCreditPrices(revision.config, appSettings));
   let programHold: string | null = null;
+  let promoHold: string | null = null;
   try {
     // Testers pay from beta credits within the program budget; never silently from their own.
     const funding = await fundJob(c.env, db, beta, body.funding, credits, costMicros);
@@ -386,6 +389,13 @@ renders.post("/", async (c) => {
       return (await replay()) ?? c.json(refusal, refusal.status);
     }
     programHold = funding.hold;
+    // Jobs paid from the Free plan's credits also hold this month's promotional budget.
+    const promo = await fundPromo(c.env, db, appSettings, billing, user, credits, costMicros, Boolean(funding.charge));
+    if (!promo.ok) {
+      const refusal = refusePromoBudget(appSettings);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
+    promoHold = promo.hold;
     let created;
     try {
       created = await createChargedRender(db, user.id, credits, {
@@ -402,6 +412,7 @@ renders.post("/", async (c) => {
         settings: generationSettings,
         idempotencyKey: body.idempotencyKey,
         configVersion: revision.version,
+        fundingPool: promo.pool,
       }, funding.charge, jobCaps(limits, "render"));
     } catch (error) {
       // A parallel request took the last slot after this one's pre-flight check.
@@ -426,11 +437,13 @@ renders.post("/", async (c) => {
       throw error;
     }
     if (funding.program) await reportProgramSpend(c.env, db, funding.program);
+    if (promo.pool === "promo") await reportPromoSpend(c.env, db, appSettings);
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } finally {
     await releaseBudgetReservation(db, reservation);
     await releaseBudgetReservation(db, programHold);
+    await releaseBudgetReservation(db, promoHold);
   }
 });
 
@@ -481,6 +494,7 @@ renders.post("/:id/upscale", async (c) => {
 
   const credits = user.role === "admin" ? 0 : creditsForRender({ upscale: { target, parentRenderId: parent.id } }, effectiveCreditPrices(revision.config, appSettings));
   let programHold: string | null = null;
+  let promoHold: string | null = null;
   try {
     const funding = await fundJob(c.env, db, beta, requestedFunding, credits, costMicros);
     if (!funding.ok) {
@@ -488,6 +502,13 @@ renders.post("/:id/upscale", async (c) => {
       return (await replay()) ?? c.json(refusal, refusal.status);
     }
     programHold = funding.hold;
+    // Jobs paid from the Free plan's credits also hold this month's promotional budget.
+    const promo = await fundPromo(c.env, db, appSettings, billing, user, credits, costMicros, Boolean(funding.charge));
+    if (!promo.ok) {
+      const refusal = refusePromoBudget(appSettings);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
+    promoHold = promo.hold;
     const created = await createChargedRender(db, user.id, credits, {
       projectId: parent.projectId,
       sourceImageUrl: parent.resultImageUrl,
@@ -502,8 +523,10 @@ renders.post("/:id/upscale", async (c) => {
       settings: { upscale: { target, parentRenderId: parent.id } },
       idempotencyKey,
       configVersion: revision.version,
+      fundingPool: promo.pool,
     }, funding.charge, jobCaps(resolveLimits(user, appSettings, billing.plan, betaProgram), "render"));
     if (funding.program) await reportProgramSpend(c.env, db, funding.program);
+    if (promo.pool === "promo") await reportPromoSpend(c.env, db, appSettings);
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } catch (error) {
@@ -528,6 +551,7 @@ renders.post("/:id/upscale", async (c) => {
   } finally {
     await releaseBudgetReservation(db, reservation);
     await releaseBudgetReservation(db, programHold);
+    await releaseBudgetReservation(db, promoHold);
   }
 });
 

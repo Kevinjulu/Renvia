@@ -1,6 +1,8 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminFreeAllowanceDecisionRequest,
+  AdminFreeAllowanceResponse,
   AdminBetaAnnouncement,
   AdminStockReference,
   AdminStockReferencesResponse,
@@ -158,6 +160,9 @@ export function useAdminApi() {
       inviteBetaTestersBulk: (programId: string, body: { emails?: string[]; userIds?: string[]; sendEmail: boolean; cohort?: string | null; creditsOverride?: number | null; expiresInDays?: number }) =>
         request<{ results: ({ email: string; userId?: string; ok: true } & AdminBetaInvitationCreated | { email: string; userId?: string; ok: false; error: string; code: string })[] }>(getToken, `/admin/beta/programs/${programId}/invitations/bulk`, { method: "POST", body: JSON.stringify(body) }),
       getUserBetaStatus: (userId: string) => request<AdminUserBetaStatus>(getToken, `/admin/beta/users/${userId}`),
+      getUserFreeAllowance: (userId: string) => request<AdminFreeAllowanceResponse>(getToken, `/admin/users/${userId}/free-allowance`),
+      decideUserFreeAllowance: (userId: string, body: AdminFreeAllowanceDecisionRequest) =>
+        request<AdminFreeAllowanceResponse & { granted: boolean }>(getToken, `/admin/users/${userId}/free-allowance`, { method: "POST", body: JSON.stringify(body) }),
       revokeBetaInvitation: (id: string, reason: string) => request<AdminBetaInvitation>(getToken, `/admin/beta/invitations/${id}/revoke`, { method: "POST", body: JSON.stringify({ reason }) }),
       setBetaEnrollmentStatus: (id: string, status: "active" | "suspended" | "completed" | "revoked", reason: string) =>
         request<AdminBetaEnrollment>(getToken, `/admin/beta/enrollments/${id}/status`, { method: "POST", body: JSON.stringify({ status, reason }) }),
