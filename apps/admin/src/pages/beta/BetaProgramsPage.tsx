@@ -2,10 +2,9 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { FlaskConical, Plus } from "lucide-react";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../../components/ui";
-import { PageHero } from "../../components/PageHero";
+import { PageTop } from "../../components/PageTop";
 import { useAdminApi } from "../../lib/api";
 import { formatUsd } from "../../lib/format";
-import { navForPath } from "../../lib/nav";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
@@ -15,16 +14,17 @@ import { betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, schedul
 export function BetaProgramsPage() {
   const api = useAdminApi();
   const can = betaCan(useAdmin());
-  const nav = navForPath("/beta");
-  const { data, error, reload } = useLoad(() => api.listBetaPrograms(), [api]);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.listBetaPrograms(), [api]);
   const [creating, setCreating] = useState(false);
 
   return (
     <div>
-      <PageHero
-        title={nav.title}
-        description={nav.description}
-        image={nav.banner}
+      <PageTop
+        title="Beta programs"
+        description="Private testing programs: testers, invitations, credits, missions, announcements and the fal budget."
+        lastUpdated={lastUpdated ?? null}
+        loading={loading}
+        onRefresh={reload}
         actions={can.managePrograms ? <Button variant="primary" icon={Plus} onClick={() => setCreating((open) => !open)}>New program</Button> : undefined}
       />
       {creating && <CreateProgram onDone={() => { setCreating(false); reload(); }} />}

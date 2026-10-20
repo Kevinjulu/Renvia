@@ -3,10 +3,9 @@ import { useSearchParams } from "react-router-dom";
 import { Inbox, MessageSquare } from "lucide-react";
 import type { AdminBetaFeedbackDetail, BetaFeedbackCategory, BetaFeedbackStatus, BetaSeverity } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../../components/ui";
-import { PageHero } from "../../components/PageHero";
+import { PageTop } from "../../components/PageTop";
 import { useAdminApi } from "../../lib/api";
 import { formatRelative } from "../../lib/format";
-import { navForPath } from "../../lib/nav";
 import { useAdmin } from "../../lib/useAdmin";
 import { useLoad } from "../../lib/useLoad";
 import { inputClass } from "../settings/components";
@@ -18,14 +17,13 @@ const SEVERITY_TONE: Record<BetaSeverity, "neutral" | "blue" | "amber" | "red"> 
 /** The beta Feedback Inbox: every tester report, triaged in one place. */
 export function BetaFeedbackPage() {
   const api = useAdminApi();
-  const nav = navForPath("/beta-feedback");
   const [params, setParams] = useSearchParams();
   const programId = params.get("programId") ?? "";
   const status = params.get("status") ?? "";
   const category = params.get("category") ?? "";
   const [selected, setSelected] = useState<string | null>(params.get("id"));
   const { data: programs } = useLoad(() => api.listBetaPrograms(), [api]);
-  const { data, error, reload } = useLoad(() => api.listBetaFeedback({ programId: programId || undefined, status: status || undefined, category: category || undefined }), [api, programId, status, category], 60_000);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.listBetaFeedback({ programId: programId || undefined, status: status || undefined, category: category || undefined }), [api, programId, status, category], 60_000);
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -36,7 +34,7 @@ export function BetaFeedbackPage() {
 
   return (
     <div>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+      <PageTop title="Tester feedback" description="Every tester report with their marks on the render, diagnostics and thread: triage, reply and resolve." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {STATUS_TABS.map((item) => (
           <button key={item || "all"} type="button" onClick={() => setFilter("status", item)} className={`rounded-full px-3 py-1 text-xs font-medium ${status === item ? "bg-primary text-white" : "bg-surface-muted text-secondary"}`}>

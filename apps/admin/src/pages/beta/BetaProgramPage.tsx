@@ -2,7 +2,8 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Copy, Users } from "lucide-react";
 import { STUDIO_FEATURES, type AdminBetaProgramDetailResponse, type AdminBetaInvitationCreated, type BetaMissionRule, type StudioFeatureKey } from "@renvia/types";
-import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton, StatCard, Table } from "../../components/ui";
+import { KpiTile } from "../../components/KpiTile";
+import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton, Table } from "../../components/ui";
 import { useAdminApi } from "../../lib/api";
 import { formatUsd } from "../../lib/format";
 import { useAdmin } from "../../lib/useAdmin";
@@ -67,7 +68,7 @@ export function BetaProgramPage() {
       <Link to="/beta" className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-primary"><ArrowLeft size={14} /> All programs</Link>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-[26px] font-bold tracking-tight text-primary">{program.name}</h1><Pill tone={PROGRAM_STATUS_TONE[program.status]}>{program.status}</Pill></div>
+          <div className="flex items-center gap-2"><h1 className="text-[22px] font-bold tracking-tight text-primary">{program.name}</h1><Pill tone={PROGRAM_STATUS_TONE[program.status]}>{program.status}</Pill></div>
           <p className="text-sm text-muted">{new Date(program.startsAt).toLocaleDateString()} – {new Date(program.endsAt).toLocaleDateString()} · {scheduleLabel(program.startsAt, program.endsAt)} · {program.slug}</p>
         </div>
         {can.managePrograms && program.status !== "ended" && (
@@ -95,11 +96,11 @@ export function BetaProgramPage() {
 
       {status && <p className={`mb-4 rounded-xl px-3 py-2 text-sm ${status.tone === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{status.text}</p>}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Testers" value={`${program.capacity.active + program.capacity.suspended} / ${program.maxTesters}`} detail={`${program.capacity.suspended} suspended · ${program.capacity.free} free`} icon={Users} accent="blue" />
-        <StatCard label="Pending invites" value={program.capacity.pendingSlots} detail="Each holds a place" accent="neutral" />
-        <StatCard label="Fal spend" value={formatUsd(program.spentUsd)} detail={`of ${formatUsd(program.budgetUsd)} · warns at ${program.budgetWarningPercent}%`} accent={used >= 1 ? "rose" : used * 100 >= program.budgetWarningPercent ? "amber" : "emerald"} />
-        <StatCard label="Credits granted" value={program.creditsGranted} detail={`${program.creditsPerTester} each · ceiling ${program.maxCreditsPerTester}`} accent="neutral" />
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiTile label="Testers" value={`${program.capacity.active + program.capacity.suspended} / ${program.maxTesters}`} detail={`${program.capacity.suspended} suspended · ${program.capacity.free} free`} tone="default" />
+        <KpiTile label="Pending invites" value={program.capacity.pendingSlots} detail="Each holds a place" tone="default" />
+        <KpiTile label="Fal spend" value={formatUsd(program.spentUsd)} detail={`of ${formatUsd(program.budgetUsd)} · warns at ${program.budgetWarningPercent}%`} tone={used >= 1 ? "bad" : used * 100 >= program.budgetWarningPercent ? "warn" : "good"} />
+        <KpiTile label="Credits granted" value={program.creditsGranted} detail={`${program.creditsPerTester} each · ceiling ${program.maxCreditsPerTester}`} tone="default" />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-hairline">
@@ -535,13 +536,13 @@ function InsightsTab({ data }: { data: Detail }) {
   const open = totalReports - (counts.resolved ?? 0) - (counts.duplicate ?? 0) - (counts.expected ?? 0) - (counts.declined ?? 0) - (counts.cannot_reproduce ?? 0);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <StatCard label="Beta credits spent" value={data.program.creditsGranted - remaining} detail={`${remaining} still with testers`} accent="blue" />
-      <StatCard label="Cost per credit spent" value={data.program.creditsGranted - remaining > 0 ? formatUsd(data.program.spentUsd / (data.program.creditsGranted - remaining)) : "—"} detail="Budgeted fal cost" accent="neutral" />
-      <StatCard label="Mission completion" value={missionSlots ? `${Math.round((missionsDone / missionSlots) * 100)}%` : "—"} detail={`${missionsDone} of ${missionSlots}`} accent="emerald" />
-      <StatCard label="Finished the tour" value={`${onboarded} / ${testers.length}`} accent="neutral" />
-      <StatCard label="Reports" value={totalReports} detail={`${open} open`} accent={open > 0 ? "amber" : "neutral"} />
-      <StatCard label="Waiting to verify" value={counts.ready_to_verify ?? 0} detail="Fixes testers haven't confirmed" accent="neutral" />
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <KpiTile label="Beta credits spent" value={data.program.creditsGranted - remaining} detail={`${remaining} still with testers`} tone="default" />
+      <KpiTile label="Cost per credit spent" value={data.program.creditsGranted - remaining > 0 ? formatUsd(data.program.spentUsd / (data.program.creditsGranted - remaining)) : "—"} detail="Budgeted fal cost" tone="default" />
+      <KpiTile label="Mission completion" value={missionSlots ? `${Math.round((missionsDone / missionSlots) * 100)}%` : "—"} detail={`${missionsDone} of ${missionSlots}`} tone="good" />
+      <KpiTile label="Finished the tour" value={`${onboarded} / ${testers.length}`} tone="default" />
+      <KpiTile label="Reports" value={totalReports} detail={`${open} open`} tone={open > 0 ? "warn" : "default"} />
+      <KpiTile label="Waiting to verify" value={counts.ready_to_verify ?? 0} detail="Fixes testers haven't confirmed" tone="default" />
       <div className="sm:col-span-2 lg:col-span-3"><Link to={`/beta-feedback?programId=${data.program.id}`} className="text-sm font-medium text-blueprint hover:underline">Open this program's feedback inbox →</Link></div>
     </div>
   );
