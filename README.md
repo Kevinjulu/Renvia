@@ -17,9 +17,11 @@ packages and the API address keep the old name on purpose; see
 
 | Area | State |
 |---|---|
-| Studio (rendering, edits, selections, dashboard, billing page) | Shipping |
-| Admin console (14 routes, 5 staff roles, audit, incidents, approvals) | Shipping. Approval thresholds are API-only (no UI yet) |
-| API (renders, credits, budget cap, uploads, billing, admin, cron) | Shipping |
+| Studio (rendering, edits, selections, reference library, prompt Polish, dashboard, billing page) | Shipping |
+| Admin console (22 routes, 5 staff roles, audit, incidents, approvals) | Shipping. Approval thresholds are API-only (no UI yet) |
+| Studio Control (feature rules, credit prices, model holds, maintenance windows) | Shipping |
+| Beta program (invitations, beta credits and budget, missions, feedback inbox) | Built and deployed 2026-10-15; browser e2e still to do (see [Beta program](#beta-program)) |
+| API (renders, credits, budget cap, uploads, billing, admin, beta, cron) | Shipping |
 | Marketing site (landing, pricing, blog, legal) | Shipping |
 | PayPal checkout and webhooks | **Built and tested; disabled until credentials are set** (see [PayPal](#paypal)) |
 | Automated tests | API (credits, refunds, budget, PayPal, admin), one studio unit test, fixture check. Browser e2e is manual |
@@ -57,7 +59,7 @@ types and API contracts through `packages/*` via the pnpm workspace protocol.
 | API | Hono on Vercel Functions, Zod |
 | Auth | Clerk (session tokens verified locally in the API) |
 | Database | Postgres (Neon) via Drizzle ORM |
-| File storage | Neon Object Storage (S3-compatible), served through expiring signed links |
+| File storage | Cloudflare R2 (S3-compatible, private) since 2026-10-11, served through expiring signed links |
 | AI rendering | fal.ai via `@fal-ai/client` (queue submit, webhook, status poll) |
 | Payments | PayPal (one-off credit packs and subscriptions) |
 | Tests | Vitest (API), Node's test runner (studio), Playwright (studio e2e) |
@@ -110,7 +112,7 @@ for local work). Server-only: never give these a `VITE_` or `NEXT_PUBLIC_` prefi
 | `FAL_MODE` | `mock` (default: free placeholder results, no fal calls), `dev` (cheapest model) or `prod`. Anything else falls back to `mock` |
 | `FAL_BUDGET_USD` | Hard cap on total estimated fal spend. Unset or `0` blocks all paid renders |
 | `FAL_ADMIN_KEY` | Optional fal key on the `BILLING` preset (read-only). Shows the real fal balance and 30-day billed spend on the admin overview |
-| `NEON_STORAGE_ACCESS_KEY_ID`, `NEON_STORAGE_SECRET_ACCESS_KEY`, `NEON_STORAGE_ENDPOINT`, `NEON_STORAGE_BUCKET`, `NEON_STORAGE_REGION` | Object storage for uploads and generated renders |
+| `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION` | Cloudflare R2 bucket for uploads and generated renders (region defaults to `auto`). The older `NEON_STORAGE_*` names are still read as a fallback |
 | `STORAGE_URL_SIGNING_SECRET` | Long random secret for seven-day expiring image links. Objects are not anonymously public |
 | `CRON_SECRET` | Bearer token for the daily render sweep. Unset disables the endpoint |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `PAYPAL_ENV` | PayPal. Optional: see [PayPal](#paypal) |
@@ -277,7 +279,13 @@ instance, calling the role-gated `/api/admin/*` routes.
 | Credits | The full credit ledger |
 | Billing, Financials, Operations | Payments, refunds, webhook replay, revenue and margin, work queue |
 | Incidents | Open, acknowledge, assign and resolve operational incidents |
-| Approvals | Approve or reject held role changes and bulk grants, then execute them |
+| Performance | Render latency percentiles (queue, first pass, upscale), failure rate and categories, cost per job, over 24h / 7d / 30d |
+| Studio Control | Publish versioned Studio configs (feature rules, credit prices, model holds) and schedule maintenance windows. See [Studio Control](#studio-control) |
+| Models | Every model the code can call, the engine mode and route each serves, its cost, and seven days of usage, latency and failures. Hold a model |
+| Plans & Pricing | Plan prices, monthly credits, PayPal and Paystack plan IDs, credit packs (each change kept as a version) |
+| Library | The stock reference images every Studio user sees, by category: upload, caption, reorder, hide |
+| Beta, Beta feedback | Programs, invitations, testers, grants, budget, missions, announcements, and the feedback inbox. See [Beta program](#beta-program) |
+| Approvals | Approve or reject held role changes, bulk grants, Studio Control changes and maintenance windows, then execute them |
 | Audit | Every staff action, with immutable CSV exports |
 | Settings | Monthly plan credits, limits, prices, messages, maintenance mode, engine mode and budget |
 
@@ -296,19 +304,92 @@ The admin API is split by area under `apps/api/src/routes/admin/`, one router pe
 page, mounted in `index.ts`. Hono matches in registration order, so keep that
 order when adding routes.
 
+## Studio Control
+
+Studio Control decides what the Studio offers without a redeploy. The admin page
+publishes a config as a numbered, checksummed revision
+(`studio_config_revisions`). Any earlier revision can be restored, and changes past
+the governance threshold go through Approvals. The API checks the current revision
+on every render, edit, upscale and selection request
+(`apps/api/src/lib/studioControl.ts`).
+
+- **Feature rules.** Each Studio feature (`STUDIO_FEATURES` in `packages/types`:
+  standard, reference and strict-fidelity renders, edits, upscale, 4K/8K output,
+  click and prompt selection) can be switched off, limited to some plans, rolled out
+  to a stable percentage of users, and given its own refusal message.
+- **Observe mode.** A rule set to `observe` allows the request but records that it
+  would have been refused (`studio_feature_observations`), so a rule can be tried
+  on real traffic before it is enforced.
+- **Credit prices.** A revision can carry its own credit prices. Without them,
+  Settings' `creditsPerImage` and `creditsPerSelection` apply.
+- **Model holds.** The Models page holds a model by publishing a revision, and a
+  held model takes no jobs. Routing is code (`apps/api/src/lib/models.ts`): the
+  registry can hold a model back but can't send a job to one the code wasn't built
+  for.
+- **Maintenance windows.** Scheduled windows of up to seven days, with a message,
+  active while `now()` is inside them and they aren't cancelled.
+
+The default config turns everything on for everyone, which is how the Studio
+behaved before Studio Control existed.
+
+## Reference library
+
+Reference renders and edits take style or material images. The Studio's library
+has two sources:
+
+- **The user's own uploads** (`reference_images`, `/api/references`).
+- **Stock references** (`stock_references`, `GET /api/references/stock`), shared by
+  every user and grouped under category chips: windows, roof, doors, pillars,
+  outdoors, exterior. Admins manage them on the Library page, and every change is
+  audited as `library.update`.
+
+The Studio also has a **Polish** button that rewrites a render or edit prompt with
+a language model. Polishes cost users no credits but are capped per user per day,
+and their cost counts toward the fal budget (`prompt_polishes`).
+
+## Beta program
+
+A private, invitation-only beta (10 testers by default) built into the Studio, API
+and admin. A tester is an enrollment, never a role.
+
+- **Beta credits** (`users.beta_credits`) sit inside `credit_balance`. Beta-funded
+  jobs can only spend beta credits, and account-funded jobs can't touch them. They
+  expire when the tester's enrollment ends.
+- **Program budget.** Each program has its own hard fal cap (default $10), separate
+  from `FAL_BUDGET_USD`, with warnings at 80% and 100%.
+- **Studio** (`apps/studio/src/beta/`): join page, welcome and tour, a BETA tag by
+  the logo, the Beta Program page with missions and announcements, and a report
+  drawer with annotations, screenshots and reply threads.
+- **Admin** (`apps/admin/src/pages/beta/`): programs, invitations within capacity,
+  testers, grants and extensions, budget, missions, announcements, and the feedback
+  inbox for triage, replies, duplicates and known issues.
+- **Housekeeping** runs with the daily cron: it ends expired enrollments, expires
+  leftover beta credits and deletes old screenshots.
+
+The design is in [docs/beta-testing-system.md](docs/beta-testing-system.md). Running
+a program, deploying and changing the system are in
+[docs/beta-operations.md](docs/beta-operations.md).
+
 ## Database
 
-26 tables and 27 migrations. The schema is
+44 tables and 39 migrations (`0000` to `0038` in
+[packages/db/migrations](packages/db/migrations)). The schema is
 [packages/db/src/schema.ts](packages/db/src/schema.ts).
 
 | Area | Tables |
 |---|---|
 | Accounts | `users` |
-| Product | `projects`, `canvas_nodes`, `renders`, `reference_images`, `segmentations` |
+| Product | `projects`, `canvas_nodes`, `renders`, `render_job_events`, `reference_images`, `stock_references`, `segmentations`, `prompt_polishes` |
 | Credits and spend | `credit_ledger`, `budget_reservations` |
-| Billing | `billing_plans`, `user_entitlements`, `credit_packs`, `billing_checkouts`, `billing_payments`, `billing_invoices`, `billing_webhook_events` |
-| Operations | `app_settings`, `incidents`, `incident_events`, `incident_notifications` |
+| Billing | `billing_plans`, `billing_plan_versions`, `user_entitlements`, `credit_packs`, `credit_pack_versions`, `billing_checkouts`, `billing_payments`, `billing_invoices`, `billing_webhook_events` |
+| Studio Control | `studio_config_revisions`, `studio_feature_observations`, `maintenance_windows` |
+| Beta | `beta_programs`, `beta_invitations`, `beta_enrollments`, `beta_missions`, `beta_mission_progress`, `beta_feedback`, `beta_feedback_comments`, `beta_announcements` |
+| Operations | `app_settings`, `scheduled_jobs`, `storage_objects`, `incidents`, `incident_events`, `incident_notifications` |
 | Governance | `admin_events`, `customer_notes`, `customer_tags`, `governance_settings`, `approval_requests`, `approval_events`, `audit_exports` |
+
+`storage_objects` is a byte ledger of everything in R2. The API refuses new files
+once it reaches `app_settings.storage_cap_mb`, which keeps the bucket inside R2's
+free 10 GB without listing it.
 
 ```bash
 pnpm db:generate   # generate a migration after editing schema.ts
@@ -352,7 +433,8 @@ Postgres service container. It uses no secrets.
 - Renders flow through `apps/api/src/lib/engine.ts`: `POST /renders` submits to the
   fal queue, and jobs complete via the `/webhooks/fal` callback (public
   deployments) or on the next `GET /renders/:id` poll (local dev, and as a
-  fallback). Results are copied into our own storage, since fal URLs expire.
+  fallback). Results are copied into our own storage (R2), since fal URLs expire.
+  [docs/image-pipeline.md](docs/image-pipeline.md) covers how images are stored and served.
 - Build output (`dist/`, `*.tsbuildinfo`) is not tracked. `packages/db` and
   `packages/types` are built by `pnpm build`, which `lint` and `typecheck` depend on.
 
