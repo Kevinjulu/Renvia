@@ -30,6 +30,8 @@ export interface Env {
   FAL_BUDGET_USD?: string;
   /** fal key on the BILLING preset, read-only: shows the real fal balance in admin. Optional. */
   FAL_ADMIN_KEY?: string;
+  /** Language model "Polish prompt" uses through fal's OpenRouter endpoint. Optional. */
+  POLISH_MODEL?: string;
   /**
    * S3-compatible object storage (Cloudflare R2 since 2026-10-11): endpoint, bucket and keys.
    * STORAGE_REGION defaults to "auto", which is what R2 expects.

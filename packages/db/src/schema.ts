@@ -295,6 +295,28 @@ export const segmentations = pgTable(
   ],
 );
 
+/**
+ * One "Polish prompt" request. Free to users (no credits); recorded for the per-user daily cap and
+ * so its AI cost counts toward the fal spending cap, like renders and selections.
+ */
+export const promptPolishes = pgTable(
+  "prompt_polishes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind", { enum: ["render", "edit"] }).notNull(),
+    /** ai: rewritten by the language model. rules: the deterministic fallback, which costs nothing. */
+    engine: text("engine", { enum: ["ai", "rules"] }).notNull(),
+    model: text("model"),
+    status: text("status", { enum: ["succeeded", "failed"] }).notNull(),
+    costMicros: integer("cost_micros").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("prompt_polishes_user_created_idx").on(table.userId, table.createdAt)],
+);
+
 export const creditLedger = pgTable(
   "credit_ledger",
   {

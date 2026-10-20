@@ -62,7 +62,7 @@ function falClient(env: Env): FalClient {
  * (the driver returns it as a string): an `::int` cast errors once spend passes ~$2,147.
  */
 async function spentMicros(db: Database): Promise<number> {
-  const [[renders], [segments]] = await Promise.all([
+  const [[renders], [segments], [polishes]] = await Promise.all([
     db
       .select({ total: sql<string>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint` })
       .from(schema.renders)
@@ -71,8 +71,12 @@ async function spentMicros(db: Database): Promise<number> {
       .select({ total: sql<string>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint` })
       .from(schema.segmentations)
       .where(ne(schema.segmentations.status, "failed")),
+    // "Polish prompt" requests to the language model (free to users, but not to the fal account).
+    db
+      .select({ total: sql<string>`coalesce(sum(${schema.promptPolishes.costMicros}), 0)::bigint` })
+      .from(schema.promptPolishes),
   ]);
-  return Number(renders?.total ?? 0) + Number(segments?.total ?? 0);
+  return Number(renders?.total ?? 0) + Number(segments?.total ?? 0) + Number(polishes?.total ?? 0);
 }
 
 export async function getBudget(env: Env, db: Database): Promise<RenderBudgetResponse> {

@@ -7,6 +7,7 @@ import { hasSelection, startRenderEdit, useRenderEditStore } from "../../canvas/
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore, type EditScope } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { useAccountStore } from "../../lib/useAccountStore";
+import { PromptAssist } from "./PromptAssist";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
@@ -281,6 +282,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
               method === "reference-prompt" ? "e.g. Make the windows match the reference" : "e.g. Replace the front door with a dark oak pivot door"
             }
           />
+          <PromptAssist prompt={editPrompt} kind="edit" onUse={(value) => setEditPrompt(value.slice(0, maxChars))} />
         </div>
       )}
 

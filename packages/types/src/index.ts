@@ -61,6 +61,31 @@ export interface FidelitySettings {
   reviewedAt?: string;
 }
 
+/** Which prompt is being polished: a render brief or a description of one edit. */
+export type PromptPolishKind = "render" | "edit";
+
+/** Polishes each person gets per day (UTC). Polishing is free: it never charges credits. */
+export const PROMPT_POLISH_DAILY_LIMIT = 30;
+
+/**
+ * Prompts longer than this many words tend to confuse the model: parts get ignored or misread.
+ * The Studio suggests shortening or polishing past it.
+ */
+export const PROMPT_LONG_WORDS = 40;
+
+export interface PromptPolishResponse {
+  /** The suggested prompt. The Studio shows it; the person chooses whether to use it. */
+  prompt: string;
+  /** What changed, in plain language. */
+  notes: string[];
+  /** Requests that would redesign the source building, left out of a source-locked render. */
+  blocked: string[];
+  /** ai: rewritten by the language model. rules: the deterministic fallback (AI off or unavailable). */
+  engine: "ai" | "rules";
+  /** Polishes left today, or null when this person has no daily limit. */
+  remainingToday: number | null;
+}
+
 export interface PromptRepairResponse {
   /** Safe, concise direction suitable for a source-locked reference render. */
   prompt: string;

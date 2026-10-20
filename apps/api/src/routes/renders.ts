@@ -23,8 +23,10 @@ import {
   FACADE_MATERIALS,
   featuresForRender,
   MAX_FACADE_COLOR_CHARS,
+  PROMPT_POLISH_DAILY_LIMIT,
   renderRouteFor,
   suggestedEditPartForPrompt,
+  type PromptPolishResponse,
 } from "@renvia/types";
 import { cancelRender, getBudget, refreshRender, releaseBudgetReservation, reserveBudget, submitRender } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
@@ -44,6 +46,7 @@ import { modelFor, upscaleCostMicros } from "../lib/models.js";
 import { detectSourceType } from "../lib/sourceKind.js";
 import { ownUploadKey, storageWouldExceed } from "../lib/storage.js";
 import { repairReferencePrompt } from "../lib/prompts.js";
+import { polishesToday, polishPrompt } from "../lib/promptPolish.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
 import { ForeignRenderError, resolveImageInput } from "../lib/watermark.js";
@@ -156,6 +159,44 @@ renders.post("/repair-prompt", async (c) => {
   const body = repairPromptSchema.parse(await c.req.json());
   if (!body.sourceLocked) return c.json({ prompt: body.prompt, repairs: [], blocked: [] });
   return c.json(repairReferencePrompt(body.prompt));
+});
+
+const polishPromptSchema = z.object({
+  prompt: z.string().trim().min(1).max(8000),
+  kind: z.enum(["render", "edit"]),
+  /** A render with references: requests that would redesign the source are left out. */
+  sourceLocked: z.boolean().default(false),
+});
+
+/**
+ * "Polish prompt": a suggested rewrite of the prompt as a short architectural brief. Free (no
+ * credits), up to PROMPT_POLISH_DAILY_LIMIT a day per person; admins have no limit. Its AI cost
+ * counts toward the fal spending cap.
+ */
+renders.post("/polish-prompt", async (c) => {
+  const { clerkId } = c.get("auth");
+  const body = polishPromptSchema.parse(await c.req.json());
+  const db = createDb(c.env.DATABASE_URL);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  if (user.disabled) return c.json({ error: "This account is disabled" }, 403);
+
+  const limited = user.role !== "admin";
+  const used = limited ? await polishesToday(db, user.id) : 0;
+  if (limited && used >= PROMPT_POLISH_DAILY_LIMIT) {
+    return c.json({ code: "polish_limit", error: `You've used today's ${PROMPT_POLISH_DAILY_LIMIT} free polishes. More are available tomorrow.` }, 429);
+  }
+
+  const outcome = await polishPrompt(c.env, db, body);
+  await db.insert(schema.promptPolishes).values({
+    userId: user.id,
+    kind: body.kind,
+    engine: outcome.result.engine,
+    model: outcome.model,
+    status: "succeeded",
+    costMicros: outcome.costMicros,
+  });
+  const response: PromptPolishResponse = { ...outcome.result, remainingToday: limited ? PROMPT_POLISH_DAILY_LIMIT - used - 1 : null };
+  return c.json(response);
 });
 
 const createUpscaleSchema = z.object({ target: z.enum(["4k", "8k"]), idempotencyKey: z.string().uuid().optional(), funding: z.enum(["beta", "account"]).optional() });

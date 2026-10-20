@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { suggestedEditPartForPrompt, type ProtectedGeometryFeature, type PromptRepairResponse } from "@renvia/types";
+import { suggestedEditPartForPrompt, type ProtectedGeometryFeature } from "@renvia/types";
 import { ReferenceBar } from "./ReferenceBar";
 import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useAccountStore } from "../../lib/useAccountStore";
 import { AdvancedSection } from "./AdvancedSection";
 import { GuideLabel } from "../../guide/HelpHotspot";
 import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
-import { useApiClient } from "../../lib/apiClient";
+import { PromptAssist } from "./PromptAssist";
 
 /** Server defaults before /me has loaded — match app_settings's defaults. */
 const DEFAULT_MAX_PROMPT_CHARS = 2000;
@@ -28,9 +28,6 @@ const PROTECTED_FEATURES: { id: ProtectedGeometryFeature; label: string }[] = [
 ];
 
 export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTabBodyProps) {
-  const apiClient = useApiClient();
-  const [repair, setRepair] = useState<PromptRepairResponse | null>(null);
-  const [isRepairing, setIsRepairing] = useState(false);
   const [showFidelityToast, setShowFidelityToast] = useState(false);
   const styleInfluence = useGenerationSettingsStore((state) => state.styleInfluence);
   const setStyleInfluence = useGenerationSettingsStore((state) => state.setStyleInfluence);
@@ -63,15 +60,6 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
       setShowFidelityToast(true);
     }
   }, [referenceCount]);
-
-  const polishPrompt = async () => {
-    setIsRepairing(true);
-    try {
-      setRepair(await apiClient.repairPrompt(prompt, referenceCount > 0));
-    } finally {
-      setIsRepairing(false);
-    }
-  };
 
   const toggleProtectedFeature = (feature: ProtectedGeometryFeature) => {
     setProtectedGeometry(
@@ -122,31 +110,7 @@ export function RenderTabBody({ prompt, onPromptChange, onMoveToEdit }: RenderTa
               <button type="button" className="cp-hint-button" onClick={onMoveToEdit}>Edit {suggestedEditPart}</button>
             </div>
           )}
-          <div className="cp-prompt-tools">
-            <button type="button" className="cp-prompt-polish" onClick={() => void polishPrompt()} disabled={isRepairing || !prompt.trim()}>
-              {isRepairing ? "Polishing…" : "Polish prompt"}
-            </button>
-            <small>{referenceCount > 0 ? "Removes reference instructions that would redesign your source." : "Cleans up a short rendering brief."}</small>
-          </div>
-          {repair && (
-            <div className="cp-prompt-repair" role="status">
-              {repair.blocked.length > 0 && <p>Kept out: {repair.blocked.join(" · ")}</p>}
-              {repair.prompt && <p>Ready to use: {repair.prompt}</p>}
-              <div>
-                <button
-                  type="button"
-                  disabled={!repair.prompt || repair.prompt === prompt}
-                  onClick={() => {
-                    onPromptChange(repair.prompt);
-                    setRepair(null);
-                  }}
-                >
-                  Use polished prompt
-                </button>
-                <button type="button" onClick={() => setRepair(null)}>Dismiss</button>
-              </div>
-            </div>
-          )}
+          <PromptAssist prompt={prompt} kind="render" sourceLocked={referenceCount > 0} onUse={onPromptChange} />
         </div>
 
         {suggestReference && <NextStepCallout step="reference" />}

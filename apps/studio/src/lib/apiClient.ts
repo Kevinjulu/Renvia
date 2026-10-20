@@ -34,7 +34,8 @@ import type {
   MeCreditsResponse,
   MeResponse,
   Project,
-  PromptRepairResponse,
+  PromptPolishKind,
+  PromptPolishResponse,
   ReferenceImage,
   RenderBudgetResponse,
   DeleteCanvasNodeResponse,
@@ -238,11 +239,12 @@ function createApiClient(getToken: GetToken) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(withFunding(body)),
       }),
-    repairPrompt: (prompt: string, sourceLocked = true) =>
-      request<PromptRepairResponse>(getToken, "/renders/repair-prompt", {
+    /** A suggested rewrite of a prompt. Free: it never charges credits (capped per day). */
+    polishPrompt: (prompt: string, kind: PromptPolishKind, sourceLocked = false) =>
+      request<PromptPolishResponse>(getToken, "/renders/polish-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, sourceLocked }),
+        body: JSON.stringify({ prompt, kind, sourceLocked }),
       }),
     upscaleRender: (id: string, body: CreateUpscaleRequest) =>
       request<CreateUpscaleResponse>(getToken, `/renders/${id}/upscale`, {
