@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import { Cpu, PauseCircle } from "lucide-react";
 import { STUDIO_FEATURES, type AdminModel } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { formatModel, formatNumber, formatPercent, formatRelative, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { inputClass } from "./settings/components";
@@ -34,8 +33,7 @@ export function ModelsPage() {
   const api = useAdminApi();
   const me = useAdmin();
   const canManage = me.role === "admin";
-  const nav = navForPath("/models");
-  const { data, error, reload, lastUpdated } = useLoad(() => api.getModels(), [api], 60_000);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.getModels(), [api], 60_000);
   const [holding, setHolding] = useState<AdminModel | null>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "info" | "error"; text: string } | null>(null);
 
@@ -53,16 +51,12 @@ export function ModelsPage() {
 
   return (
     <>
-      <PageHero
-        title={nav.title}
-        description={nav.description}
-        image={nav.banner}
-        actions={
-          <div className="flex flex-wrap items-center gap-3 text-xs text-white/80">
-            {data && <span>Engine mode: <strong className="text-white">{data.mode}</strong></span>}
-            {lastUpdated && <span className="text-white/60">Updated {formatRelative(lastUpdated.toISOString())}</span>}
-          </div>
-        }
+      <PageTop
+        title="Model Registry"
+        description={data ? `The AI models behind each Studio route: cost, reliability and speed, and a switch to pause a failing one. Engine mode: ${data.mode}.` : "The AI models behind each Studio route: cost, reliability and speed, and a switch to pause a failing one."}
+        lastUpdated={lastUpdated ?? null}
+        loading={loading}
+        onRefresh={reload}
       />
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
       {status && (

@@ -12,10 +12,9 @@ import {
   type CreditPrices,
 } from "@renvia/types";
 import { Button, Card, ErrorNote, Pill, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop, pageActionClass } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatNumber, formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { inputClass } from "./settings/components";
@@ -40,12 +39,11 @@ export function PlansPage() {
   const api = useAdminApi();
   const me = useAdmin();
   const canManage = me.role === "admin";
-  const nav = navForPath("/plans");
-  const { data, error, reload } = useLoad(() => api.getPlans(), [api]);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.getPlans(), [api]);
 
   return (
     <>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} actions={<Link to="/audit?action=plan.update" className="rounded-xl border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-white/20">Audit trail</Link>} />
+      <PageTop title="Plans & Pricing" description="Credit prices, plan terms and credit packs, every change versioned, plus a simulator for what a pricing change would mean." lastUpdated={lastUpdated ?? null} loading={loading} onRefresh={reload} actions={<Link to="/audit?action=plan.update" className={pageActionClass}>Change history</Link>} />
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
       {!data ? (
         <div className="space-y-6"><Skeleton className="h-64 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
