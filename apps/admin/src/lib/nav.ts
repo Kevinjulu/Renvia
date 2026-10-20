@@ -28,8 +28,9 @@ export const ADMIN_NAV_GROUPS: { label: string; paths: string[] }[] = [
   { label: "Studio jobs", paths: ["/renders", "/segmentations"] },
   { label: "Revenue", paths: ["/billing", "/plans"] },
   { label: "Beta", paths: ["/beta"] },
-  { label: "Platform", paths: ["/studio-control", "/models", "/library", "/settings"] },
   { label: "Governance", paths: ["/approvals", "/audit"] },
+  // Settings closes the menu: it is the broadest control, so it comes last.
+  { label: "Platform", paths: ["/studio-control", "/models", "/library", "/settings"] },
 ];
 
 /**

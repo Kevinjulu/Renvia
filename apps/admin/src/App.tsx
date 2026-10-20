@@ -230,7 +230,7 @@ function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose
 
       <nav className="flex flex-1 flex-col gap-3 px-3 pb-4 pt-4" aria-label="Admin sections">
         {groups.map((group) => <section key={group.label}>
-          <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500">{group.label}</p>
+          <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-400">{group.label}</p>
           <div className="flex flex-col gap-0.5">{group.items.map((item) => item && (
           <NavLink
             key={item.to}
