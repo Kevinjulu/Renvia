@@ -12,7 +12,8 @@ import { showStudioNotice } from "../shell/StudioNotice";
  */
 async function downloadImage(url: string, title: string) {
   try {
-    const response = await fetch(url, { mode: "cors" });
+    // no-store: a copy cached from the <img> on screen has no CORS headers (see DownloadDialog).
+    const response = await fetch(url, { mode: "cors", cache: "no-store" });
     if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);

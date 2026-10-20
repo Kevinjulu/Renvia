@@ -38,7 +38,10 @@ function formatBytes(bytes: number) {
 
 async function loadBitmap(url: string) {
   // Fetched rather than loaded through <img> so the pixels are CORS-clean for canvas export.
-  const response = await fetch(url, { mode: "cors" });
+  // no-store: the Studio has usually shown this image already through a plain <img>, and the
+  // bucket answers that request without CORS headers and without Vary: Origin, so a cached copy
+  // would fail this CORS read. Going to the network gets a response with CORS headers.
+  const response = await fetch(url, { mode: "cors", cache: "no-store" });
   if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
   const blob = await response.blob();
   return { blob, bitmap: await createImageBitmap(blob) };
