@@ -28,6 +28,7 @@ const KNOWN_CODES: LimitCode[] = [
   "upload_too_large",
   "feature_disabled",
   "storage_full",
+  "storage_quota_reached",
   "beta_credits_exhausted",
   "beta_budget_exhausted",
   "beta_unavailable",
@@ -157,6 +158,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         title: "Storage is full",
         body: "Ramah Studio can't save new images right now. Everything you've already made is safe — try again a little later.",
         icon: "pause",
+        tone: "amber",
+      };
+    case "storage_quota_reached":
+      return {
+        title: "Your upload storage is full",
+        body: "You've reached the space for uploaded images on your account. Delete projects or assets you no longer need; the space is freed within a few days.",
+        icon: "ruler",
         tone: "amber",
       };
     case "feature_disabled":

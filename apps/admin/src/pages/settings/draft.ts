@@ -30,6 +30,7 @@ export function toDraft(settings: AdminSettings): Draft {
     budgetCriticalPercent: String(settings.budgetCriticalPercent),
     stuckTimeoutMinutes: String(settings.stuckTimeoutMinutes),
     storageCapMb: String(settings.storageCapMb),
+    storagePerUserMb: String(settings.storagePerUserMb),
     falMode: settings.falMode ?? "",
     falBudgetUsd: settings.falBudgetUsd === null ? "" : String(settings.falBudgetUsd),
   };
@@ -104,6 +105,10 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
   const storageCap = Number(draft.storageCapMb);
   if (!Number.isInteger(storageCap) || storageCap < 100 || storageCap > 10_000) {
     errors.storageCapMb = "Whole number from 100 to 10,000 MB (the free 10 GB).";
+  }
+  const storagePerUser = Number(draft.storagePerUserMb);
+  if (!Number.isInteger(storagePerUser) || storagePerUser < 10 || storagePerUser > 10_000) {
+    errors.storagePerUserMb = "Whole number from 10 to 10,000 MB.";
   }
   const budget = draft.falBudgetUsd.trim() === "" ? null : Number(draft.falBudgetUsd);
   if (budget !== null && (!Number.isFinite(budget) || budget < 0 || budget > 10_000)) {
@@ -196,6 +201,7 @@ export function validateDraft(draft: Draft): { body: AdminUpdateSettingsRequest;
       budgetCriticalPercent: critical,
       stuckTimeoutMinutes: stuck,
       storageCapMb: storageCap,
+      storagePerUserMb: storagePerUser,
       falMode: draft.falMode || null,
       falBudgetUsd: budget,
     },

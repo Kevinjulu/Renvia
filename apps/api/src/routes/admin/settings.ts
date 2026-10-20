@@ -89,6 +89,7 @@ async function toAdminSettings(env: Env, db: Database, row: AppSettingsRow): Pro
     budgetCriticalPercent: row.budgetCriticalPercent,
     stuckTimeoutMinutes: row.stuckTimeoutMinutes,
     storageCapMb: row.storageCapMb,
+    storagePerUserMb: row.storagePerUserMb,
     storage: { usedBytes: storage.usedBytes, capBytes: row.storageCapMb * BYTES_PER_MB, objects: storage.objects, byKind: storage.byKind },
     falMode: row.falMode,
     falBudgetUsd: row.falBudgetUsd === null ? null : Number(row.falBudgetUsd),
@@ -149,6 +150,7 @@ const updateSettingsSchema = z
     stuckTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
     // Never above R2's free 10 GB: storage past it is billed.
     storageCapMb: z.number().int().min(100).max(10_000).optional(),
+    storagePerUserMb: z.number().int().min(10).max(10_000).optional(),
     falMode: z.enum(["mock", "dev", "prod"]).nullable().optional(),
     falBudgetUsd: z.number().min(0).max(10_000).nullable().optional(),
     /** Why; kept in the audit row, and required context for a change that needs approval. */
@@ -247,6 +249,7 @@ settingsRoutes.put("/settings", async (c) => {
             budgetCriticalPercent: before.budgetCriticalPercent,
             stuckTimeoutMinutes: before.stuckTimeoutMinutes,
             storageCapMb: before.storageCapMb,
+            storagePerUserMb: before.storagePerUserMb,
             falMode: before.falMode,
             falBudgetUsd: before.falBudgetUsd === null ? null : Number(before.falBudgetUsd),
           },

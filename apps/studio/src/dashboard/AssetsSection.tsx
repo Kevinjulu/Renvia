@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { thumbnailUrl, type ReferenceImage, type ReferenceImageSource } from "@renvia/types";
 import { useApiClient } from "../lib/apiClient";
+import { limitRefusal } from "../components/LimitDialog";
 import { formatRelativeTime } from "../lib/relativeTime";
 
 type Filter = "all" | ReferenceImageSource;
@@ -84,20 +85,33 @@ export function AssetsSection({ autoOpenUpload, query = "", onNotice }: AssetsSe
     setUploadCount({ done: 0, total: files.length });
     let uploaded = 0;
     let failed = 0;
+    // A storage refusal stops the batch: every later file would be refused the same way.
+    let storageMessage: string | null = null;
     for (const file of files) {
+      if (storageMessage) {
+        failed += 1;
+        continue;
+      }
       try {
         const { publicUrl } = await api.uploadImage(file);
         const reference = await api.createReference({ url: publicUrl, source: "upload" });
         setAssets((current) => [reference, ...current]);
         uploaded += 1;
-      } catch {
+      } catch (error) {
         failed += 1;
+        const refusal = limitRefusal(error);
+        if (refusal?.code === "storage_quota_reached" || refusal?.code === "storage_full") {
+          storageMessage = refusal.code === "storage_quota_reached"
+            ? "Your upload storage is full. Delete projects or assets you no longer need; space is freed within a few days."
+            : "Ramah Studio can't save new images right now. Your existing work is safe.";
+        }
       } finally {
         setUploadCount((current) => (current ? { done: current.done + 1, total: current.total } : current));
       }
     }
     setUploadCount(null);
     if (failed === 0) onNotice(`${uploaded} ${uploaded === 1 ? "file" : "files"} added to your assets.`);
+    else if (storageMessage) onNotice(`${uploaded} of ${files.length} files added. ${storageMessage}`);
     else onNotice(`${uploaded} of ${files.length} files added — ${failed} failed. Check the file type and try again.`);
   };
 

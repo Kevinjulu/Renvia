@@ -389,7 +389,16 @@ a program, deploying and changing the system are in
 
 `storage_objects` is a byte ledger of everything in R2. The API refuses new files
 once it reaches `app_settings.storage_cap_mb`, which keeps the bucket inside R2's
-free 10 GB without listing it.
+free 10 GB without listing it. Uploads also stop at 90% of the cap, keeping the
+rest for render results, and each account may keep at most
+`app_settings.storage_per_user_mb` of uploads (500 MB by default; admins and
+limit-exempt users skip it).
+
+The daily cron sweeps storage (`apps/api/src/lib/storageCleanup.ts`). It deletes
+uploads older than 3 days that nothing points at any more. It also deletes the files of renders
+that were removed from history more than 7 days ago or whose project was deleted,
+unless a canvas, asset, other render or open beta report still uses them. Render
+rows are kept for spend and credit history.
 
 ```bash
 pnpm db:generate   # generate a migration after editing schema.ts

@@ -3,6 +3,7 @@ import { schema, type Database } from "@renvia/db";
 import type { LimitCode, UserLimits, UserUsage } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
 import { effectiveMaintenance } from "./studioControl.js";
+import { BYTES_PER_MB, uploadBytesFor, uploadWouldExceed } from "./storage.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type BillingPlanRow = typeof schema.billingPlans.$inferSelect;
@@ -140,6 +141,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   upload_too_large: "Image is too large",
   feature_disabled: "This feature isn't available",
   storage_full: "Image storage is full. Your existing work is safe, but nothing new can be saved right now.",
+  storage_quota_reached: "You've reached your storage for uploaded images. Delete projects or assets you no longer need; space is freed within a few days.",
   beta_credits_exhausted: "You've used your beta credits. You can use your own credits for this instead.",
   beta_budget_exhausted: "Beta rendering is paused because the shared testing budget has been reached. Your projects and feedback are still available.",
   beta_unavailable: "Beta credits can't be used right now.",
@@ -224,6 +226,21 @@ export function refuseBetaUnavailable(settings: AppSettingsRow): Refusal {
 
 export function refuseStorage(settings: AppSettingsRow): Refusal {
   return refuse(settings, "storage_full", 503);
+}
+
+/**
+ * The storage checks for a new upload of `bytes`: the account's own allowance (admins and
+ * exempt users skip it), then the uploads' share of the shared cap. Null when it may be stored.
+ */
+export async function checkUploadStorage(db: Database, user: UserRow, clerkId: string, settings: AppSettingsRow, bytes: number): Promise<Refusal | null> {
+  if (user.role !== "admin" && !user.limitsExempt) {
+    const used = await uploadBytesFor(db, clerkId);
+    if (used + bytes > settings.storagePerUserMb * BYTES_PER_MB) {
+      return refuse(settings, "storage_quota_reached", 403, { limit: settings.storagePerUserMb, used: Math.ceil(used / BYTES_PER_MB) });
+    }
+  }
+  if (await uploadWouldExceed(db, settings.storageCapMb, bytes)) return refuseStorage(settings);
+  return null;
 }
 
 export function refuseDisabled(settings: AppSettingsRow): Refusal {

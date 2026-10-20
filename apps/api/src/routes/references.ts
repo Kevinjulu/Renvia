@@ -5,7 +5,8 @@ import { createDb, schema } from "@renvia/db";
 import type { ListStockReferencesResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getOrCreateUserId } from "../lib/users.js";
+import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
+import { checkUploadStorage } from "../lib/limits.js";
 import { getSettings } from "../lib/settings.js";
 import { objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
@@ -66,6 +67,8 @@ references.post("/", async (c) => {
     try {
       const imported = await importImageFromUrl(body.url, settings.maxUploadMb * 1024 * 1024);
       const image = await optimizeUpload(imported.bytes, imported.contentType);
+      const refusal = await checkUploadStorage(db, await getOrCreateUser(c.env, db, clerkId), clerkId, settings, image.bytes.byteLength);
+      if (refusal) return c.json(refusal, refusal.status);
       const key = objectKeyFor(clerkId, image.contentType);
       await putObject(c.env, key, image.bytes, image.contentType);
       url = publicUploadUrl(new URL(c.req.url).origin, key);

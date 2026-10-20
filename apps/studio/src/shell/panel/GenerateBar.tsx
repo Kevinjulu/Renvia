@@ -48,6 +48,7 @@ function refusalMessage(code: string | null, maintenanceMessage?: string | null)
   if (code === "segmentation_failed") return "Automatic selection failed. Try again or switch to Manual.";
   if (code === "feature_disabled") return "That option isn't available on your account right now.";
   if (code === "storage_full") return "Ramah Studio can't save new images right now. Your existing work is safe.";
+  if (code === "storage_quota_reached") return "Your upload storage is full. Delete projects or assets you no longer need.";
   return null;
 }
 

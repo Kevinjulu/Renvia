@@ -556,6 +556,8 @@ export type LimitCode =
   | "feature_disabled"
   /** Stored images reached the operator's storage cap; nothing new can be saved. */
   | "storage_full"
+  /** The account's uploaded images reached the per-account allowance (limit/used in MB). */
+  | "storage_quota_reached"
   /** A beta-funded job needs more beta credits than the tester has left. */
   | "beta_credits_exhausted"
   /** The beta program's shared provider budget can't cover this job. */
@@ -1163,6 +1165,8 @@ export interface AdminSettings {
   creditPricesPublished: boolean;
   /** New uploads and renders are refused once stored images reach this (MB of 10^6 bytes). */
   storageCapMb: number;
+  /** Uploaded images one account may keep (MB of 10^6 bytes); admins and exempt users skip it. */
+  storagePerUserMb: number;
   /** Stored images, from the storage ledger. */
   storage: { usedBytes: number; capBytes: number; objects: number; byKind: { upload: number; render: number; watermark: number; feedback: number; stock: number; thumbnail: number } };
   maintenanceRenders: boolean;
@@ -1236,6 +1240,7 @@ export type AdminUpdateSettingsRequest = Partial<
     | "budgetCriticalPercent"
     | "stuckTimeoutMinutes"
     | "storageCapMb"
+    | "storagePerUserMb"
     | "falMode"
     | "falBudgetUsd"
   > & {

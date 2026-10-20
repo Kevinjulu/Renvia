@@ -7,6 +7,7 @@ import { renewDueCreditPeriods } from "../lib/planCredits.js";
 import { endLapsedSubscriptions } from "../lib/subscriptions.js";
 import { OPERATIONS_SYNC_JOB, runScheduledJob } from "../lib/scheduledJobs.js";
 import { runBetaHousekeeping } from "../lib/betaHousekeeping.js";
+import { runStorageCleanup } from "../lib/storageCleanup.js";
 
 export const cron = new Hono<{ Bindings: Env }>();
 
@@ -42,7 +43,7 @@ cron.get("/operations-sync", async (c) => {
 /**
  * Daily run from Vercel Cron (see vercel.json): the operations sync above, then the monthly
  * credit periods that are due, for users who haven't signed in since their renewal date
- * (signing in renews them straight away).
+ * (signing in renews them straight away), beta housekeeping, and the storage sweep.
  */
 cron.get("/sweep-renders", async (c) => {
   if (!authorized(c)) return c.json({ error: "Unauthorized" }, 401);
@@ -53,5 +54,7 @@ cron.get("/sweep-renders", async (c) => {
   const credits = await renewDueCreditPeriods(db);
   // Beta testers past their end date, leftover beta credits, and old feedback screenshots.
   const beta = await runBetaHousekeeping(c.env, db);
-  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), subscriptions, credits, beta });
+  // Uploads nothing uses any more, and files of renders removed from history or deleted.
+  const storage = await runStorageCleanup(c.env, db);
+  return c.json({ ...(operations.ran ? operations.result : { swept: 0, incidents: null, skipped: operations.reason }), subscriptions, credits, beta, storage });
 });

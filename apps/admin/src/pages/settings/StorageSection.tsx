@@ -49,7 +49,7 @@ export function StorageSection({ data, draft, fieldErrors, update }: { data: Adm
           </div>
         ))}
       </dl>
-      <p className="mt-2 text-xs text-faint">{formatNumber(objects)} stored files. Overview warns at 70% and 90%.</p>
+      <p className="mt-2 text-xs text-faint">{formatNumber(objects)} stored files. Overview warns at 70% and 90%. Unused uploads and files of renders removed from history are cleared daily, after a few days' grace.</p>
 
       <div className="mt-5">
         <Field
@@ -58,6 +58,15 @@ export function StorageSection({ data, draft, fieldErrors, update }: { data: Adm
           error={fieldErrors.storageCapMb}
         >
           <input type="number" min={100} max={10000} value={draft.storageCapMb} onChange={(event) => update({ storageCapMb: event.target.value })} className={inputClass(fieldErrors.storageCapMb)} />
+        </Field>
+      </div>
+      <div className="mt-4">
+        <Field
+          label="Uploads per account (MB)"
+          hint="How much uploaded imagery (sources, references, selection masks) one account may keep, so no single account can fill the shared cap. Admins and limit-exempt users skip it. Uploads also stop at 90% of the cap, keeping the rest for render results."
+          error={fieldErrors.storagePerUserMb}
+        >
+          <input type="number" min={10} max={10000} value={draft.storagePerUserMb} onChange={(event) => update({ storagePerUserMb: event.target.value })} className={inputClass(fieldErrors.storagePerUserMb)} />
         </Field>
       </div>
     </section>

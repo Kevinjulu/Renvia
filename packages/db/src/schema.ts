@@ -628,6 +628,8 @@ export const appSettings = pgTable(
     stuckTimeoutMinutes: integer("stuck_timeout_minutes").notNull().default(15),
     /** New uploads and renders are refused once stored objects reach this many MB (10^6 bytes). */
     storageCapMb: integer("storage_cap_mb").notNull().default(9000),
+    /** Uploaded images one account may keep (MB of 10^6 bytes); admins and exempt users skip it. */
+    storagePerUserMb: integer("storage_per_user_mb").notNull().default(500),
     falMode: text("fal_mode", { enum: ["mock", "dev", "prod"] }),
     falBudgetUsd: numeric("fal_budget_usd", { precision: 10, scale: 2 }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -678,6 +680,7 @@ export const appSettings = pgTable(
     ),
     check("app_settings_stuck_timeout_range", sql`${table.stuckTimeoutMinutes} BETWEEN 1 AND 1440`),
     check("app_settings_storage_cap_range", sql`${table.storageCapMb} BETWEEN 100 AND 10000`),
+    check("app_settings_storage_per_user_range", sql`${table.storagePerUserMb} BETWEEN 10 AND 10000`),
     check("app_settings_fal_mode_values", sql`${table.falMode} IS NULL OR ${table.falMode} IN ('mock', 'dev', 'prod')`),
     check("app_settings_budget_range", sql`${table.falBudgetUsd} IS NULL OR ${table.falBudgetUsd} BETWEEN 0 AND 10000`),
   ],

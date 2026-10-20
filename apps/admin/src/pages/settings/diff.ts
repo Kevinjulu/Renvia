@@ -129,6 +129,14 @@ export function diffChanges(settings: AdminSettings, draft: Draft): ChangeItem[]
   );
   pushIfChanged(
     items,
+    "storagePerUserMb",
+    "Uploads per account",
+    `${settings.storagePerUserMb} MB`,
+    `${body.storagePerUserMb!} MB`,
+    body.storagePerUserMb !== undefined && body.storagePerUserMb !== settings.storagePerUserMb,
+  );
+  pushIfChanged(
+    items,
     "falMode",
     "Mode",
     formatMode(settings.falMode),

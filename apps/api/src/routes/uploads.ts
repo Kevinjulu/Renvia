@@ -18,7 +18,8 @@ import { servedThumbnailKey, watermarkedCopy } from "../lib/watermark.js";
 import { makeThumbnail, optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
-import { refuseInput, refuseStorage } from "../lib/limits.js";
+import { checkUploadStorage, refuseInput } from "../lib/limits.js";
+import { getOrCreateUser } from "../lib/users.js";
 
 export const uploads = new Hono<AppContext>();
 
@@ -62,10 +63,9 @@ uploads.post("/", requireAuth, async (c) => {
   }
 
   const db = createDb(c.env.DATABASE_URL);
-  if (await storageWouldExceed(db, settings.storageCapMb, image.bytes.byteLength)) {
-    const refusal = refuseStorage(settings);
-    return c.json(refusal, refusal.status);
-  }
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  const refusal = await checkUploadStorage(db, user, clerkId, settings, image.bytes.byteLength);
+  if (refusal) return c.json(refusal, refusal.status);
   const key = objectKeyFor(clerkId, image.contentType);
 
   await putObject(c.env, key, image.bytes, image.contentType);

@@ -8,8 +8,6 @@ import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
 import { refuseInput, resolveLimits } from "../lib/limits.js";
-import { deleteObject, ownUploadKey, thumbnailKeyFor } from "../lib/storage.js";
-import { watermarkedCopyKeys } from "../lib/watermark.js";
 import { ensureEntitlement } from "../lib/billing.js";
 import { presentForViewer } from "../lib/presentAsset.js";
 
@@ -119,32 +117,12 @@ projects.delete("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  // Render outputs are generated uniquely per render, so unlike user uploads they cannot be
-  // shared by another project and can be removed immediately. Source/reference uploads are
-  // intentionally retained because they may be reused in another project or the asset library.
-  const renderRows = await db
-    .select({ resultImageUrl: schema.renders.resultImageUrl, settings: schema.renders.settings })
-    .from(schema.renders)
-    .where(eq(schema.renders.projectId, id));
-  const origin = new URL(c.req.url).origin;
-  const generatedKeys = renderRows
-    .flatMap((row) => [row.resultImageUrl, row.settings?.highRes?.imageUrl])
-    .map((url) => url && ownUploadKey(url, origin))
-    .filter((key): key is string => Boolean(key?.startsWith("renders/")));
-
-  // No cascade on the FKs — clear dependent rows before the project itself.
+  // No cascade on the FKs — clear dependent rows before the project itself. Files are left to the
+  // daily storage sweep (lib/storageCleanup.ts): it deletes a gone render's outputs and unused
+  // uploads, but keeps any that another project still uses, e.g. as a reference.
   await db.delete(schema.renders).where(eq(schema.renders.projectId, id));
   await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id));
   await db.delete(schema.projects).where(eq(schema.projects.id, id));
-
-  // Each output's watermarked copies and thumbnails go with it (deleting one that was never made
-  // is a no-op).
-  await Promise.allSettled(
-    generatedKeys
-      .flatMap((key) => [key, ...watermarkedCopyKeys(key)])
-      .flatMap((key) => [key, thumbnailKeyFor(key)])
-      .map((key) => deleteObject(c.env, key)),
-  );
 
   return c.json({ id });
 });

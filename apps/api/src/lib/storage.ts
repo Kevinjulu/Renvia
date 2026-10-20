@@ -283,6 +283,37 @@ export async function storageWouldExceed(db: Database, capMb: number, bytes: num
   return (await storageUsage(db)).usedBytes + bytes > capMb * BYTES_PER_MB;
 }
 
+/**
+ * The share of the cap uploads may fill. The rest is kept for render output, so a burst of
+ * uploads can't stop paid renders from saving their results.
+ */
+const UPLOAD_SHARE_OF_CAP = 0.9;
+
+/** True when `bytes` more of uploads would pass their share of the cap. */
+export function uploadWouldExceed(db: Database, capMb: number, bytes: number): Promise<boolean> {
+  return storageWouldExceed(db, capMb * UPLOAD_SHARE_OF_CAP, bytes);
+}
+
+/** Where an account's uploads live: objectKeyFor puts every one under this prefix. */
+export function uploadPrefixFor(clerkId: string): string {
+  return `elevations/${clerkId}/`;
+}
+
+/** Bytes of one account's uploads (sources, references, selection masks) and their thumbnails. */
+export async function uploadBytesFor(db: Database, clerkId: string): Promise<number> {
+  const prefix = uploadPrefixFor(clerkId);
+  // starts_with, not LIKE: Clerk ids contain "_", which LIKE treats as a wildcard.
+  const [row] = await db
+    .select({ bytes: sql<string>`coalesce(sum(${schema.storageObjects.bytes}), 0)::bigint` })
+    .from(schema.storageObjects)
+    .where(sql`starts_with(${schema.storageObjects.key}, ${prefix}) or starts_with(${schema.storageObjects.key}, ${thumbnailKeyPrefix(prefix)})`);
+  return Number(row?.bytes ?? 0);
+}
+
+function thumbnailKeyPrefix(prefix: string): string {
+  return `${THUMBNAIL_PREFIX}${prefix}`;
+}
+
 export interface StoredObject {
   body: ReadableStream;
   contentType: string;

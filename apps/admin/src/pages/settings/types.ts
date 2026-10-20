@@ -28,6 +28,7 @@ export interface Draft {
   budgetCriticalPercent: string;
   stuckTimeoutMinutes: string;
   storageCapMb: string;
+  storagePerUserMb: string;
   falMode: RenderEngineMode | "";
   falBudgetUsd: string;
 }
