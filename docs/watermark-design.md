@@ -101,6 +101,24 @@ The monogram was a geometric R built from two filled shapes: a 7-thick top bar r
 - **Browsers converge within about 14 hours.** A watermarked link is reissued unchanged for 14 hours, and the browser may keep its redirect and image for that link. Once a new link is issued, it fetches the new version. A tab left open on an old link could show the old design for up to the link's 7-day life.
 - **Older copies stay in storage until cleaned up.** Version 2 copies (`watermarked-v2/...`) and unversioned thumbnails (`thumbs/watermarked/...`) are no longer served but are not deleted automatically. Do not delete them until at least 8 days after the new version is live, because a cached redirect can still point at them for up to 7 days.
 
+### Cleaning up older versions
+
+[apps/api/scripts/cleanup-watermarks.ts](../apps/api/scripts/cleanup-watermarks.ts) removes them. Run it from `apps/api`:
+
+```
+node --env-file=.env.local scripts/cleanup-watermarks.ts                    # dry run: counts, sizes, examples
+node --env-file=.env.local scripts/cleanup-watermarks.ts --reclassify       # fix ledger kinds; deletes nothing
+node --env-file=.env.local scripts/cleanup-watermarks.ts --apply --confirm <count>
+```
+
+- **What it can delete:** only keys that `obsoleteWatermarkVersion()` in [watermarkVersions.ts](../apps/api/src/lib/watermarkVersions.ts) recognises, i.e. watermarked copies and thumbnails of render outputs from a version older than `WATERMARK_VERSION`. Originals, uploads, other thumbnails, stock and feedback never match; a test pins this.
+- **Where it looks:** the bucket, under the watermark prefixes only, not the storage ledger, because objects stored before the ledger existed are only in the bucket.
+- **Safeguards:** `--apply` needs `--confirm` with the exact count the dry run found, and refuses until 8 days after the current version first stored a copy (read from the ledger).
+- **How it deletes:** in batches of up to 1000; a key's ledger row is removed only once the bucket confirms that key's deletion. Running it again is harmless.
+- **`--reclassify`** fixes ledger rows for versioned copies recorded as uploads by an earlier bug in `storageKindFor`.
+
+When version 3 went live (first copy stored 2026-10-20 06:54 UTC) the dry run found 36 version 2 copies (13.5 MB) and 23 unversioned thumbnails (0.8 MB); deleting them is allowed from 2026-10-28.
+
 ## Rebranding for another brand
 
 1. **Artwork.** Put the brand's filled vector paths in `packages/brand`: for a raster-only logo, use `scripts/vectorize.mjs` (it also produces the watermark cut). Keep a horizontal unit, symbol left and wording right, inside the 191 × 49 box.

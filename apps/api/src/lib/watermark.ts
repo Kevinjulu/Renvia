@@ -21,6 +21,7 @@ import {
 } from "./storage.js";
 import { getSettings } from "./settings.js";
 import { overlaySvg } from "./watermarkOverlay.js";
+import { WATERMARK_VERSION } from "./watermarkVersions.js";
 
 /**
  * Free-plan model output is watermarked everywhere it is shown or downloaded. The clean
@@ -61,9 +62,7 @@ export async function watermarkImage(bytes: Uint8Array, contentType: string): Pr
   return new Uint8Array(await encoded.toBuffer());
 }
 
-// Bump when the overlay changes, so copies made with an earlier design are remade on next open.
-// 2: RENVIA artwork. 3: RAMAH STUDIO artwork on the same grid.
-export const WATERMARK_VERSION = 3;
+export { WATERMARK_VERSION };
 
 /** Where the copy behind a watermarked/ link is stored; links stay the same across versions. */
 const storedCopyKey = (key: string, version = WATERMARK_VERSION) => `watermarked-v${version}/${originalKeyFor(key)}`;
