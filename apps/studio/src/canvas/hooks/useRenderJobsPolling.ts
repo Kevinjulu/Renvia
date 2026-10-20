@@ -8,7 +8,12 @@ const POLL_INTERVAL_MS = 2500;
 const BACKOFF_AFTER_FAILURES = 3;
 const BACKOFF_TICKS = 4;
 
-/** Polls every non-terminal render job until it succeeds or fails. */
+/**
+ * Polls every non-terminal render job until it succeeds or fails. Paused while the tab is hidden:
+ * each poll is a function call and several database queries, and polling a background tab kept
+ * Neon awake for nobody. Jobs still finish (fal's webhook, and the cron sweep as a fallback); the
+ * first poll on return picks up where they got to.
+ */
 export function useRenderJobsPolling() {
   const apiClient = useApiClient();
   const updateJob = useRenderJobsStore((state) => state.updateJob);
@@ -52,11 +57,24 @@ export function useRenderJobsPolling() {
       });
     };
 
-    poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (interval !== null) return;
+      poll();
+      interval = setInterval(poll, POLL_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (interval !== null) clearInterval(interval);
+      interval = null;
+    };
+    const onVisibilityChange = () => (document.hidden ? stop() : start());
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [apiClient, pendingIds, updateJob]);
 }

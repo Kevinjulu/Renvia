@@ -117,12 +117,15 @@ projects.delete("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  // No cascade on the FKs — clear dependent rows before the project itself. Files are left to the
-  // daily storage sweep (lib/storageCleanup.ts): it deletes a gone render's outputs and unused
-  // uploads, but keeps any that another project still uses, e.g. as a reference.
-  await db.delete(schema.renders).where(eq(schema.renders.projectId, id));
-  await db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id));
-  await db.delete(schema.projects).where(eq(schema.projects.id, id));
+  // No cascade on the FKs — clear dependent rows before the project itself, in one transaction so
+  // a failure leaves nothing half-deleted. Files are left to the daily storage sweep
+  // (lib/storageCleanup.ts): it deletes a gone render's outputs and unused uploads, but keeps any
+  // that another project still uses, e.g. as a reference.
+  await db.batch([
+    db.delete(schema.renders).where(eq(schema.renders.projectId, id)),
+    db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id)),
+    db.delete(schema.projects).where(eq(schema.projects.id, id)),
+  ]);
 
   return c.json({ id });
 });

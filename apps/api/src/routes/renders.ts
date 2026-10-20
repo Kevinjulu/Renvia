@@ -261,23 +261,28 @@ renders.post("/", async (c) => {
   const body = createRenderSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
 
-  const user = await getOrCreateUser(c.env, db, clerkId);
-  const billing = await ensureEntitlement(db, user.id);
-  const appSettings = await getSettings(db);
+  // Each query is its own HTTP round trip to Neon, so independent reads run together. Settings
+  // and the Studio Control revision don't depend on the user. One revision serves the whole
+  // request: its rules decide, and its version is stamped on the job.
+  const [user, appSettings, revision] = await Promise.all([getOrCreateUser(c.env, db, clerkId), getSettings(db), currentStudioRevision(db)]);
+  // The retry lookup runs alongside the ownership check but is only used once that passes. A
+  // running beta program's limits and feature grants apply; one past its end is closed here.
+  const [billing, project, earlierRender, { context: beta }] = await Promise.all([
+    ensureEntitlement(db, user.id),
+    findOwnedProject(db, body.projectId, user.id),
+    body.idempotencyKey ? findRenderByIdempotencyKey(db, body.projectId, body.idempotencyKey) : null,
+    settleBetaCredits(db, user.id, { betaCredits: user.betaCredits }),
+  ]);
   if (user.disabled) {
     const refusal = refuseDisabled(appSettings);
     return c.json(refusal, refusal.status);
   }
-  const project = await findOwnedProject(db, body.projectId, user.id);
   if (!project) {
     return c.json({ error: "Not found" }, 404);
   }
 
   const replay = () => replayResponse(c, db, body.projectId, body.idempotencyKey);
-  const earlier = await replay();
-  if (earlier) return earlier;
-  // A running beta program's limits and feature grants apply; one past its end is closed here.
-  const { context: beta } = await settleBetaCredits(db, user.id, { betaCredits: user.betaCredits });
+  if (earlierRender) return c.json({ job: await presentRender(c, earlierRender), replayed: true }, 200);
   const betaProgram = beta?.running ? beta.program : null;
 
   const settings = body.generationSettings ?? {};
@@ -304,10 +309,11 @@ renders.post("/", async (c) => {
   // A free-plan user's renders reach the Studio watermarked; edits, "set as base" and
   // references made from them must use the clean original, and only from their own renders.
   try {
-    body.sourceImageUrl = await resolveImageInput(db, user.id, body.sourceImageUrl, origin);
-    if (settings.referenceImageUrls) {
-      settings.referenceImageUrls = await Promise.all(settings.referenceImageUrls.map((url) => resolveImageInput(db, user.id, url, origin)));
-    }
+    const [source, ...references] = await Promise.all(
+      [body.sourceImageUrl, ...(settings.referenceImageUrls ?? [])].map((url) => resolveImageInput(db, user.id, url, origin)),
+    );
+    body.sourceImageUrl = source!;
+    if (settings.referenceImageUrls) settings.referenceImageUrls = references;
   } catch (error) {
     if (error instanceof ForeignRenderError) return c.json({ error: error.message, code: "foreign_render" }, 403);
     throw error;
@@ -331,16 +337,16 @@ renders.post("/", async (c) => {
     return c.json(refusal, refusal.status);
   }
 
-  // One Studio Control revision for the whole request: its rules decide, and its version is
-  // stamped on the job.
-  const revision = await currentStudioRevision(db);
   const engineMode = effectiveEngineMode(c.env, appSettings);
-  const featureRefusal = await checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode, betaProgram?.featureGrants);
+  // Checked together, answered in this order: feature rules, then allowance, then storage.
+  const [featureRefusal, allowance, storageFull] = await Promise.all([
+    checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode, betaProgram?.featureGrants),
+    checkAllowance(db, user, appSettings, "render", billing.plan, betaProgram),
+    storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes(settings)),
+  ]);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
-
-  const allowance = await checkAllowance(db, user, appSettings, "render", billing.plan, betaProgram);
   if (allowance) return (await replay()) ?? c.json(allowance, allowance.status);
-  if (await storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes(settings))) {
+  if (storageFull) {
     const refusal = refuseStorage(appSettings);
     return (await replay()) ?? c.json(refusal, refusal.status);
   }
