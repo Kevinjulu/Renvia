@@ -108,7 +108,8 @@ creditsRoutes.get("/credits", async (c) => {
       })
       .from(schema.creditLedger)
       .groupBy(schema.creditLedger.reason)
-      .orderBy(desc(sql`count(*)`)),
+      // Reason breaks ties, so reasons with the same count always come back in the same order.
+      .orderBy(desc(sql`count(*)`), schema.creditLedger.reason),
   ]);
 
   return c.json({

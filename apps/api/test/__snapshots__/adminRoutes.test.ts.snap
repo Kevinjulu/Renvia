@@ -525,8 +525,8 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         "byReason": [
           {
             "count": 1,
-            "reason": "segment",
-            "totalAmount": -1,
+            "reason": "admin_grant",
+            "totalAmount": 5,
           },
           {
             "count": 1,
@@ -535,18 +535,18 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
           },
           {
             "count": 1,
-            "reason": "signup_bonus",
-            "totalAmount": 25,
-          },
-          {
-            "count": 1,
-            "reason": "admin_grant",
-            "totalAmount": 5,
-          },
-          {
-            "count": 1,
             "reason": "render",
             "totalAmount": -1,
+          },
+          {
+            "count": 1,
+            "reason": "segment",
+            "totalAmount": -1,
+          },
+          {
+            "count": 1,
+            "reason": "signup_bonus",
+            "totalAmount": 25,
           },
         ],
         "granted": 80,
