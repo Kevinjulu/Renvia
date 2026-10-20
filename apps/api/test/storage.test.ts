@@ -13,12 +13,15 @@ import { db, makeProject, makeUser } from "./support/db.js";
 // cache them instead of downloading every image on every view.
 vi.mock("@clerk/backend", async () => (await import("./support/clerkStub.js")).clerkStub());
 
-/** An in-memory bucket behind the real S3 client calls. */
+/**
+ * An in-memory bucket behind the S3 client's calls. The client is the real one with only `send`
+ * replaced, so presigned links to the bucket are still signed as in production.
+ */
 const bucket = vi.hoisted(() => new Map<string, { body: Uint8Array; contentType: string }>());
 vi.mock("@aws-sdk/client-s3", async () => {
   const actual = await vi.importActual<typeof import("@aws-sdk/client-s3")>("@aws-sdk/client-s3");
-  class S3Client {
-    async send(command: { constructor: { name: string }; input: { Key: string; Body?: Uint8Array; ContentType?: string } }) {
+  class S3Client extends actual.S3Client {
+    override async send(command: { constructor: { name: string }; input: { Key: string; Body?: Uint8Array; ContentType?: string } }) {
       const { Key, Body, ContentType } = command.input;
       if (command instanceof actual.PutObjectCommand) {
         bucket.set(Key, { body: Body!, contentType: ContentType! });
@@ -28,6 +31,10 @@ vi.mock("@aws-sdk/client-s3", async () => {
         const object = bucket.get(Key);
         if (!object) throw Object.assign(new Error("missing"), { name: "NoSuchKey" });
         return { Body: { transformToWebStream: () => new Blob([new Uint8Array(object.body)]).stream() }, ContentType: object.contentType };
+      }
+      if (command instanceof actual.HeadObjectCommand) {
+        if (!bucket.has(Key)) throw Object.assign(new Error("missing"), { name: "NotFound" });
+        return {};
       }
       if (command instanceof actual.DeleteObjectCommand) {
         bucket.delete(Key);
@@ -68,10 +75,17 @@ describe("image links", () => {
     await putObject(env, "u/a.jpg", buffer(10), "image/jpeg");
     const url = await signedUploadUrl(env, "http://localhost", "u/a.jpg");
     const response = await root.request(url, {}, env);
-    expect(response.status).toBe(200);
+
+    // A redirect straight to the bucket, cacheable privately for as long as the link lasts.
+    expect(response.status).toBe(302);
     const cache = response.headers.get("cache-control")!;
-    expect(cache).toMatch(/^private, max-age=\d+, immutable$/);
+    expect(cache).toMatch(/^private, max-age=\d+$/);
     expect(Number(/max-age=(\d+)/.exec(cache)![1])).toBeGreaterThan(6 * 24 * 60 * 60);
+    const direct = new URL(response.headers.get("location")!);
+    expect(direct.origin + direct.pathname).toBe("https://r2.test/renviadb/u/a.jpg");
+    expect(direct.searchParams.get("X-Amz-Signature")).toBeTruthy();
+    // The bucket's response carries the same private, immutable caching.
+    expect(direct.searchParams.get("response-cache-control")).toMatch(/^private, max-age=\d+, immutable$/);
   });
 });
 
@@ -83,7 +97,7 @@ describe("the storage ledger", () => {
     // Rewriting a key replaces its size rather than adding to it.
     await putObject(env, "renders/r1.jpg", buffer(4 * MB), "image/jpeg");
 
-    expect(await storageUsage(db)).toEqual({ usedBytes: 8 * MB, objects: 3, byKind: { upload: 3 * MB, render: 4 * MB, watermark: 1 * MB, feedback: 0 } });
+    expect(await storageUsage(db)).toEqual({ usedBytes: 8 * MB, objects: 3, byKind: { upload: 3 * MB, render: 4 * MB, watermark: 1 * MB, feedback: 0, stock: 0, thumbnail: 0 } });
 
     await deleteObject(env, "renders/r1.jpg");
     expect((await storageUsage(db)).usedBytes).toBe(4 * MB);
@@ -107,9 +121,13 @@ describe("the storage cap", () => {
   });
 
   it("accepts an upload that fits", async () => {
-    const res = await root.request("http://localhost/api/uploads", { method: "POST", headers: { Authorization: "Bearer customer", "Content-Type": "image/png" }, body: new Uint8Array(1000) }, env);
+    // A real image: uploads are decoded and compressed before they are stored.
+    const image = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#808080" } }).png().toBuffer();
+    const res = await root.request("http://localhost/api/uploads", { method: "POST", headers: { Authorization: "Bearer customer", "Content-Type": "image/png" }, body: new Uint8Array(image) }, env);
     expect(res.status).toBe(201);
-    expect((await storageUsage(db)).usedBytes).toBe(1000);
+    expect(bucket.size).toBe(1);
+    const [stored] = [...bucket.values()];
+    expect((await storageUsage(db)).usedBytes).toBe(stored!.body.byteLength);
   });
 
   it("refuses a render whose result might not fit, before charging for it", async () => {
