@@ -38,6 +38,15 @@ const FIELD_GROUP: Partial<Record<keyof Draft, GroupId>> = {
   maintenanceMessage: "safety", maintenanceRenders: "safety", maintenanceSegments: "safety",
 };
 
+const ENGINE_KEYS = new Set(["falMode", "falBudgetUsd", "budgetWarningPercent", "budgetCriticalPercent", "stuckTimeoutMinutes", "storageCapMb", "storagePerUserMb"]);
+
+/** Which group a pending change belongs to; anything not engine or maintenance is a customer-facing setting. */
+function groupOfChange(key: string): GroupId {
+  if (ENGINE_KEYS.has(key)) return "engine";
+  if (key.startsWith("maintenance")) return "safety";
+  return "customers";
+}
+
 export function SettingsPage() {
   const api = useAdminApi();
   const { data, error, loading, reload } = useLoad(() => api.getSettings(), [api]);
@@ -58,6 +67,11 @@ export function SettingsPage() {
 
   const changes = useMemo(() => (data && draft ? diffChanges(data, draft) : []), [data, draft]);
   const dirty = changes.length > 0;
+  const pendingByGroup = useMemo(() => {
+    const counts: Record<GroupId, number> = { status: 0, engine: 0, customers: 0, safety: 0 };
+    for (const change of changes) counts[groupOfChange(change.key)] += 1;
+    return counts;
+  }, [changes]);
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
   if (!data || !draft) {
@@ -123,7 +137,7 @@ export function SettingsPage() {
   const maintenanceOn = data.maintenanceRenders || data.maintenanceSegments;
 
   // Groups stay mounted (hidden, not unmounted) so nothing typed is lost when switching.
-  const panelProps = (id: GroupId) => ({ hidden: group !== id, className: "space-y-6" });
+  const panelProps = (id: GroupId) => ({ hidden: group !== id, className: "space-y-6", role: "region" as const, "aria-label": `${GROUPS.find((item) => item.id === id)!.label} settings` });
 
   return (
     <>
@@ -142,9 +156,10 @@ export function SettingsPage() {
       </header>
 
       <div className="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
-        <nav aria-label="Settings groups" className="mb-5 flex gap-1 overflow-x-auto lg:sticky lg:top-24 lg:mb-0 lg:flex-col lg:self-start lg:overflow-visible">
+        <nav aria-label="Settings groups" className="sticky top-16 z-10 -mx-4 mb-5 flex gap-1 overflow-x-auto border-b border-hairline bg-surface/90 px-4 py-2 backdrop-blur sm:-mx-8 sm:px-8 lg:top-24 lg:mx-0 lg:mb-0 lg:flex-col lg:self-start lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
           {GROUPS.map((item) => {
             const active = item.id === group;
+            const pending = pendingByGroup[item.id];
             return (
               <button
                 key={item.id}
@@ -158,12 +173,19 @@ export function SettingsPage() {
                   <span className="block text-sm font-medium leading-tight">{item.label}</span>
                   <span className="mt-0.5 hidden text-[11px] leading-tight text-muted lg:block">{item.hint}</span>
                 </span>
+                {pending > 0 && (
+                  <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-[11px] font-bold leading-5 text-amber-800">
+                    <span aria-hidden="true">{pending}</span>
+                    <span className="sr-only">{pending} unsaved {pending === 1 ? "change" : "changes"}</span>
+                  </span>
+                )}
               </button>
             );
           })}
         </nav>
 
         <div className="min-w-0">
+          <p className="sr-only" role="status" aria-live="polite">Showing {GROUPS.find((item) => item.id === group)?.label} settings</p>
           <form onSubmit={attemptSave} className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}>
             <div {...panelProps("status")}>
               <LiveStatusHero data={data} budget={budget} spent={spent} remaining={remaining} ratio={ratio} criticalRatio={criticalRatio} maintenanceOn={maintenanceOn} />
@@ -220,7 +242,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       status && (
-                        <p role="status" className={`text-sm ${status.tone === "error" ? "text-red-600" : "text-emerald-700"}`}>
+                        <p role={status.tone === "error" ? "alert" : "status"} className={`text-sm ${status.tone === "error" ? "text-red-600" : "text-emerald-700"}`}>
                           {status.text}
                         </p>
                       )

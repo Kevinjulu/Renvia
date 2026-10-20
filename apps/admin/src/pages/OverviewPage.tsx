@@ -192,7 +192,7 @@ export function OverviewPage() {
 function OverviewSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-32 rounded-2xl" />)}</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-32 rounded-2xl" />)}</div>
       <div className="grid gap-4 xl:grid-cols-12"><Skeleton className="h-80 rounded-2xl xl:col-span-8" /><Skeleton className="h-80 rounded-2xl xl:col-span-4" /></div>
       <div className="grid gap-4 md:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-64 rounded-2xl" />)}</div>
     </div>
@@ -234,9 +234,9 @@ function Delta({ current, previous, invert = false }: { current: number; previou
 
 function Kpi({ label, value, detail, delta, spark, color }: { label: string; value: ReactNode; detail?: ReactNode; delta?: ReactNode; spark?: number[]; color?: string }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-2xl border border-hairline bg-canvas p-4 shadow-card">
+    <div className="flex min-w-0 flex-col rounded-2xl border border-hairline bg-canvas p-3 shadow-card sm:p-4">
       <p className="truncate text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
-      <div className="mt-2 flex items-baseline gap-2"><p className="text-[26px] font-bold leading-none tabular-nums tracking-tight text-primary">{value}</p>{delta}</div>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1"><p className="text-[22px] font-bold leading-none tabular-nums tracking-tight text-primary sm:text-[26px]">{value}</p>{delta}</div>
       <div className="mt-2 min-h-[32px]">{spark && <Sparkline values={spark} color={color} />}</div>
       {detail && <p className="mt-1.5 truncate text-xs text-muted">{detail}</p>}
     </div>
@@ -259,7 +259,7 @@ function KpiRow({ data, days, revenue }: { data: AdminOverviewResponse; days: Da
   const signups = total((day) => day.signups);
   const success = 1 - data.renders.failureRate;
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
       <Kpi label="Customers" value={formatNumber(data.users.total)} delta={<Delta current={signups} previous={before((day) => day.signups, "signups")} />} spark={current.map((day) => day.signups)} detail={`${formatNumber(signups)} new in ${days}d${data.users.disabled ? ` · ${data.users.disabled} disabled` : ""}`} />
       <Kpi label={`Renders · ${days}d`} value={formatNumber(renders)} delta={<Delta current={renders} previous={before((day) => day.renders, "renders")} />} spark={current.map((day) => day.renders)} color={CHART.emerald} detail={`${formatNumber(data.renders.today)} today · ${formatNumber(data.renders.total)} all time`} />
       <Kpi label="Success rate" value={data.renders.byStatus.succeeded + data.renders.byStatus.failed > 0 ? formatPercent(success) : "—"} detail={`${data.renders.byStatus.failed} failed · ${data.renders.byStatus.processing + data.renders.byStatus.pending} in flight`} color={success < 0.9 ? CHART.rose : CHART.emerald} spark={undefined} />
