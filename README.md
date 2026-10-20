@@ -1,6 +1,6 @@
 # Ramah Studio International
 
-![The Studio: rendering a front elevation with a before/after compare, reference images and render history (screenshot from before the rebrand)](docs/images/studio-hero.png)
+![Ramah Studio: comparing a coloured front elevation drawing with its photoreal render, with style, prompt and reference controls and render history](docs/images/studio-hero.png)
 
 AI-powered architectural visualization SaaS. Customers upload an elevation or
 sketch, work on an infinite canvas, and generate photoreal renders and masked

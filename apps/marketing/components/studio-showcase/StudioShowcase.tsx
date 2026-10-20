@@ -38,8 +38,8 @@ export function StudioShowcase() {
           {/* The image carries its own device frame and scene, so it sits unframed here. */}
           <div className="relative z-10 aspect-[1672/941] overflow-hidden rounded-[18px] border border-black/10 bg-[#e9e7e2] shadow-[0_55px_110px_-52px_rgba(20,20,18,.68)] sm:rounded-[26px]">
             <Image
-              src="/studio/renvia-studio-showcase.webp"
-              alt="Ramah Studio comparing a front elevation before and after a photorealistic render, with style, prompt and reference image controls on the left and render history on the right"
+              src="/studio/studio-showcase.webp"
+              alt="Ramah Studio comparing a coloured front elevation drawing with its photorealistic render, with style, prompt and reference image controls on the left and render history on the right"
               fill
               sizes="(min-width: 1440px) 1400px, 100vw"
               className="object-cover"

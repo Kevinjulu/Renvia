@@ -133,7 +133,7 @@ The Studio no longer searches Unsplash for reference images. References come fro
 | # | Action | Where | Who | What customers see until then |
 | --- | --- | --- | --- | --- |
 | 1 | Owner approves the reconstructed logo (sign-off sheet) | — | Owner | Nothing; the logo is already live |
-| 2 | Replace the Studio screenshot on the website and in the README | `apps/marketing/public/studio/renvia-studio-showcase.webp`, `docs/images/studio-hero.png` | Needs a signed-in account with real projects | The screenshot shows "Renvia Studio" and the removed Unsplash button |
+| 2 | ~~Replace the Studio screenshot on the website and in the README~~ **Done 2026-10-20** | `apps/marketing/public/studio/studio-showcase.webp`, `docs/images/studio-hero.png` | — | A real capture of the live Studio (owner's account, Project (2), drawing vs render in compare view); the admin-only budget line was hidden |
 | 3 | Rename the application in Clerk | Clerk dashboard | Account owner | Admin sign-in says "Sign in to Renvia"; Clerk emails say Renvia |
 | 4 | Update business and plan names in PayPal and Paystack | PayPal and Paystack dashboards | Account owner | Receipts and checkout may show the old name |
 | 5 | Update text stored in the database | Admin: Plans (Free plan description), Beta programs (names) | Admin user | Free plan says "Try Renvia with monthly credits…"; old beta program names |
