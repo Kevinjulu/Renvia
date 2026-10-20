@@ -18,6 +18,20 @@ export interface AdminNavItem {
   roles: readonly Exclude<UserRole, "user">[];
 }
 
+/**
+ * Sidebar sections, in order. Each page appears in exactly one; anything missing from here lands in
+ * a trailing "More" section so a new page can never silently vanish from the menu.
+ */
+export const ADMIN_NAV_GROUPS: { label: string; paths: string[] }[] = [
+  { label: "Monitor", paths: ["/", "/operations", "/incidents", "/performance"] },
+  { label: "Customers", paths: ["/users", "/projects", "/credits", "/security"] },
+  { label: "Studio jobs", paths: ["/renders", "/segmentations"] },
+  { label: "Revenue", paths: ["/billing", "/financials", "/plans"] },
+  { label: "Beta", paths: ["/beta", "/beta-feedback"] },
+  { label: "Platform", paths: ["/studio-control", "/models", "/library", "/settings"] },
+  { label: "Governance", paths: ["/approvals", "/audit"] },
+];
+
 /** Single source of truth for sidebar + page heroes across every tab. */
 export const ADMIN_NAV: AdminNavItem[] = [
   {

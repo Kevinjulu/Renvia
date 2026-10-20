@@ -6,7 +6,7 @@ import type { MeResponse } from "@renvia/types";
 import { Logo } from "./components/brand/Logo";
 import { AppLoader } from "./components/loading/AppLoader";
 import { useAdminApi } from "./lib/api";
-import { ADMIN_NAV, navForPath } from "./lib/nav";
+import { ADMIN_NAV, ADMIN_NAV_GROUPS, navForPath } from "./lib/nav";
 import { AdminContext } from "./lib/useAdmin";
 import { useLoad } from "./lib/useLoad";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -178,15 +178,10 @@ function CommandPalette({ me, onClose }: { me: MeResponse; onClose: () => void }
 
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {
   const visible = ADMIN_NAV.filter((item) => item.roles.includes(me.role as Exclude<typeof me.role, "user">));
-  const groups = [
-    { label: "Start here", paths: ["/", "/operations"] },
-    { label: "Operations", paths: ["/renders", "/segmentations", "/incidents", "/performance"] },
-    { label: "Customers", paths: ["/users", "/projects", "/credits"] },
-    { label: "Commerce", paths: ["/billing", "/financials", "/plans"] },
-    { label: "Beta", paths: ["/beta", "/beta-feedback"] },
-    { label: "Platform", paths: ["/studio-control", "/models", "/library", "/settings"] },
-    { label: "Governance", paths: ["/approvals", "/audit"] },
-  ].map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) })).filter((group) => group.items.length > 0);
+  const placed = new Set(ADMIN_NAV_GROUPS.flatMap((group) => group.paths));
+  const groups = [...ADMIN_NAV_GROUPS, { label: "More", paths: visible.filter((item) => !placed.has(item.to)).map((item) => item.to) }]
+    .map((group) => ({ ...group, items: group.paths.map((path) => visible.find((item) => item.to === path)).filter(Boolean) }))
+    .filter((group) => group.items.length > 0);
   return (
     <aside
       className={`ink-scroll fixed left-0 top-0 z-40 flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto bg-ink-950 transition-transform duration-300 lg:sticky lg:z-0 lg:translate-x-0 ${
