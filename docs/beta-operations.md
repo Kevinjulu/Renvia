@@ -54,9 +54,10 @@ Keep these true when changing anything nearby.
 
 | Piece | Where | Notes |
 | --- | --- | --- |
-| API | Vercel project **renvia-api** (root `apps/api`) | Live at `https://renvia-api.vercel.app` |
-| Studio | Vercel project for `apps/studio` | Live at `https://renvia-studio.vercel.app` |
-| Admin | Vercel project **renvia-admin** (`apps/admin`) | Live at `https://renvia-admin.vercel.app` |
+| API | Vercel project **renvia-api** (root `apps/api`) | Live at `https://renvia-api.vercel.app`. Keeps this address: stored image URLs contain it (see §5) |
+| Studio | Vercel project **ramah-studio-app** (`apps/studio`) | Live at `https://ramah-studio-app.vercel.app`; `https://renvia-studio.vercel.app` still serves it |
+| Admin | Vercel project **ramah-studio-admin** (`apps/admin`) | Live at `https://ramah-studio-admin.vercel.app`; `https://renvia-admin.vercel.app` still serves it |
+| Website | Vercel project **ramah-studio** (`apps/marketing`) | Live at `https://ramah-studio.vercel.app`; `https://renvia.vercel.app` still serves it |
 | Database | Neon, project "Renvia DB 2", host `ep-super-unit-…` | Production. The free tier has 1 GB of Postgres |
 | Images | Cloudflare R2, private; served through signed links from the API | Free tier is 10 GB; the API refuses new files at `app_settings.storage_cap_mb` |
 | Auth | Clerk | Also sends beta invitation emails |
@@ -67,10 +68,13 @@ Keep these true when changing anything nearby.
 
 | Variable | Project | Value now | Purpose |
 | --- | --- | --- | --- |
-| `STUDIO_URL` | renvia-api (Production) | `https://renvia-studio.vercel.app` | Invitation links are built from it. Clerk invitation emails are only sent when it is set |
-| `ALLOWED_ORIGINS` | renvia-api | `http://localhost:5173,http://localhost:5174,https://renvia-studio.vercel.app,https://renvia-admin.vercel.app` | CORS, Clerk token `azp` check, and the payment return page |
+| `STUDIO_URL` | renvia-api (Production) | `https://ramah-studio-app.vercel.app` | Invitation links are built from it. Clerk invitation emails are only sent when it is set |
+| `ALLOWED_ORIGINS` | renvia-api (all environments) | `http://localhost:5173,http://localhost:5174,https://renvia-studio.vercel.app,https://renvia-admin.vercel.app,https://ramah-studio-app.vercel.app,https://ramah-studio-admin.vercel.app` | CORS, Clerk token `azp` check, and the payment return page |
 | `CRON_SECRET` | renvia-api | (secret) | Protects `/api/cron/*` |
 | `VITE_API_BASE_URL` | Studio and admin | `https://renvia-api.vercel.app` | Where the browser apps call the API |
+| `VITE_MARKETING_URL` | Studio | `https://ramah-studio.vercel.app` | Links from the Studio to the website |
+| `NEXT_PUBLIC_STUDIO_URL` | Website | `https://ramah-studio-app.vercel.app` | Sign-in and sign-up links from the website |
+| `NEXT_PUBLIC_SITE_URL` | Website | `https://ramah-studio.vercel.app` | Base for link previews and metadata |
 | `VITE_STUDIO_URL` | admin (optional, not set) | — | Only used if the API doesn't return full invitation links |
 | `VERCEL_GIT_COMMIT_SHA` | Studio (set by Vercel) | automatic | Recorded on feedback as the app version |
 
