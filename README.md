@@ -1,11 +1,17 @@
-# RΞNVIA
+# Ramah Studio International
 
-![Renvia Studio: rendering a front elevation with a before/after compare, reference images and render history](docs/images/studio-hero.png)
+![The Studio: rendering a front elevation with a before/after compare, reference images and render history (screenshot from before the rebrand)](docs/images/studio-hero.png)
 
 AI-powered architectural visualization SaaS. Customers upload an elevation or
 sketch, work on an infinite canvas, and generate photoreal renders and masked
 edits. Usage is metered in credits, paid for through PayPal, and controlled by a
 role-gated operator console.
+
+The product was developed under the name Renvia and became **Ramah Studio
+International** in October 2026. Internal identifiers such as the `@renvia/*`
+packages and the API address keep the old name on purpose; see
+[docs/branding.md](docs/branding.md) for the brand system and
+[docs/rebrand-ramah-studio.md](docs/rebrand-ramah-studio.md) for what changed.
 
 ## Status
 
@@ -34,7 +40,7 @@ packages/
   config/      Shared tsconfig / eslint base configs
 tests/
   render-fidelity/   Source-fidelity regression pack and fixtures
-docs/                Design notes for source fidelity and upload compression
+docs/                Design notes: brand system, rebrand, watermark, image pipeline, source fidelity, beta
 ```
 
 Each app deploys as its own Vercel project. They share the database schema,
@@ -195,7 +201,7 @@ Only PayPal is wired up.
 
 - Every account has an entitlement; new accounts get the `starter` plan.
 - A credit-pack purchase settles only when a verified payment matches an existing
-  Renvia checkout's PayPal order, currency and amount, and settles exactly once
+  checkout's PayPal order, currency and amount, and settles exactly once
   even when the return flow and the webhook race.
 - Refunds reverse the purchased credits, and only while those credits are unspent.
   Otherwise the refund needs manual review.
