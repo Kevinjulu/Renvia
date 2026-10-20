@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createDb } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { createChargedSegmentation, InsufficientBetaCreditsError, InsufficientCreditsError, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
@@ -52,7 +53,7 @@ const createSchema = z
     message: "Provide a text prompt and/or a click point",
   });
 
-segmentations.post("/", async (c) => {
+segmentations.post("/", rateLimit("selection"), async (c) => {
   const { clerkId } = c.get("auth");
   const body = createSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);

@@ -1024,6 +1024,22 @@ export const securityLinks = pgTable(
   ],
 );
 
+/** Request counts per account, route group and minute, for lib/rateLimit.ts; kept a day. */
+export const rateLimitHits = pgTable(
+  "rate_limit_hits",
+  {
+    bucket: text("bucket").notNull(),
+    /** The Clerk user id the requests came from. */
+    subject: text("subject").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    hits: integer("hits").notNull().default(1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.bucket, table.subject, table.windowStart] }),
+    index("rate_limit_hits_window_idx").on(table.windowStart),
+  ],
+);
+
 export const studioConfigRevisions = pgTable(
   "studio_config_revisions",
   {

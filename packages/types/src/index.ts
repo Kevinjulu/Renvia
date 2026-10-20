@@ -565,7 +565,9 @@ export type LimitCode =
   /** Beta funding was asked for, but the caller has no running enrollment (paused, suspended, ended or none). */
   | "beta_unavailable"
   /** This month's promotional budget can't cover a job paid from the Free plan's credits. */
-  | "promo_budget_exhausted";
+  | "promo_budget_exhausted"
+  /** Too many requests of this kind in the last minute. */
+  | "rate_limited";
 
 /** Everything the caller is allowed, after per-user overrides and global settings. */
 export interface UserLimits {

@@ -295,6 +295,55 @@ export function uploadWouldExceed(db: Database, capMb: number, bytes: number): P
 }
 
 /** Where an account's uploads live: objectKeyFor puts every one under this prefix. */
+/** pg_advisory_xact_lock key for one account's upload reservations (with hashtext of its Clerk id). */
+const UPLOAD_LOCK = 88420374;
+
+/**
+ * Reserves room for a new upload in the storage ledger before its bytes go to the bucket, so
+ * parallel uploads can't all pass a read-then-write quota check. One transaction: the account's
+ * lock, then a conditional insert that applies only while its own uploads (perUserBytes, null =
+ * no per-account limit) and the uploads' share of the shared cap still have room. putObject then
+ * finds the row already there. "quota" and "full" say which limit refused it; `used` is the
+ * account's upload bytes before this one.
+ */
+export async function reserveUpload(
+  db: Database,
+  input: { key: string; bytes: number; contentType: string; clerkId: string; perUserBytes: number | null; capMb: number },
+): Promise<{ result: "reserved" | "quota" | "full"; used: number }> {
+  const prefix = uploadPrefixFor(input.clerkId);
+  const capBytes = Math.floor(input.capMb * UPLOAD_SHARE_OF_CAP * BYTES_PER_MB);
+  const [, outcome] = await db.batch([
+    db.execute(sql`select pg_advisory_xact_lock(${UPLOAD_LOCK}, hashtext(${input.clerkId}))`),
+    db.execute<{ inserted: number; mine: string; total: string }>(sql`
+      with usage as (
+        select
+          coalesce(sum(bytes) filter (where starts_with(key, ${prefix}) or starts_with(key, ${thumbnailKeyPrefix(prefix)})), 0)::bigint as mine,
+          coalesce(sum(bytes), 0)::bigint as total
+        from ${schema.storageObjects}
+      ),
+      inserted as (
+        insert into ${schema.storageObjects} (key, bytes, content_type, kind)
+        select ${input.key}, ${input.bytes}, ${input.contentType}, 'upload'
+        from usage
+        where (${input.perUserBytes}::bigint is null or mine + ${input.bytes} <= ${input.perUserBytes}::bigint)
+          and total + ${input.bytes} <= ${capBytes}
+        returning key
+      )
+      select (select count(*) from inserted)::int as inserted, (select mine from usage) as mine, (select total from usage) as total
+    `),
+  ]);
+  const row = outcome.rows[0];
+  const used = Number(row?.mine ?? 0);
+  if (Number(row?.inserted ?? 0) > 0) return { result: "reserved", used };
+  const overQuota = input.perUserBytes !== null && used + input.bytes > input.perUserBytes;
+  return { result: overQuota ? "quota" : "full", used };
+}
+
+/** Drops a reservation whose upload never reached the bucket. */
+export async function releaseUpload(db: Database, key: string): Promise<void> {
+  await db.delete(schema.storageObjects).where(eq(schema.storageObjects.key, key));
+}
+
 export function uploadPrefixFor(clerkId: string): string {
   return `elevations/${clerkId}/`;
 }

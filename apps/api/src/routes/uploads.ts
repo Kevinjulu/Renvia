@@ -1,7 +1,10 @@
 import { Hono } from "hono";
+import sharp from "sharp";
 import type { UploadImageResponse } from "@renvia/types";
 import type { AppContext, Env } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveAccount } from "../middleware/activeAccount.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import {
   directObjectUrl,
   getObject,
@@ -18,14 +21,27 @@ import { servedThumbnailKey, watermarkedCopy } from "../lib/watermark.js";
 import { makeThumbnail, optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { createDb } from "@renvia/db";
 import { getSettings } from "../lib/settings.js";
-import { checkUploadStorage, refuseInput } from "../lib/limits.js";
+import { refuseInput, reserveUploadStorage } from "../lib/limits.js";
+import { releaseUpload } from "../lib/storage.js";
 import { getOrCreateUser } from "../lib/users.js";
 
 export const uploads = new Hono<AppContext>();
 
 const ALLOWED_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+/** A selection mask is drawn at its source's size; no source we accept is larger than this. */
+const MAX_MASK_EDGE = 16_384;
 
-uploads.post("/", requireAuth, async (c) => {
+/** True when `bytes` decode as a PNG of a sensible size: a mask, not arbitrary data labelled one. */
+async function isValidMask(bytes: ArrayBuffer): Promise<boolean> {
+  try {
+    const { format, width, height } = await sharp(Buffer.from(bytes)).metadata();
+    return format === "png" && Boolean(width && height) && width! <= MAX_MASK_EDGE && height! <= MAX_MASK_EDGE;
+  } catch {
+    return false;
+  }
+}
+
+uploads.post("/", requireAuth, requireActiveAccount, rateLimit("upload"), async (c) => {
   const { clerkId } = c.get("auth");
   const contentType = c.req.header("Content-Type") ?? "";
 
@@ -52,6 +68,7 @@ uploads.post("/", requireAuth, async (c) => {
   // sent; everything else is turned upright, capped and stripped of metadata.
   let image: { bytes: ArrayBuffer; contentType: string };
   if (c.req.header("X-Upload-Kind") === "mask" && contentType === "image/png") {
+    if (!(await isValidMask(bytes))) return c.json({ error: "That selection mask isn't a readable PNG image" }, 400);
     image = { bytes, contentType };
   } else {
     try {
@@ -64,11 +81,17 @@ uploads.post("/", requireAuth, async (c) => {
 
   const db = createDb(c.env.DATABASE_URL);
   const user = await getOrCreateUser(c.env, db, clerkId);
-  const refusal = await checkUploadStorage(db, user, clerkId, settings, image.bytes.byteLength);
-  if (refusal) return c.json(refusal, refusal.status);
+  // The bytes are reserved against the account's allowance and the shared cap before they're
+  // stored, so parallel uploads can't all slip under the quota.
   const key = objectKeyFor(clerkId, image.contentType);
-
-  await putObject(c.env, key, image.bytes, image.contentType);
+  const refusal = await reserveUploadStorage(db, user, clerkId, settings, key, image.bytes.byteLength, image.contentType);
+  if (refusal) return c.json(refusal, refusal.status);
+  try {
+    await putObject(c.env, key, image.bytes, image.contentType);
+  } catch (error) {
+    await releaseUpload(db, key);
+    throw error;
+  }
 
   const response: UploadImageResponse = { publicUrl: await signedUploadUrl(c.env, new URL(c.req.url).origin, key) };
   return c.json(response, 201);

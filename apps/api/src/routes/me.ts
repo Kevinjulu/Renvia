@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser, syncUser } from "../lib/users.js";
 import { effectiveEngineMode, getSettings } from "../lib/settings.js";
 import { getUsage, limitMessages, resolveLimits } from "../lib/limits.js";
@@ -98,7 +99,7 @@ const CLAIM_REFUSALS = {
  * check. Only the token comes from the browser; whether the account may claim, and what it gets,
  * is decided here. A pass grants the month that's due, once.
  */
-me.post("/free-credits/claim", async (c) => {
+me.post("/free-credits/claim", rateLimit("claim"), async (c) => {
   const { clerkId } = c.get("auth");
   const { turnstileToken } = claimSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);

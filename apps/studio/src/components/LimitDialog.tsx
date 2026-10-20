@@ -33,6 +33,7 @@ const KNOWN_CODES: LimitCode[] = [
   "beta_budget_exhausted",
   "beta_unavailable",
   "promo_budget_exhausted",
+  "rate_limited",
 ];
 
 /** Returns the refusal an error represents, or null when it's an ordinary failure. */
@@ -194,6 +195,13 @@ function copyFor(refusal: LimitRefusal, me: MeResponse | null): Copy {
         title: "Beta credits aren't available",
         body: "Your beta access is paused or has ended, so beta credits can't be used right now.",
         icon: "ban",
+        tone: "amber",
+      };
+    case "rate_limited":
+      return {
+        title: "Slow down a moment",
+        body: "That's a lot of requests in a short time. Wait a minute and try again.",
+        icon: "clock",
         tone: "amber",
       };
     case "promo_budget_exhausted":

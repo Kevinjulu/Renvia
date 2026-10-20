@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { createChargedRender, InsufficientBetaCreditsError, InsufficientCreditsError, isUniqueViolation, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
@@ -177,7 +178,10 @@ const polishPromptSchema = z.object({
  * credits), up to PROMPT_POLISH_DAILY_LIMIT a day per person; admins have no limit. Its AI cost
  * counts toward the fal spending cap.
  */
-renders.post("/polish-prompt", async (c) => {
+/** pg_advisory_xact_lock key for one account's Polish requests (with hashtext of its user id). */
+const POLISH_LOCK = 88420376;
+
+renders.post("/polish-prompt", rateLimit("polish"), async (c) => {
   const { clerkId } = c.get("auth");
   const body = polishPromptSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
@@ -185,21 +189,34 @@ renders.post("/polish-prompt", async (c) => {
   if (user.disabled) return c.json({ error: "This account is disabled" }, 403);
 
   const limited = user.role !== "admin";
-  const used = limited ? await polishesToday(db, user.id) : 0;
-  if (limited && used >= PROMPT_POLISH_DAILY_LIMIT) {
-    return c.json({ code: "polish_limit", error: `You've used today's ${PROMPT_POLISH_DAILY_LIMIT} free polishes. More are available tomorrow.` }, 429);
+  // The day's slot is taken before the model is called, under the account's lock, so parallel
+  // requests can't all see one left. A request that then fails still used its slot.
+  let slot: string;
+  if (limited) {
+    const [, taken] = await db.batch([
+      db.execute(sql`select pg_advisory_xact_lock(${POLISH_LOCK}, hashtext(${user.id}))`),
+      db.execute<{ id: string }>(sql`
+        insert into ${schema.promptPolishes} (user_id, kind, engine, status, cost_micros)
+        select ${user.id}, ${body.kind}, 'rules', 'failed', 0
+        where (select count(*) from ${schema.promptPolishes}
+               where user_id = ${user.id} and created_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc') < ${PROMPT_POLISH_DAILY_LIMIT}
+        returning id`),
+    ]);
+    if (!taken.rows[0]) {
+      return c.json({ code: "polish_limit", error: `You've used today's ${PROMPT_POLISH_DAILY_LIMIT} free polishes. More are available tomorrow.` }, 429);
+    }
+    slot = taken.rows[0].id;
+  } else {
+    [{ id: slot }] = await db.insert(schema.promptPolishes).values({ userId: user.id, kind: body.kind, engine: "rules", status: "failed", costMicros: 0 }).returning({ id: schema.promptPolishes.id }) as [{ id: string }];
   }
 
   const outcome = await polishPrompt(c.env, db, body);
-  await db.insert(schema.promptPolishes).values({
-    userId: user.id,
-    kind: body.kind,
-    engine: outcome.result.engine,
-    model: outcome.model,
-    status: "succeeded",
-    costMicros: outcome.costMicros,
-  });
-  const response: PromptPolishResponse = { ...outcome.result, remainingToday: limited ? PROMPT_POLISH_DAILY_LIMIT - used - 1 : null };
+  await db
+    .update(schema.promptPolishes)
+    .set({ engine: outcome.result.engine, model: outcome.model, status: "succeeded", costMicros: outcome.costMicros })
+    .where(eq(schema.promptPolishes.id, slot));
+  const used = limited ? await polishesToday(db, user.id) : 0;
+  const response: PromptPolishResponse = { ...outcome.result, remainingToday: limited ? Math.max(0, PROMPT_POLISH_DAILY_LIMIT - used) : null };
   return c.json(response);
 });
 
@@ -260,7 +277,7 @@ async function replayResponse(c: Context<AppContext>, db: ReturnType<typeof crea
   return existing ? c.json({ job: await presentRender(c, existing), replayed: true }, 200) : null;
 }
 
-renders.post("/", async (c) => {
+renders.post("/", rateLimit("render"), async (c) => {
   const { clerkId } = c.get("auth");
   const body = createRenderSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
@@ -448,7 +465,7 @@ renders.post("/", async (c) => {
 });
 
 /** Queues a faithful high-resolution export from a finished render. */
-renders.post("/:id/upscale", async (c) => {
+renders.post("/:id/upscale", rateLimit("render"), async (c) => {
   const { clerkId } = c.get("auth");
   const { target, idempotencyKey, funding: requestedFunding } = createUpscaleSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);

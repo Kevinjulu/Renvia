@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveAccount } from "../middleware/activeAccount.js";
 import { getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { presentForViewer } from "../lib/presentAsset.js";
@@ -13,6 +14,7 @@ import { presentForViewer } from "../lib/presentAsset.js";
 export const canvasNodes = new Hono<AppContext>();
 
 canvasNodes.use("*", requireAuth);
+canvasNodes.use("*", requireActiveAccount);
 
 const createCanvasNodeSchema = z.object({
   id: z.string().uuid(),

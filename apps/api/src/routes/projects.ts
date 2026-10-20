@@ -4,6 +4,8 @@ import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveAccount } from "../middleware/activeAccount.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { findOwnedProject } from "../lib/projects.js";
 import { getSettings } from "../lib/settings.js";
@@ -14,6 +16,10 @@ import { presentForViewer } from "../lib/presentAsset.js";
 export const projects = new Hono<AppContext>();
 
 projects.use("*", requireAuth);
+projects.use("*", requireActiveAccount);
+
+/** pg_advisory_xact_lock key for one account's project creations (with hashtext of its user id). */
+const PROJECT_LOCK = 88420375;
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -24,7 +30,7 @@ const updateProjectSchema = z.object({
   thumbnailUrl: z.string().url().optional(),
 });
 
-projects.post("/", async (c) => {
+projects.post("/", rateLimit("project"), async (c) => {
   const { clerkId } = c.get("auth");
   const body = createProjectSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
@@ -32,21 +38,31 @@ projects.post("/", async (c) => {
   const [user, settings] = await Promise.all([getOrCreateUser(c.env, db, clerkId), getSettings(db)]);
   const billing = await ensureEntitlement(db, user.id);
   const { maxProjects } = resolveLimits(user, settings, billing.plan);
-  if (maxProjects !== null) {
-    const [owned] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.projects)
-      .where(and(eq(schema.projects.ownerId, user.id), isNull(schema.projects.deletedAt)));
-    if ((owned?.count ?? 0) >= maxProjects) {
-      const refusal = refuseInput(settings, "project_limit_reached", maxProjects, owned?.count ?? 0);
+  let created: typeof schema.projects.$inferSelect | undefined;
+  if (maxProjects === null) {
+    [created] = await db.insert(schema.projects).values({ ownerId: user.id, name: body.name }).returning();
+  } else {
+    // Count and insert in one transaction under the account's lock, so parallel requests can't
+    // all see room for one more project.
+    const [, inserted] = await db.batch([
+      db.execute(sql`select pg_advisory_xact_lock(${PROJECT_LOCK}, hashtext(${user.id}))`),
+      db.execute<{ id: string }>(sql`
+        insert into ${schema.projects} (owner_id, name)
+        select ${user.id}, ${body.name}
+        where (select count(*) from ${schema.projects} where owner_id = ${user.id} and deleted_at is null) < ${maxProjects}
+        returning id`),
+    ]);
+    const id = inserted.rows[0]?.id;
+    if (!id) {
+      const [owned] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.projects)
+        .where(and(eq(schema.projects.ownerId, user.id), isNull(schema.projects.deletedAt)));
+      const refusal = refuseInput(settings, "project_limit_reached", maxProjects, owned?.count ?? maxProjects);
       return c.json(refusal, refusal.status);
     }
+    [created] = await db.select().from(schema.projects).where(eq(schema.projects.id, id));
   }
-
-  const [created] = await db
-    .insert(schema.projects)
-    .values({ ownerId: user.id, name: body.name })
-    .returning();
 
   return c.json({ ...created, thumbnailUrl: await presentForViewer(c, new URL(c.req.url).origin, created!.thumbnailUrl) }, 201);
 });

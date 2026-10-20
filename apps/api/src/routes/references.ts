@@ -5,10 +5,12 @@ import { createDb, schema } from "@renvia/db";
 import type { ListStockReferencesResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveAccount } from "../middleware/activeAccount.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
-import { checkUploadStorage } from "../lib/limits.js";
+import { reserveUploadStorage } from "../lib/limits.js";
 import { getSettings } from "../lib/settings.js";
-import { objectKeyFor, publicUploadUrl, putObject } from "../lib/storage.js";
+import { objectKeyFor, publicUploadUrl, putObject, releaseUpload } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
 import { optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { presentForViewer } from "../lib/presentAsset.js";
@@ -17,6 +19,7 @@ import { presentStockReference } from "../lib/stockReferences.js";
 export const references = new Hono<AppContext>();
 
 references.use("*", requireAuth);
+references.use("*", requireActiveAccount);
 
 const createReferenceSchema = z.object({
   url: z.string().url(),
@@ -54,7 +57,7 @@ references.get("/stock", async (c) => {
   return c.json(response);
 });
 
-references.post("/", async (c) => {
+references.post("/", rateLimit("upload"), async (c) => {
   const { clerkId } = c.get("auth");
   const body = createReferenceSchema.parse(await c.req.json());
   const db = createDb(c.env.DATABASE_URL);
@@ -67,10 +70,15 @@ references.post("/", async (c) => {
     try {
       const imported = await importImageFromUrl(body.url, settings.maxUploadMb * 1024 * 1024);
       const image = await optimizeUpload(imported.bytes, imported.contentType);
-      const refusal = await checkUploadStorage(db, await getOrCreateUser(c.env, db, clerkId), clerkId, settings, image.bytes.byteLength);
-      if (refusal) return c.json(refusal, refusal.status);
       const key = objectKeyFor(clerkId, image.contentType);
-      await putObject(c.env, key, image.bytes, image.contentType);
+      const refusal = await reserveUploadStorage(db, await getOrCreateUser(c.env, db, clerkId), clerkId, settings, key, image.bytes.byteLength, image.contentType);
+      if (refusal) return c.json(refusal, refusal.status);
+      try {
+        await putObject(c.env, key, image.bytes, image.contentType);
+      } catch (error) {
+        await releaseUpload(db, key);
+        throw error;
+      }
       url = publicUploadUrl(new URL(c.req.url).origin, key);
     } catch (error) {
       if (error instanceof ImportImageError || error instanceof UnreadableImageError) return c.json({ error: error.message }, 422);

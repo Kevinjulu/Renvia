@@ -4,7 +4,7 @@ import type { LimitCode, UserLimits, UserUsage } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
 import type { JobCaps } from "./credits.js";
 import { effectiveMaintenance } from "./studioControl.js";
-import { BYTES_PER_MB, uploadBytesFor, uploadWouldExceed } from "./storage.js";
+import { BYTES_PER_MB, reserveUpload } from "./storage.js";
 
 type UserRow = typeof schema.users.$inferSelect;
 type BillingPlanRow = typeof schema.billingPlans.$inferSelect;
@@ -149,6 +149,7 @@ const DEFAULTS: Record<LimitCode, string> = {
   beta_budget_exhausted: "Beta rendering is paused because the shared testing budget has been reached. Your projects and feedback are still available.",
   beta_unavailable: "Beta credits can't be used right now.",
   promo_budget_exhausted: "Free rendering is paused for the rest of the month. Upgrade or buy credits to keep rendering; your projects are safe.",
+  rate_limited: "Too many requests. Please wait a moment and try again.",
 };
 
 function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["status"], extra: Partial<Refusal> = {}): Refusal {
@@ -258,17 +259,18 @@ export function refuseStorage(settings: AppSettingsRow): Refusal {
 }
 
 /**
- * The storage checks for a new upload of `bytes`: the account's own allowance (admins and
- * exempt users skip it), then the uploads' share of the shared cap. Null when it may be stored.
+ * The storage checks for a new upload, safe against parallel uploads: the account's own allowance
+ * (admins and exempt users skip it), then the uploads' share of the shared cap. Reserves `key`'s
+ * bytes in the storage ledger, or refuses. The caller then stores the object, and releases the
+ * reservation if that fails.
  */
-export async function checkUploadStorage(db: Database, user: UserRow, clerkId: string, settings: AppSettingsRow, bytes: number): Promise<Refusal | null> {
-  if (user.role !== "admin" && !user.limitsExempt) {
-    const used = await uploadBytesFor(db, clerkId);
-    if (used + bytes > settings.storagePerUserMb * BYTES_PER_MB) {
-      return refuse(settings, "storage_quota_reached", 403, { limit: settings.storagePerUserMb, used: Math.ceil(used / BYTES_PER_MB) });
-    }
-  }
-  if (await uploadWouldExceed(db, settings.storageCapMb, bytes)) return refuseStorage(settings);
+export async function reserveUploadStorage(db: Database, user: UserRow, clerkId: string, settings: AppSettingsRow, key: string, bytes: number, contentType: string): Promise<Refusal | null> {
+  const limited = user.role !== "admin" && !user.limitsExempt;
+  const { result, used } = await reserveUpload(db, {
+    key, bytes, contentType, clerkId, perUserBytes: limited ? settings.storagePerUserMb * BYTES_PER_MB : null, capMb: settings.storageCapMb,
+  });
+  if (result === "quota") return refuse(settings, "storage_quota_reached", 403, { limit: settings.storagePerUserMb, used: Math.ceil(used / BYTES_PER_MB) });
+  if (result === "full") return refuseStorage(settings);
   return null;
 }
 

@@ -5,6 +5,8 @@ import { createDb, schema, type Database } from "@renvia/db";
 import type { BillingCatalogResponse, BillingInterval, BillingPlanOffer, CreateCheckoutResponse, PaymentMethod } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireActiveAccount } from "../middleware/activeAccount.js";
+import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser } from "../lib/users.js";
 import { approvalUrl, paypalReady, paypalRequest, type PaypalOrder, type PaypalSubscription } from "../lib/paypal.js";
 import { settlePaypalCapture } from "../lib/paypalSettlement.js";
@@ -225,10 +227,10 @@ async function startCheckout(c: Context<AppContext>, input: z.infer<typeof check
   }
 }
 
-billing.post("/checkouts", async (c) => startCheckout(c, checkoutRequest.parse(await c.req.json())));
+billing.post("/checkouts", requireActiveAccount, rateLimit("checkout"), async (c) => startCheckout(c, checkoutRequest.parse(await c.req.json())));
 
 /** The original PayPal-only endpoint, kept for Studio builds that still call it. */
-billing.post("/checkouts/paypal", async (c) => startCheckout(c, checkoutRequest.parse({ ...(await c.req.json()), method: "paypal" })));
+billing.post("/checkouts/paypal", requireActiveAccount, rateLimit("checkout"), async (c) => startCheckout(c, checkoutRequest.parse({ ...(await c.req.json()), method: "paypal" })));
 
 /**
  * Called when the customer comes back from paying. Settles what can be settled right away:
