@@ -10,7 +10,7 @@ import { useAccountStore } from "../../lib/useAccountStore";
 import { PromptAssist } from "./PromptAssist";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
-const DEFAULT_MAX_PROMPT_CHARS = 2000;
+const DEFAULT_MAX_PROMPT_CHARS = 1000;
 
 const METHODS: { id: EditMethod; label: string; hint: string }[] = [
   { id: "prompt", label: "Describe", hint: "Type the change you want." },

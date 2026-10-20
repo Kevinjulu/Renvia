@@ -9,7 +9,7 @@ import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/Nex
 import { PromptAssist } from "./PromptAssist";
 
 /** Server defaults before /me has loaded — match app_settings's defaults. */
-const DEFAULT_MAX_PROMPT_CHARS = 2000;
+const DEFAULT_MAX_PROMPT_CHARS = 1000;
 const DEFAULT_MAX_REFERENCES = 8;
 const FIDELITY_TOAST_STORAGE_KEY = "renvia:fidelity-feature-toast:v1";
 

@@ -599,7 +599,7 @@ export const appSettings = pgTable(
     /** Max style/material reference images per render. */
     maxReferenceImages: integer("max_reference_images").notNull().default(8),
     /** Max characters in a render prompt. */
-    maxPromptChars: integer("max_prompt_chars").notNull().default(2000),
+    maxPromptChars: integer("max_prompt_chars").notNull().default(1000),
     /** Max characters in an automatic-selection prompt. */
     maxSelectionPromptChars: integer("max_selection_prompt_chars").notNull().default(200),
     /** Studio warns the user at or below this balance. 0 disables the warning. */

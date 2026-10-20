@@ -267,6 +267,13 @@
       "when": 1792713600000,
       "tag": "0037_prompt_polishes",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0038_prompt_default_1000",
+      "breakpoints": true
     }
   ]
 }
