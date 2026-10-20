@@ -291,13 +291,15 @@ describe("the program budget", () => {
     const { program, project } = await tester({ beta: 25 });
     const other = await makeBetaProgram();
     await makeRender(project.id, { status: "succeeded", costMicros: 6 * USD, betaProgramId: program.id });
-    await makeRender(project.id, { status: "failed", costMicros: 100 * USD, betaProgramId: program.id });
+    // fal refused it, so it carries no cost; one cancelled after fal took it keeps its 1 USD.
+    await makeRender(project.id, { status: "failed", costMicros: 0, betaProgramId: program.id });
+    await makeRender(project.id, { status: "failed", costMicros: 1 * USD, costState: "uncertain", uncertainCostMicros: 1 * USD, betaProgramId: program.id });
     await makeRender(project.id, { status: "succeeded", costMicros: 100 * USD }); // account-funded
     await makeRender(project.id, { status: "succeeded", costMicros: 100 * USD, betaProgramId: other.id });
 
-    expect(await programSpendMicros(db, program.id)).toBe(6 * USD);
-    expect(await reserveProgramBudget(db, program.id, 5 * USD, 10 * USD)).toBeNull();
-    expect(await reserveProgramBudget(db, program.id, 3 * USD, 10 * USD)).not.toBeNull();
+    expect(await programSpendMicros(db, program.id)).toBe(7 * USD);
+    expect(await reserveProgramBudget(db, program.id, 4 * USD, 10 * USD)).toBeNull();
+    expect(await reserveProgramBudget(db, program.id, 2 * USD, 10 * USD)).not.toBeNull();
     expect(await reserveProgramBudget(db, program.id, 2 * USD, 10 * USD)).toBeNull();
   });
 

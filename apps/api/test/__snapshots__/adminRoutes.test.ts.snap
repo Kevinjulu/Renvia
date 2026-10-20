@@ -563,6 +563,13 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "daily": [
         {
           "day": "<day>",
+          "estimatedCostUsd": 0,
+          "failedPayments": 0,
+          "refundsUsd": 0,
+          "revenueUsd": 0,
+        },
+        {
+          "day": "<day>",
           "estimatedCostUsd": 0.07,
           "failedPayments": 0,
           "refundsUsd": 0,
@@ -967,7 +974,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         },
         {
           "aspectRatio": "auto",
-          "costUsd": 0.04,
+          "costUsd": 0,
           "createdAt": "<timestamp>",
           "creditsCharged": 1,
           "errorMessage": "model error",
@@ -1142,7 +1149,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         },
         {
           "aspectRatio": "auto",
-          "costUsd": 0.04,
+          "costUsd": 0,
           "createdAt": "<timestamp>",
           "creditsCharged": 1,
           "errorMessage": "model error",
@@ -1194,7 +1201,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "renders": [
         {
           "aspectRatio": "auto",
-          "costUsd": 0.04,
+          "costUsd": 0,
           "createdAt": "<timestamp>",
           "creditsCharged": 1,
           "errorMessage": "model error",
@@ -1586,7 +1593,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
         },
         {
           "aspectRatio": "auto",
-          "costUsd": 0.04,
+          "costUsd": 0,
           "createdAt": "<timestamp>",
           "creditsCharged": 1,
           "errorMessage": "model error",

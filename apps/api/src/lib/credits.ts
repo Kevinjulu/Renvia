@@ -1,4 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { schema, type Database } from "@renvia/db";
 import { expireBetaCredits } from "./beta.js";
 
@@ -120,35 +121,109 @@ export function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
+ * Another request took the last slot of a usage cap between the pre-flight check and this
+ * charge; nothing was charged or created. The caller answers with the cap's usual refusal.
+ */
+export class JobCapError extends Error {
+  constructor() {
+    super("A usage limit was reached");
+  }
+}
+
+/** The caps a new job must still fit under when it is created; null for exempt users. */
+export interface JobCaps {
+  concurrent: number | null;
+  daily: number | null;
+  monthly: number | null;
+}
+
+/** Keys pg_advisory_xact_lock(key, hashtext(user id)): one user's job creations, one at a time. */
+const JOB_CAPS_LOCK = 88420372;
+
+const UTC_DAY_START = sql`date_trunc('day', now() at time zone 'utc') at time zone 'utc'`;
+const UTC_MONTH_START = sql`date_trunc('month', now() at time zone 'utc') at time zone 'utc'`;
+
+/**
+ * The cap check, inside the transaction that creates the job. The lock serializes one user's
+ * job creations across instances; the check is its own statement so its snapshot is taken after
+ * the lock, and sees a job committed by the request it waited behind (see reserveBudget). A cap
+ * that is full divides by zero, which rolls the whole batch back before anything is charged.
+ *
+ * Jobs count as getUsage counts them: failed jobs only while they still carry provider spend.
+ */
+function capWrites(db: Database, userId: string, caps: JobCaps, kind: "render" | "segment") {
+  const counts = kind === "render"
+    ? sql`
+        select
+          count(*) filter (where r.status in ('pending', 'processing')) as in_flight,
+          count(*) filter (where r.created_at >= ${UTC_DAY_START} and (r.status <> 'failed' or r.cost_micros > 0)) as today,
+          count(*) filter (where r.created_at >= ${UTC_MONTH_START} and (r.status <> 'failed' or r.cost_micros > 0)) as month
+        from ${schema.renders} r join ${schema.projects} p on p.id = r.project_id
+        where p.owner_id = ${userId} and (r.created_at >= ${UTC_MONTH_START} or r.status in ('pending', 'processing'))`
+    : sql`
+        select
+          0 as in_flight,
+          count(*) filter (where s.created_at >= ${UTC_DAY_START}) as today,
+          count(*) as month
+        from ${schema.segmentations} s
+        where s.user_id = ${userId} and s.created_at >= ${UTC_MONTH_START} and (s.status <> 'failed' or s.cost_micros > 0)`;
+  const full: SQL[] = [];
+  if (caps.concurrent !== null) full.push(sql`in_flight >= ${caps.concurrent}`);
+  if (caps.daily !== null) full.push(sql`today >= ${caps.daily}`);
+  if (caps.monthly !== null) full.push(sql`month >= ${caps.monthly}`);
+  if (full.length === 0) return [];
+  return [
+    db.execute(sql`select pg_advisory_xact_lock(${JOB_CAPS_LOCK}, hashtext(${userId}))`),
+    db.execute(sql`select 1 / (case when exists (select 1 from (${counts}) c where ${sql.join(full, sql` or `)}) then 0 else 1 end) as within_caps`),
+  ];
+}
+
+function jobError(error: unknown, beta: BetaCharge | undefined): unknown {
+  return hasPgCode(error, "22012") ? new JobCapError() : chargeError(error, beta);
+}
+
+/** Runs `items` as one transaction and returns the rows of the job insert at `index`. */
+async function runJobBatch<T>(db: Database, items: BatchItem<"pg">[], index: number): Promise<T> {
+  const [first, ...rest] = items;
+  const results = (await db.batch([first!, ...rest])) as unknown[];
+  return (results[index] as T[])[0]!;
+}
+
+/**
  * Creates a render and charges for it in one transaction: the balance decrement, the
  * render row and its ledger entry commit together or not at all. The non-negative
  * balance constraint makes an unaffordable render roll the whole batch back, which
  * holds even when several renders are submitted at once. With `beta`, the charge comes from
- * beta credits only and the render counts against that program's budget.
+ * beta credits only and the render counts against that program's budget. With `caps`, the
+ * user's concurrency, daily and monthly caps are checked again inside the same transaction, so
+ * parallel requests can't all pass the pre-flight and overshoot them (JobCapError).
  */
 export async function createChargedRender(
   db: Database,
   userId: string,
   credits: number,
-  values: Omit<RenderInsert, "id" | "creditsCharged" | "betaProgramId">,
+  values: Omit<RenderInsert, "id" | "creditsCharged" | "betaProgramId" | "costState">,
   beta?: BetaCharge,
+  caps?: JobCaps | null,
 ): Promise<RenderRow> {
   const id = crypto.randomUUID();
-  if (credits === 0) {
-    const [created] = await db.insert(schema.renders).values({ ...values, id }).returning();
+  const guard = caps ? capWrites(db, userId, caps, "render") : [];
+  const row = { ...values, id, costState: "pending" as const };
+  if (credits === 0 && guard.length === 0) {
+    const [created] = await db.insert(schema.renders).values(row).returning();
     return created!;
   }
 
-  const { debit, ledger } = chargeWrites(db, userId, credits, beta);
+  const charge = credits > 0 ? chargeWrites(db, userId, credits, beta) : null;
   try {
-    const [, [created]] = await db.batch([
-      debit,
-      db.insert(schema.renders).values({ ...values, id, creditsCharged: credits, betaProgramId: beta?.programId ?? null }).returning(),
-      db.insert(schema.creditLedger).values({ ...ledger, reason: "render", renderId: id }),
-    ]);
-    return created!;
+    return await runJobBatch<RenderRow>(db, [
+      ...guard,
+      ...(charge ? [charge.debit] : []),
+      db.insert(schema.renders).values({ ...row, creditsCharged: credits, betaProgramId: beta?.programId ?? null }).returning(),
+      ...(charge ? [db.insert(schema.creditLedger).values({ ...charge.ledger, reason: "render", renderId: id })] : []),
+    ], guard.length + (charge ? 1 : 0));
   } catch (error) {
-    throw chargeError(error, beta);
+    throw jobError(error, beta);
   }
 }
 
@@ -156,7 +231,8 @@ type SegmentationRow = typeof schema.segmentations.$inferSelect;
 type SegmentationInsert = typeof schema.segmentations.$inferInsert;
 
 /**
- * Creates a segmentation and charges for it in one transaction — same pattern as renders.
+ * Creates a segmentation and charges for it in one transaction — same pattern as renders,
+ * including the in-transaction daily and monthly caps.
  */
 export async function createChargedSegmentation(
   db: Database,
@@ -164,23 +240,25 @@ export async function createChargedSegmentation(
   credits: number,
   values: Omit<SegmentationInsert, "id" | "creditsCharged" | "userId" | "betaProgramId">,
   beta?: BetaCharge,
+  caps?: JobCaps | null,
 ): Promise<SegmentationRow> {
   const id = crypto.randomUUID();
-  if (credits === 0) {
+  const guard = caps ? capWrites(db, userId, caps, "segment") : [];
+  if (credits === 0 && guard.length === 0) {
     const [created] = await db.insert(schema.segmentations).values({ ...values, id, userId }).returning();
     return created!;
   }
 
-  const { debit, ledger } = chargeWrites(db, userId, credits, beta);
+  const charge = credits > 0 ? chargeWrites(db, userId, credits, beta) : null;
   try {
-    const [, [created]] = await db.batch([
-      debit,
+    return await runJobBatch<SegmentationRow>(db, [
+      ...guard,
+      ...(charge ? [charge.debit] : []),
       db.insert(schema.segmentations).values({ ...values, id, userId, creditsCharged: credits, betaProgramId: beta?.programId ?? null }).returning(),
-      db.insert(schema.creditLedger).values({ ...ledger, reason: "segment", segmentationId: id }),
-    ]);
-    return created!;
+      ...(charge ? [db.insert(schema.creditLedger).values({ ...charge.ledger, reason: "segment", segmentationId: id })] : []),
+    ], guard.length + (charge ? 1 : 0));
   } catch (error) {
-    throw chargeError(error, beta);
+    throw jobError(error, beta);
   }
 }
 

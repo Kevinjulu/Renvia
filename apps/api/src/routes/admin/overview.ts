@@ -75,7 +75,7 @@ overviewRoutes.get("/overview", async (c) => {
     db.execute<{ date: string; renders: number; spent_micros: string }>(sql`
       select to_char(day, 'YYYY-MM-DD') as date,
              count(r.id)::int as renders,
-             coalesce(sum(r.cost_micros) filter (where r.status <> 'failed'), 0)::bigint as spent_micros
+             coalesce(sum(r.cost_micros), 0)::bigint as spent_micros
       from generate_series((now() at time zone 'utc')::date - 13, (now() at time zone 'utc')::date, interval '1 day') as day
       left join renders r on (r.created_at at time zone 'utc')::date = day::date
       group by day order by day`),

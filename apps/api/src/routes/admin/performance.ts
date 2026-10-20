@@ -150,7 +150,7 @@ performanceRoutes.get("/performance/summary", async (c) => {
         count(*) filter (where status = 'succeeded')::int as succeeded,
         count(*) filter (where status = 'failed')::int as failed,
         count(*) filter (where status = 'pending')::int as pending,
-        coalesce(sum(cost_micros) filter (where status <> 'failed'), 0)::bigint as cost_micros
+        coalesce(sum(cost_micros), 0)::bigint as cost_micros
       from segmentations where created_at >= ${since(range)}`),
     db.execute<Row>(sql`select count(*)::int as total,
         count(*) filter (where exists (select 1 from render_job_events e where e.render_id = r.id))::int as with_events

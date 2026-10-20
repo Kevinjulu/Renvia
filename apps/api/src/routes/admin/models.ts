@@ -51,7 +51,7 @@ modelsRoutes.get("/models", async (c) => {
     db.execute<Row>(sql`select model, count(*)::int as total,
         count(*) filter (where status = 'succeeded')::int as succeeded,
         count(*) filter (where status = 'failed')::int as failed,
-        coalesce(sum(cost_micros) filter (where status <> 'failed'), 0)::bigint as cost_micros,
+        coalesce(sum(cost_micros), 0)::bigint as cost_micros,
         max(created_at) as last_used
       from segmentations where created_at >= now() - interval '7 days' group by model`),
   ]);

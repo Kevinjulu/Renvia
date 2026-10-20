@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
@@ -36,7 +36,7 @@ projects.post("/", async (c) => {
     const [owned] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.projects)
-      .where(eq(schema.projects.ownerId, user.id));
+      .where(and(eq(schema.projects.ownerId, user.id), isNull(schema.projects.deletedAt)));
     if ((owned?.count ?? 0) >= maxProjects) {
       const refusal = refuseInput(settings, "project_limit_reached", maxProjects, owned?.count ?? 0);
       return c.json(refusal, refusal.status);
@@ -59,7 +59,7 @@ projects.get("/", async (c) => {
   const rows = await db
     .select()
     .from(schema.projects)
-    .where(eq(schema.projects.ownerId, ownerId))
+    .where(and(eq(schema.projects.ownerId, ownerId), isNull(schema.projects.deletedAt)))
     .orderBy(desc(schema.projects.createdAt));
 
   const origin = new URL(c.req.url).origin;
@@ -117,14 +117,17 @@ projects.delete("/:id", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  // No cascade on the FKs — clear dependent rows before the project itself, in one transaction so
-  // a failure leaves nothing half-deleted. Files are left to the daily storage sweep
-  // (lib/storageCleanup.ts): it deletes a gone render's outputs and unused uploads, but keeps any
-  // that another project still uses, e.g. as a reference.
+  // The project and its renders are hidden, not deleted: the renders' rows carry the provider
+  // spend and usage the fal budget, beta budgets and daily/monthly limits are summed from, and
+  // the credit ledger points at them. Its canvas carries no money, so it goes. Files are left to
+  // the daily storage sweep (lib/storageCleanup.ts), which removes a hidden render's outputs
+  // after a week unless another project still uses them, e.g. as a reference. One transaction,
+  // so a failure leaves nothing half-deleted; only a live project is deleted, so a repeat is a 404.
+  const now = new Date();
   await db.batch([
-    db.delete(schema.renders).where(eq(schema.renders.projectId, id)),
+    db.update(schema.projects).set({ deletedAt: now, updatedAt: now }).where(and(eq(schema.projects.id, id), isNull(schema.projects.deletedAt))),
+    db.update(schema.renders).set({ hiddenAt: sql`coalesce(${schema.renders.hiddenAt}, ${now})` }).where(eq(schema.renders.projectId, id)),
     db.delete(schema.canvasNodes).where(eq(schema.canvasNodes.projectId, id)),
-    db.delete(schema.projects).where(eq(schema.projects.id, id)),
   ]);
 
   return c.json({ id });

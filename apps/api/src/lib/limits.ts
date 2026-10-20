@@ -1,7 +1,8 @@
-import { and, eq, gte, ne, sql } from "drizzle-orm";
+import { and, eq, gt, gte, isNull, ne, or, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { LimitCode, UserLimits, UserUsage } from "@renvia/types";
 import type { AppSettingsRow } from "./settings.js";
+import type { JobCaps } from "./credits.js";
 import { effectiveMaintenance } from "./studioControl.js";
 import { BYTES_PER_MB, uploadBytesFor, uploadWouldExceed } from "./storage.js";
 
@@ -51,8 +52,10 @@ export function resolveLimits(user: UserRow, settings: AppSettingsRow, plan?: Bi
 }
 
 /**
- * Counts against every cap in one round trip. Failed renders and segmentations were
- * refunded, so they don't consume the day's or month's allowance either.
+ * Counts against every cap in one round trip. A failed render or segmentation counts toward the
+ * day's and month's allowance only while it still carries provider spend (cost_micros > 0): one
+ * cancelled or timed out after fal took it used fal; one fal refused or never received didn't.
+ * Renders in deleted projects still count; the project count only covers live projects.
  */
 export async function getUsage(db: Database, userId: string): Promise<UserUsage> {
   const [[renders], [segments], [projects], [inFlight]] = await Promise.all([
@@ -66,7 +69,7 @@ export async function getUsage(db: Database, userId: string): Promise<UserUsage>
       .where(
         and(
           eq(schema.projects.ownerId, userId),
-          ne(schema.renders.status, "failed"),
+          or(ne(schema.renders.status, "failed"), gt(schema.renders.costMicros, 0)),
           gte(schema.renders.createdAt, UTC_MONTH_START),
         ),
       ),
@@ -79,14 +82,14 @@ export async function getUsage(db: Database, userId: string): Promise<UserUsage>
       .where(
         and(
           eq(schema.segmentations.userId, userId),
-          ne(schema.segmentations.status, "failed"),
+          or(ne(schema.segmentations.status, "failed"), gt(schema.segmentations.costMicros, 0)),
           gte(schema.segmentations.createdAt, UTC_MONTH_START),
         ),
       ),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.projects)
-      .where(eq(schema.projects.ownerId, userId)),
+      .where(and(eq(schema.projects.ownerId, userId), isNull(schema.projects.deletedAt))),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.renders)
@@ -193,6 +196,26 @@ export async function checkAllowance(
     return refuse(settings, "monthly_limit_reached", 429, { limit: monthly, used: usedThisMonth });
   }
   return null;
+}
+
+/**
+ * The caps createChargedRender / createChargedSegmentation check again inside their transaction,
+ * or null when the user is exempt. Maintenance stays a pre-flight check only.
+ */
+export function jobCaps(limits: UserLimits, kind: Kind): JobCaps | null {
+  if (limits.exempt) return null;
+  return kind === "render"
+    ? { concurrent: limits.concurrentRenders, daily: limits.dailyRenders, monthly: limits.monthlyRenders }
+    : { concurrent: null, daily: limits.dailySegments, monthly: limits.monthlySegments };
+}
+
+/**
+ * The refusal for a JobCapError: the cap a racing request just filled, read again now. Falls back
+ * to the concurrency refusal if the slot has already been freed again in between.
+ */
+export async function refuseRacedCap(db: Database, user: UserRow, settings: AppSettingsRow, kind: Kind, plan?: BillingPlanRow, beta?: BetaLimits | null): Promise<Refusal> {
+  return (await checkAllowance(db, user, settings, kind, plan, beta))
+    ?? refuse(settings, kind === "render" ? "concurrency_limit_reached" : "daily_limit_reached", 429);
 }
 
 /** Refusal for one of the input caps, which are checked inline rather than pre-flight. */

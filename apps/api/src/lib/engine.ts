@@ -1,5 +1,5 @@
 import { ApiError, createFalClient, type FalClient } from "@fal-ai/client";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import sharp, { type Sharp } from "sharp";
 import { schema, type Database } from "@renvia/db";
 import {
@@ -57,20 +57,19 @@ function falClient(env: Env): FalClient {
 
 
 /**
- * Spend is global, not per user — it tracks the single fal account's credit.
- * Failed jobs are excluded since fal doesn't bill requests that error out. Summed as bigint
- * (the driver returns it as a string): an `::int` cast errors once spend passes ~$2,147.
+ * Spend is global, not per user — it tracks the single fal account's credit. Every job counts
+ * its cost_micros whatever its status: a failure only lowers it once fal's cost is known to be
+ * zero (see failurePatch). Summed as bigint (the driver returns it as a string): an `::int` cast
+ * errors once spend passes ~$2,147.
  */
 async function spentMicros(db: Database): Promise<number> {
   const [[renders], [segments], [polishes]] = await Promise.all([
     db
       .select({ total: sql<string>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint` })
-      .from(schema.renders)
-      .where(ne(schema.renders.status, "failed")),
+      .from(schema.renders),
     db
       .select({ total: sql<string>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint` })
-      .from(schema.segmentations)
-      .where(ne(schema.segmentations.status, "failed")),
+      .from(schema.segmentations),
     // "Polish prompt" requests to the language model (free to users, but not to the fal account).
     db
       .select({ total: sql<string>`coalesce(sum(${schema.promptPolishes.costMicros}), 0)::bigint` })
@@ -121,8 +120,9 @@ export async function reserveBudget(db: Database, costMicros: number, budgetUsd:
       ),
       spent as (
         select
-          coalesce(sum(r.cost_micros) filter (where r.status <> 'failed'), 0)
-          + coalesce((select sum(s.cost_micros) from segmentations s where s.status <> 'failed'), 0)
+          coalesce(sum(r.cost_micros), 0)
+          + coalesce((select sum(s.cost_micros) from segmentations s), 0)
+          + coalesce((select sum(p.cost_micros) from prompt_polishes p), 0)
           + coalesce((select sum(b.cost_micros) from budget_reservations b where b.created_at >= now() - interval '15 minutes' and b.beta_program_id is null), 0)
           + 0 * (select count(*) from cleared) as total
         from renders r
@@ -155,35 +155,97 @@ async function updateRender(db: Database, id: string, patch: Partial<RenderRow>)
 }
 
 /**
- * Only transitions a render that is still `processing`, so racing refreshes
- * (studio polling + fal webhook) finish it exactly once.
+ * Only transitions a render that is still in `from` (by default `processing`), so racing
+ * refreshes (studio polling + fal webhook) and a cancel finish it exactly once. A render that
+ * succeeds without saying otherwise has its provider cost settled at its estimate.
  */
-async function finishRender(db: Database, render: RenderRow, patch: Partial<RenderRow>): Promise<RenderRow> {
+async function finishRender(db: Database, render: RenderRow, patch: Partial<RenderRow>, from: RenderRow["status"][] = ["processing"]): Promise<RenderRow> {
+  const settled = patch.status === "succeeded" && patch.costState === undefined ? { costState: "settled" as const, uncertainCostMicros: 0 } : {};
   const [updated] = await db
     .update(schema.renders)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(and(eq(schema.renders.id, render.id), eq(schema.renders.status, "processing")))
+    .set({ ...patch, ...settled, updatedAt: new Date() })
+    .where(and(eq(schema.renders.id, render.id), inArray(schema.renders.status, from)))
     .returning();
   if (updated) return updated;
   const [current] = await db.select().from(schema.renders).where(eq(schema.renders.id, render.id));
   return current ?? render;
 }
 
-/** Every use is wrapped in refundIfFailed, which returns the user's credits for it. */
-function failurePatch(message: string): Partial<RenderRow> {
-  // Unbilled by fal, so it must stop counting against the budget.
-  return { status: "failed", costMicros: 0, errorMessage: message };
+/**
+ * What is known about fal's charge for the pass a job was on when it ended here. The customer's
+ * credits are refunded the same way in every case; this only decides what the budgets count.
+ *
+ * - not_charged: fal never ran the pass: it was never sent, fal refused the submit, or fal
+ *   reported the pass failed. (fal doesn't bill requests that error out — the long-standing
+ *   assumption here, not something fal confirms per request.)
+ * - charged: fal finished the pass, e.g. completed without returning an image.
+ * - unknown: fal may be running it or have run it: cancelled or timed out after submission, or
+ *   a submit whose answer was lost. Its cost keeps counting until reconcileProviderCosts reads
+ *   fal's own outcome.
+ */
+type PassOutcome = "not_charged" | "charged" | "unknown";
+
+/**
+ * The estimated cost of the pass the render is on now, and of the passes after it that haven't
+ * started (and so can't have cost anything). Earlier passes finished, so fal billed them.
+ */
+function passCosts(render: RenderRow): { current: number; later: number } {
+  const settings = render.settings;
+  const total = render.costMicros;
+  if (settings?.upscale) return { current: Math.min(total, UPSCALE_COST_MICROS[settings.upscale.target]), later: 0 };
+  if (inUpscalePass(render)) return { current: Math.min(total, UPSCALE_COST_MICROS[settings!.highRes!.target]), later: 0 };
+  const current = Math.min(total, modelById(render.model)?.costMicros ?? total);
+  return { current, later: settings?.edit?.intermediateImageUrl ? 0 : total - current };
+}
+
+/** The cost fields for a job that ends counting `costMicros`, of which `uncertain` awaits fal. */
+function costFields(costMicros: number, uncertain: number): Pick<RenderRow, "costMicros" | "uncertainCostMicros" | "costState"> {
+  const cost = Math.max(0, costMicros);
+  const open = Math.min(cost, Math.max(0, uncertain));
+  return { costMicros: cost, uncertainCostMicros: open, costState: open > 0 ? "uncertain" : "settled" };
 }
 
 /**
- * failurePatch for a render that may be in the environment pass of a two-pass edit: its first
- * pass finished and fal billed it, so that spend keeps counting against the budget. The user's
- * credits are still refunded in full — they didn't get the edit they paid for.
+ * The render failed here. Passes that never started stop counting; the current pass stops
+ * counting only when fal can't have charged for it. Every use is wrapped in refundIfFailed, which
+ * returns the user's credits regardless — they didn't get what they paid for.
  */
-function failurePatchFor(render: RenderRow, message: string): Partial<RenderRow> {
-  if (!render.settings?.edit?.intermediateImageUrl) return failurePatch(message);
-  const secondPassMicros = modelById(render.model)?.costMicros ?? 0;
-  return { ...failurePatch(message), costMicros: Math.max(0, render.costMicros - secondPassMicros) };
+function failurePatch(render: RenderRow, message: string, outcome: PassOutcome): Partial<RenderRow> {
+  const { current, later } = passCosts(render);
+  const kept = render.costMicros - later - (outcome === "not_charged" ? current : 0);
+  return { status: "failed", errorMessage: message, ...costFields(kept, outcome === "unknown" ? current : 0) };
+}
+
+/**
+ * A submit that threw. Before the queue call nothing reached fal; an error answer from fal (4xx)
+ * means it refused the request. Anything else — a 5xx, a network failure, or our own write
+ * failing after fal accepted it — may have left a job running there.
+ */
+function submitOutcome(submitting: boolean, error: unknown): PassOutcome {
+  if (!submitting) return "not_charged";
+  return error instanceof ApiError && error.status >= 400 && error.status < 500 ? "not_charged" : "unknown";
+}
+
+/**
+ * Records that fal accepted a pending render's first pass. Only a render still pending moves to
+ * processing: one cancelled while the submit was in flight stays failed (and refunded), but fal
+ * has the job anyway, so its request id is kept for reconcileProviderCosts and fal is asked to
+ * drop it.
+ */
+async function markSubmitted(env: Env, db: Database, render: RenderRow, modelId: string, requestId: string): Promise<RenderRow> {
+  const [updated] = await db
+    .update(schema.renders)
+    .set({ status: "processing", falRequestId: requestId, updatedAt: new Date() })
+    .where(and(eq(schema.renders.id, render.id), eq(schema.renders.status, "pending")))
+    .returning();
+  if (updated) return updated;
+  const [recorded] = await db
+    .update(schema.renders)
+    .set({ falRequestId: requestId })
+    .where(and(eq(schema.renders.id, render.id), isNull(schema.renders.falRequestId)))
+    .returning();
+  await falClient(env).queue.cancel(modelId, { requestId }).catch((error: unknown) => console.error("fal cancel after late submit failed", render.id, error));
+  return recorded ?? (await db.select().from(schema.renders).where(eq(schema.renders.id, render.id)))[0] ?? render;
 }
 
 /** A two-pass edit whose first pass (the selection) is still running. */
@@ -429,9 +491,12 @@ function webhookUrlFor(origin: string): string | undefined {
 export async function submitRender(env: Env, db: Database, render: RenderRow, origin: string): Promise<RenderRow> {
   const model = modelById(render.model);
   if (!model || model.id === "mock") {
-    return updateRender(db, render.id, { status: "processing" });
+    // Nothing goes to fal, so there's no provider cost to wait for.
+    return finishRender(db, render, { status: "processing", costState: "settled" }, ["pending"]);
   }
 
+  // Set just before the queue call: a failure before it never reached fal.
+  let submitting = false;
   try {
     const fal = falClient(env);
     const settings = render.settings ?? {};
@@ -485,6 +550,7 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
           protectedFeatures: settings.fidelity?.protectedFeatures,
         });
 
+    submitting = true;
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
         imageUrl: sourceInput.url,
@@ -498,10 +564,11 @@ export async function submitRender(env: Env, db: Database, render: RenderRow, or
       }),
       webhookUrl: webhookUrlFor(origin),
     });
-    return updateRender(db, render.id, { status: "processing", falRequestId: request_id });
+    return await markSubmitted(env, db, render, model.id, request_id);
   } catch (error) {
     console.error("fal submit failed", error);
-    return refundIfFailed(db, await updateRender(db, render.id, failurePatch(errorMessageOf(error))));
+    // Only a render still pending fails here; one cancelled meanwhile was already settled.
+    return refundIfFailed(db, await finishRender(db, render, failurePatch(render, errorMessageOf(error), submitOutcome(submitting, error)), ["pending"]));
   }
 }
 
@@ -586,11 +653,14 @@ async function startEnvironmentPass(env: Env, db: Database, render: RenderRow, i
     return finishRender(db, claimed, { status: "succeeded", resultImageUrl: intermediateImageUrl, seed: settings.seed ?? null });
   }
 
+  let submitting = false;
   try {
     const fal = falClient(env);
+    const imageUrl = await falReachableImageUrl(env, fal, intermediateImageUrl, origin);
+    submitting = true;
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
-        imageUrl: await falReachableImageUrl(env, fal, intermediateImageUrl, origin),
+        imageUrl,
         referenceUrls: [],
         prompt: buildEnvironmentPrompt({ environment: edit.environment!, style: render.style }),
         influence: settings.editInfluence ?? 4,
@@ -601,10 +671,11 @@ async function startEnvironmentPass(env: Env, db: Database, render: RenderRow, i
       }),
       webhookUrl: webhookUrlFor(origin),
     });
+    // Recorded even if the render was cancelled meanwhile, so the pass can still be reconciled.
     return updateRender(db, render.id, { falRequestId: request_id });
   } catch (error) {
     console.error("fal environment pass submit failed", render.id, error);
-    return refundIfFailed(db, await finishRender(db, claimed, failurePatchFor(claimed, errorMessageOf(error))));
+    return refundIfFailed(db, await finishRender(db, claimed, failurePatch(claimed, errorMessageOf(error), submitOutcome(submitting, error))));
   }
 }
 
@@ -636,6 +707,7 @@ async function startUpscalePass(env: Env, db: Database, render: RenderRow, image
     return current ?? render;
   }
 
+  let submitting = false;
   try {
     if (model.id === "mock") {
       const key = renderHighResKeyFor(render.id, highRes.target, "image/jpeg");
@@ -643,6 +715,7 @@ async function startUpscalePass(env: Env, db: Database, render: RenderRow, image
     }
     const fal = falClient(env);
     const input = await prepareUpscaleInput(env, fal, baseImageUrl, origin, highRes.target);
+    submitting = true;
     const { request_id } = await fal.queue.submit(model.id, {
       input: model.buildInput({
         imageUrl: input.url,
@@ -658,7 +731,7 @@ async function startUpscalePass(env: Env, db: Database, render: RenderRow, image
     return updateRender(db, render.id, { falRequestId: request_id });
   } catch (error) {
     console.error("upscale pass submit failed", render.id, error);
-    return finishWithoutHighRes(db, claimed, errorMessageOf(error));
+    return finishWithoutHighRes(db, claimed, errorMessageOf(error), submitOutcome(submitting, error));
   }
 }
 
@@ -674,19 +747,21 @@ function finishWithHighRes(db: Database, render: RenderRow, imageUrl: string): P
 
 /**
  * The upscale pass failed or was cancelled. The render itself came out fine, so it succeeds
- * with its standard result; only the upscale's credits come back and its spend stops counting.
+ * with its standard result; only the upscale's credits come back. Its spend stops counting only
+ * when fal can't have charged for it; otherwise it stays counted until reconciled.
  */
-async function finishWithoutHighRes(db: Database, render: RenderRow, message: string): Promise<RenderRow> {
+async function finishWithoutHighRes(db: Database, render: RenderRow, message: string, outcome: PassOutcome, from?: RenderRow["status"][]): Promise<RenderRow> {
   const settings = render.settings!;
   const highRes = settings.highRes!;
   const refund = await upscaleRefund(db, render, highRes.target);
+  const { current } = passCosts(render);
   const finished = await finishRender(db, render, {
     status: "succeeded",
     resultImageUrl: highRes.baseImageUrl,
     settings: { ...settings, highRes: { ...highRes, error: message } },
-    costMicros: Math.max(0, render.costMicros - UPSCALE_COST_MICROS[highRes.target]),
+    ...costFields(render.costMicros - (outcome === "not_charged" ? current : 0), outcome === "unknown" ? current : 0),
     creditsCharged: render.creditsCharged - refund,
-  });
+  }, from);
   // A racing refresh may have finished it first; the refund itself applies at most once.
   if (finished.settings?.highRes?.error) await refundRender(db, finished, refund);
   return finished;
@@ -708,9 +783,9 @@ async function upscaleRefund(db: Database, render: RenderRow, target: UpscaleTar
 }
 
 /** Ends an in-flight render that went wrong, keeping the standard result if only the upscale did. */
-async function failInFlight(db: Database, render: RenderRow, message: string): Promise<RenderRow> {
-  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, message);
-  return refundIfFailed(db, await finishRender(db, render, failurePatchFor(render, message)));
+async function failInFlight(db: Database, render: RenderRow, message: string, outcome: PassOutcome): Promise<RenderRow> {
+  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, message, outcome);
+  return refundIfFailed(db, await finishRender(db, render, failurePatch(render, message, outcome)));
 }
 
 async function refreshFalRender(env: Env, db: Database, render: RenderRow, origin: string): Promise<RenderRow> {
@@ -720,7 +795,8 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     // request died in between.
     const claimedPass = Boolean(render.settings?.edit?.intermediateImageUrl) || inUpscalePass(render);
     if (claimedPass && Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return failInFlight(db, render, "Render timed out");
+      // The submit may have reached fal before the request died.
+      return failInFlight(db, render, "Render timed out", "unknown");
     }
     return render;
   }
@@ -729,7 +805,8 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
   const status = await fal.queue.status(render.model, { requestId: render.falRequestId });
   if (status.status !== "COMPLETED") {
     if (Date.now() - render.createdAt.getTime() > FAL_TIMEOUT_MS) {
-      return failInFlight(db, render, "Render timed out");
+      // fal may still finish (and bill) it; reconcileProviderCosts reads its outcome later.
+      return failInFlight(db, render, "Render timed out", "unknown");
     }
     return render;
   }
@@ -738,7 +815,8 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
     const { data } = await fal.queue.result(render.model, { requestId: render.falRequestId });
     const result = data as { images?: { url?: string }[]; image?: { url?: string }; seed?: number };
     const imageUrl = result.images?.[0]?.url ?? result.image?.url;
-    if (!imageUrl) return failInFlight(db, render, "Render returned no image");
+    // fal completed the pass, so it billed it even without an image to show.
+    if (!imageUrl) return failInFlight(db, render, "Render returned no image", "charged");
     if (awaitsEnvironmentPass(render)) return await startEnvironmentPass(env, db, render, imageUrl, origin);
     if (inUpscalePass(render)) {
       const target = render.settings!.highRes!.target;
@@ -760,7 +838,7 @@ async function refreshFalRender(env: Env, db: Database, render: RenderRow, origi
   } catch (error) {
     // A completed request whose result call errors is a model-side failure (bad input,
     // safety filter, …); storage/network hiccups are left processing and retried.
-    if (error instanceof ApiError) return failInFlight(db, render, errorMessageOf(error));
+    if (error instanceof ApiError) return failInFlight(db, render, errorMessageOf(error), "not_charged");
     throw error;
   }
 }
@@ -773,8 +851,9 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
   if (render.status === "pending") {
     // submitRender moves every render out of pending within the create request, so
     // an old pending row means that request died before handing it to the engine.
+    // Whether its submit reached fal first is unknown, so its first pass stays counted.
     if (Date.now() - render.createdAt.getTime() < FAL_TIMEOUT_MS) return render;
-    return refundIfFailed(db, await updateRender(db, render.id, failurePatch("Render was never submitted")));
+    return refundIfFailed(db, await finishRender(db, render, failurePatch(render, "Render was never submitted", "unknown"), ["pending"]));
   }
   if (render.status !== "processing") return render;
 
@@ -808,12 +887,16 @@ export async function refreshRender(env: Env, db: Database, render: RenderRow, o
 /**
  * Stops an in-flight render at the user's request. Best-effort on fal's side — a request
  * that's already finished or too far along to interrupt still gets marked failed here, since
- * the user asked to stop watching it either way.
+ * the user asked to stop watching it either way. The user gets their credits back, but a
+ * successful cancel call doesn't prove fal didn't charge (it may already have been running),
+ * so the pass's cost stays counted until reconcileProviderCosts reads fal's outcome.
  */
 export async function cancelRender(env: Env, db: Database, render: RenderRow): Promise<RenderRow> {
   if (render.status !== "pending" && render.status !== "processing") return render;
 
-  if (render.falRequestId && render.model && render.model !== "mock") {
+  const live = Boolean(render.model && render.model !== "mock");
+  const outcome: PassOutcome = live ? "unknown" : "not_charged";
+  if (render.falRequestId && render.model && live) {
     try {
       await falClient(env).queue.cancel(render.model, { requestId: render.falRequestId });
     } catch (error) {
@@ -823,15 +906,9 @@ export async function cancelRender(env: Env, db: Database, render: RenderRow): P
     }
   }
   // Cancelling during the upscale keeps the finished render; only the upscale is dropped and refunded.
-  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, "Cancelled");
+  if (inUpscalePass(render)) return finishWithoutHighRes(db, render, "Cancelled", outcome);
 
-  const [updated] = await db
-    .update(schema.renders)
-    .set({ ...failurePatchFor(render, "Cancelled"), updatedAt: new Date() })
-    .where(and(eq(schema.renders.id, render.id), inArray(schema.renders.status, ["pending", "processing"])))
-    .returning();
-  const current = updated ?? (await db.select().from(schema.renders).where(eq(schema.renders.id, render.id)))[0]!;
-  return refundIfFailed(db, current);
+  return refundIfFailed(db, await finishRender(db, render, failurePatch(render, "Cancelled", outcome), ["pending", "processing"]));
 }
 
 /**
@@ -849,4 +926,76 @@ export async function sweepStaleRenders(env: Env, db: Database, origin: string):
     await refreshRender(env, db, render, origin);
   }
   return stale.length;
+}
+
+/** How long fal's outcome for an uncertain cost is waited for before it's kept for good. */
+const RECONCILE_WINDOW_MS = 24 * 60 * 60_000;
+/** Uncertain renders checked per run; each costs one or two fal status reads (not billed). */
+const RECONCILE_BATCH = 25;
+
+/**
+ * fal's own answer for the pass a render ended on: charged (it completed), not_charged (it
+ * completed with an error, which covers a cancelled request), or null while it's still queued or
+ * running, or fal can't be asked. Reads status and result only; nothing is stored or re-run.
+ */
+async function providerVerdict(env: Env, render: RenderRow): Promise<"charged" | "not_charged" | null> {
+  if (!render.falRequestId || !render.model || render.model === "mock") return null;
+  const fal = falClient(env);
+  try {
+    const status = await fal.queue.status(render.model, { requestId: render.falRequestId });
+    if (status.status !== "COMPLETED") return null;
+  } catch (error) {
+    console.error("fal status read for reconciliation failed", render.id, error);
+    return null;
+  }
+  try {
+    await fal.queue.result(render.model, { requestId: render.falRequestId });
+    return "charged";
+  } catch (error) {
+    return error instanceof ApiError ? "not_charged" : null;
+  }
+}
+
+/**
+ * Settles the provider cost of renders that ended here (cancelled, timed out, or a lost submit
+ * answer) before fal's outcome was known. fal completing the pass keeps its cost; fal reporting it
+ * failed releases it; no answer within RECONCILE_WINDOW_MS keeps it for good ("unresolved"). Each
+ * settlement applies only while the row is still uncertain, so overlapping runs settle a render
+ * once, and the check constraint keeps uncertain_cost_micros within cost_micros, so a release can't
+ * take spend below zero. Customer credits are not touched: those were refunded when the job ended.
+ */
+export async function reconcileProviderCosts(env: Env, db: Database, now = new Date(), limit = RECONCILE_BATCH): Promise<{ checked: number; charged: number; released: number; unresolved: number }> {
+  const uncertain = await db
+    .select()
+    .from(schema.renders)
+    .where(eq(schema.renders.costState, "uncertain"))
+    .orderBy(asc(schema.renders.updatedAt))
+    .limit(limit);
+  const tally = { checked: uncertain.length, charged: 0, released: 0, unresolved: 0 };
+  for (const render of uncertain) {
+    const verdict = await providerVerdict(env, render);
+    const expired = now.getTime() - render.createdAt.getTime() > RECONCILE_WINDOW_MS;
+    const settle = verdict ?? (expired ? "unresolved" : null);
+    const stillUncertain = and(eq(schema.renders.id, render.id), eq(schema.renders.costState, "uncertain"));
+    if (!settle) {
+      // Still waiting on fal: move it to the back of the queue so the others get checked too.
+      await db.update(schema.renders).set({ updatedAt: now }).where(stillUncertain);
+      continue;
+    }
+    const [settled] = await db
+      .update(schema.renders)
+      .set({
+        costMicros: settle === "not_charged" ? sql`${schema.renders.costMicros} - ${schema.renders.uncertainCostMicros}` : sql`${schema.renders.costMicros}`,
+        uncertainCostMicros: 0,
+        costState: settle === "unresolved" ? "unresolved" : "settled",
+        updatedAt: now,
+      })
+      .where(stillUncertain)
+      .returning({ id: schema.renders.id });
+    if (!settled) continue;
+    if (settle === "charged") tally.charged += 1;
+    else if (settle === "not_charged") tally.released += 1;
+    else tally.unresolved += 1;
+  }
+  return tally;
 }

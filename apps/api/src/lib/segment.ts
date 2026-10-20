@@ -1,4 +1,4 @@
-import { createFalClient } from "@fal-ai/client";
+import { ApiError, createFalClient } from "@fal-ai/client";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
@@ -182,13 +182,15 @@ export async function runSegmentation(
         ? await mockMaskDataUrl(segmentation.imageUrl, origin, env, segmentation.point ?? undefined)
         : await runSam(env, segmentation.imageUrl, origin, segmentation.prompt, segmentation.point);
 
+    const costMicros = mode === "mock" ? 0 : SAM_COST_MICROS;
     if (result.objectCount === 0 || !result.maskDataUrl) {
+      // The user gets their credit back, but SAM ran, so fal's charge keeps counting.
       const [failed] = await db
         .update(schema.segmentations)
         .set({
           status: "succeeded",
           objectCount: 0,
-          costMicros: 0,
+          costMicros,
           errorMessage: "Nothing matched that selection",
         })
         .where(eq(schema.segmentations.id, segmentation.id))
@@ -197,7 +199,6 @@ export async function runSegmentation(
       return { segmentation: refunded, maskDataUrl: "" };
     }
 
-    const costMicros = mode === "mock" ? 0 : SAM_COST_MICROS;
     const [updated] = await db
       .update(schema.segmentations)
       .set({
@@ -212,9 +213,12 @@ export async function runSegmentation(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Segmentation failed";
     console.error("segmentation failed", error);
+    // Only fal answering with an error shows it didn't run (and charge for) the selection; a
+    // timeout, a lost response or a failure after it answered may still have cost money.
+    const costMicros = mode !== "mock" && !(error instanceof ApiError) ? SAM_COST_MICROS : 0;
     const [failed] = await db
       .update(schema.segmentations)
-      .set({ status: "failed", costMicros: 0, errorMessage: message, objectCount: 0 })
+      .set({ status: "failed", costMicros, errorMessage: message, objectCount: 0 })
       .where(eq(schema.segmentations.id, segmentation.id))
       .returning();
     const refunded = await refundSegmentationIfNeeded(db, failed!);

@@ -35,20 +35,32 @@ describe("reserveBudget", () => {
     expect(await reserveBudget(db, 1, 0)).toBeNull();
   });
 
-  it("counts existing renders but ignores failed ones", async () => {
+  it("counts existing renders, and failed ones only for the provider cost they still carry", async () => {
     const user = await makeUser();
     const project = await makeProject(user.id);
-    await makeRender(project.id, { status: "succeeded", costMicros: 6 * USD });
-    await makeRender(project.id, { status: "failed", costMicros: 100 * USD });
+    await makeRender(project.id, { status: "succeeded", costMicros: 5 * USD });
+    // fal refused this one, so its cost was released.
+    await makeRender(project.id, { status: "failed", costMicros: 0 });
+    // Cancelled after fal took it: its cost counts until fal's outcome is known.
+    await makeRender(project.id, { status: "failed", costMicros: 1 * USD, costState: "uncertain", uncertainCostMicros: 1 * USD });
 
     expect(await reserveBudget(db, 5 * USD, 10)).toBeNull();
     expect(await reserveBudget(db, 4 * USD, 10)).not.toBeNull();
   });
 
-  it("counts segmentations toward the cap, ignoring failed ones", async () => {
+  it("counts segmentations toward the cap, failed ones only for the cost they still carry", async () => {
     const user = await makeUser();
-    await makeSegmentation(user.id, { status: "succeeded", costMicros: 7 * USD });
-    await makeSegmentation(user.id, { status: "failed", costMicros: 100 * USD });
+    await makeSegmentation(user.id, { status: "succeeded", costMicros: 6 * USD });
+    await makeSegmentation(user.id, { status: "failed", costMicros: 0 });
+    await makeSegmentation(user.id, { status: "failed", costMicros: 1 * USD });
+
+    expect(await reserveBudget(db, 4 * USD, 10)).toBeNull();
+    expect(await reserveBudget(db, 3 * USD, 10)).not.toBeNull();
+  });
+
+  it("counts prompt polishes toward the cap, as the reported spend does", async () => {
+    const user = await makeUser();
+    await db.insert(schema.promptPolishes).values({ userId: user.id, kind: "render", engine: "ai", status: "succeeded", costMicros: 7 * USD });
 
     expect(await reserveBudget(db, 4 * USD, 10)).toBeNull();
     expect(await reserveBudget(db, 3 * USD, 10)).not.toBeNull();
@@ -113,9 +125,10 @@ describe("spend accounting", () => {
     const project = await makeProject(user.id);
     await makeRender(project.id, { status: "succeeded", costMicros: 3 * USD });
     await makeSegmentation(user.id, { status: "succeeded", costMicros: 2 * USD });
-    await makeRender(project.id, { status: "failed", costMicros: 50 * USD });
+    await makeRender(project.id, { status: "failed", costMicros: 0 });
+    await makeRender(project.id, { status: "failed", costMicros: 1 * USD, costState: "unresolved" });
 
-    expect((await getBudget(testEnv({ FAL_BUDGET_USD: "100" }), db)).spentUsd).toBe(5);
+    expect((await getBudget(testEnv({ FAL_BUDGET_USD: "100" }), db)).spentUsd).toBe(6);
   });
 
   it("reports whether another job would break the budget", async () => {

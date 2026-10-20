@@ -281,6 +281,13 @@
       "when": 1792886400000,
       "tag": "0039_storage_per_user",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792972800000,
+      "tag": "0040_durable_render_cost",
+      "breakpoints": true
     }
   ]
 }

@@ -111,7 +111,7 @@ segmentationsRoutes.get("/segmentations", async (c) => {
       ),
     db
       .select({
-        spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}) filter (where ${schema.segmentations.status} <> 'failed'), 0)::bigint`,
+        spentMicros: sql<number>`coalesce(sum(${schema.segmentations.costMicros}), 0)::bigint`,
       })
       .from(schema.segmentations),
     db

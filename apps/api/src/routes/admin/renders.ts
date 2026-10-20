@@ -81,7 +81,7 @@ rendersRoutes.get("/renders", async (c) => {
       .where(and(inArray(schema.renders.status, ["pending", "processing"]), sql`${schema.renders.updatedAt} < ${stuckCutoff}`)),
     db
       .select({
-        spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}) filter (where ${schema.renders.status} <> 'failed'), 0)::bigint`,
+        spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`,
       })
       .from(schema.renders),
     db

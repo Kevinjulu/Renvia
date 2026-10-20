@@ -69,10 +69,19 @@ export const projects = pgTable(
     .references(() => users.id),
   name: text("name").notNull(),
   thumbnailUrl: text("thumbnail_url"),
+  /**
+   * Set when the owner deletes the project. The row and its renders stay, so the spend caps,
+   * usage limits and credit history keep counting them; the owner no longer sees any of it.
+   */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("projects_owner_idx").on(table.ownerId)],
+  (table) => [
+    index("projects_owner_idx").on(table.ownerId),
+    // Partial in the migration (WHERE deleted_at IS NULL).
+    index("projects_owner_live_idx").on(table.ownerId, table.createdAt.desc()),
+  ],
 );
 
 export const canvasNodes = pgTable("canvas_nodes", {
@@ -118,7 +127,21 @@ export const renders = pgTable("renders", {
   // Engine model id ("mock" in mock mode) and its estimated cost in USD micros
   // (1e-6 USD) — summed to enforce the fal spending cap.
   model: text("model"),
+  /**
+   * The provider spend this job counts toward every budget, whatever its status: lowered only
+   * once fal's cost for a pass is known to be zero (never sent, refused, or failed at fal). A
+   * cancel or a timeout never lowers it on its own. Separate from the customer's credits.
+   */
   costMicros: integer("cost_micros").notNull().default(0),
+  /**
+   * Provider-cost settlement, independent of `status`: pending (in flight, counted at its
+   * estimate), settled (costMicros is final), uncertain (ended here while fal's outcome for
+   * uncertainCostMicros is still unknown; reconciled by the operations sync), unresolved (never
+   * reconciled, so counted for good). Null on renders from before migration 0040.
+   */
+  costState: text("cost_state", { enum: ["pending", "settled", "uncertain", "unresolved"] }),
+  /** The part of costMicros awaiting fal's outcome; released if fal reports that pass failed. */
+  uncertainCostMicros: integer("uncertain_cost_micros").notNull().default(0),
   settings: jsonb("settings").$type<RenderGenerationSettings>(),
   /** Credits debited when the render was created; refunded if it fails. */
   creditsCharged: integer("credits_charged").notNull().default(0),
@@ -163,6 +186,10 @@ export const renders = pgTable("renders", {
       "renders_aspect_ratio_values",
       sql`${table.aspectRatio} IN ('auto', '1:1', '16:9', '4:3', '3:4', '9:16')`,
     ),
+    check("renders_cost_state_values", sql`${table.costState} IS NULL OR ${table.costState} IN ('pending', 'settled', 'uncertain', 'unresolved')`),
+    check("renders_uncertain_cost_within_cost", sql`${table.uncertainCostMicros} >= 0 AND ${table.uncertainCostMicros} <= ${table.costMicros}`),
+    // Partial in the migration (WHERE cost_state = 'uncertain'): the reconciliation queue.
+    index("renders_cost_uncertain_idx").on(table.updatedAt),
     // Partial in the migration (WHERE idempotency_key IS NOT NULL), like billing checkouts'.
     uniqueIndex("renders_project_idempotency_unique").on(table.projectId, table.idempotencyKey),
     index("renders_status_created_idx").on(table.status, table.createdAt.desc()),

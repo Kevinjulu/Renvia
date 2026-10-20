@@ -186,12 +186,12 @@ export async function settleBetaCredits(
   return { context: null, expired: await expireBetaCredits(db, userId, null, { unlessLive: true }) };
 }
 
-/** Budgeted fal cost of the program's beta-funded jobs that haven't failed. */
+/** Budgeted fal cost of the program's beta-funded jobs (a failed job counts only what it still carries). */
 export async function programSpendMicros(db: Database, programId: string): Promise<number> {
   const result = await db.execute<{ total: string }>(sql`
     select
-      coalesce((select sum(cost_micros) from renders where beta_program_id = ${programId} and status <> 'failed'), 0)
-      + coalesce((select sum(cost_micros) from segmentations where beta_program_id = ${programId} and status <> 'failed'), 0) as total
+      coalesce((select sum(cost_micros) from renders where beta_program_id = ${programId}), 0)
+      + coalesce((select sum(cost_micros) from segmentations where beta_program_id = ${programId}), 0) as total
   `);
   return Number(result.rows[0]?.total ?? 0);
 }
@@ -216,8 +216,8 @@ export async function reserveProgramBudget(db: Database, programId: string, cost
       ),
       spent as (
         select
-          coalesce((select sum(cost_micros) from renders where beta_program_id = ${programId} and status <> 'failed'), 0)
-          + coalesce((select sum(cost_micros) from segmentations where beta_program_id = ${programId} and status <> 'failed'), 0)
+          coalesce((select sum(cost_micros) from renders where beta_program_id = ${programId}), 0)
+          + coalesce((select sum(cost_micros) from segmentations where beta_program_id = ${programId}), 0)
           + coalesce((select sum(cost_micros) from budget_reservations where beta_program_id = ${programId}::uuid and created_at >= now() - interval '15 minutes'), 0)
           + 0 * (select count(*) from cleared) as total
       ),

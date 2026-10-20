@@ -187,7 +187,12 @@ Rendering costs real money, so it is gated three ways:
 1. **Mode.** `FAL_MODE` defaults to `mock`, which never calls fal.
 2. **Global budget.** `FAL_BUDGET_USD` caps total estimated spend. A paid job takes
    a short-lived reservation under a database lock before it is created, so
-   simultaneous requests cannot overshoot the cap. Failed jobs are not counted.
+   simultaneous requests cannot overshoot the cap. A failed job stops counting only
+   once fal can't have charged for it (never sent, refused, or failed at fal). A job
+   cancelled or timed out after fal took it keeps counting (`renders.cost_state =
+   'uncertain'`) until the operations sync reads fal's outcome, and keeps counting for
+   good if fal hasn't answered within a day. Deleting a project hides its renders
+   rather than deleting them, so their spend and usage still count.
 3. **Per-user limits.** Daily and monthly render and selection limits, a project
    cap, and per-user overrides, all editable in the admin console.
 

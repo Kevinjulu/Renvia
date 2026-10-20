@@ -9,9 +9,9 @@ import { deleteObject } from "./storage.js";
  *
  * - uploads (sources, references, selection masks) that no project, canvas, asset, render or
  *   open beta report points at any more, once they're older than UPLOAD_GRACE;
- * - the files of renders the owner removed from history more than HIDDEN_GRACE ago, or whose
- *   project was deleted, unless something else still points at them (an edit made from them,
- *   a canvas node, a reference, an open beta report).
+ * - the files of renders the owner removed from history more than HIDDEN_GRACE ago (deleting a
+ *   project hides its renders), unless something else still points at them (an edit made from
+ *   them, a canvas node, a reference, an open beta report).
  *
  * "Points at" means the stored key, or the render's id in a renders/ key, appears in a live row.
  * Rows of renders hidden past the grace don't count, so their own links don't keep them alive.
@@ -32,7 +32,7 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 function liveText(): SQL {
   const closed = sql.join(CLOSED_STATUSES.map((status) => sql`${status}`), sql`, `);
   return sql`
-    select thumbnail_url as t from projects where thumbnail_url is not null
+    select thumbnail_url as t from projects where thumbnail_url is not null and deleted_at is null
     union all select data::text from canvas_nodes
     union all select url from reference_images
     union all select concat_ws(' ', source_image_url, result_image_url, settings::text) from renders

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
@@ -87,7 +87,7 @@ canvasNodes.patch("/:id", async (c) => {
     .select({ node: schema.canvasNodes })
     .from(schema.canvasNodes)
     .innerJoin(schema.projects, eq(schema.canvasNodes.projectId, schema.projects.id))
-    .where(and(eq(schema.canvasNodes.id, id), eq(schema.projects.ownerId, ownerId)))
+    .where(and(eq(schema.canvasNodes.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.projects.deletedAt)))
     .limit(1);
 
   if (!existing[0]) {
@@ -119,7 +119,7 @@ canvasNodes.delete("/:id", async (c) => {
     .select({ node: schema.canvasNodes })
     .from(schema.canvasNodes)
     .innerJoin(schema.projects, eq(schema.canvasNodes.projectId, schema.projects.id))
-    .where(and(eq(schema.canvasNodes.id, id), eq(schema.projects.ownerId, ownerId)))
+    .where(and(eq(schema.canvasNodes.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.projects.deletedAt)))
     .limit(1);
 
   if (!existing[0]) {

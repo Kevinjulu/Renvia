@@ -57,7 +57,7 @@ async function seed() {
     resultImageUrl: "https://example.test/result-2.png", createdAt: twoDaysBack(6), updatedAt: twoDaysBack(6),
   });
   await makeRender(project.id, {
-    status: "failed", model: "mock", costMicros: 40_000, creditsCharged: 1, prompt: "failed one",
+    status: "failed", model: "mock", costMicros: 0, creditsCharged: 1, prompt: "failed one",
     errorMessage: "model error", createdAt: ago(3 * DAY), updatedAt: ago(3 * DAY),
   });
   await makeRender(otherProject.id, {

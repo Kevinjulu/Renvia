@@ -1,4 +1,4 @@
-import { eq, inArray, ne, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminAuditAction, AdminRender, AdminUser, RenderStatus, SegmentationStatus } from "@renvia/types";
@@ -24,18 +24,20 @@ export function isSegStuck(status: SegmentationStatus, createdAt: Date, minutes:
 
 // ── Shared query pieces ──────────────────────────────────────────────────────────
 
-/** Per-user render stats; failed renders were refunded and unbilled, so they're excluded. */
+/**
+ * Per-user render stats. Failed renders were refunded, so they aren't counted as renders, but any
+ * provider spend they still carry (cancelled or timed out after fal took them) is.
+ */
 export function userStats(db: Database) {
   return db
     .select({
       userId: schema.projects.ownerId,
-      renderCount: sql<number>`count(${schema.renders.id})::int`.as("render_count"),
+      renderCount: sql<number>`count(*) filter (where ${schema.renders.status} <> 'failed')::int`.as("render_count"),
       spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`.as("spent_micros"),
-      lastRenderAt: sql<Date | null>`max(${schema.renders.createdAt})`.as("last_render_at"),
+      lastRenderAt: sql<Date | null>`max(${schema.renders.createdAt}) filter (where ${schema.renders.status} <> 'failed')`.as("last_render_at"),
     })
     .from(schema.renders)
     .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
-    .where(ne(schema.renders.status, "failed"))
     .groupBy(schema.projects.ownerId)
     .as("user_stats");
 }

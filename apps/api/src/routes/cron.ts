@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { createDb, type Database } from "@renvia/db";
 import type { Env } from "../index.js";
-import { sweepStaleRenders } from "../lib/engine.js";
+import { reconcileProviderCosts, sweepStaleRenders } from "../lib/engine.js";
 import { syncOperationalIncidents } from "../lib/incidents.js";
 import { renewDueCreditPeriods } from "../lib/planCredits.js";
 import { endLapsedSubscriptions } from "../lib/subscriptions.js";
@@ -24,8 +24,10 @@ function authorized(c: Context<{ Bindings: Env }>) {
 function runOperationsSync(env: Env, db: Database, origin: string) {
   return runScheduledJob(db, OPERATIONS_SYNC_JOB, async () => {
     const swept = await sweepStaleRenders(env, db, origin);
+    // Provider cost of cancelled or timed-out renders, once fal reports what happened to them.
+    const costs = await reconcileProviderCosts(env, db);
     const incidents = await syncOperationalIncidents(env, db);
-    return { swept, incidents };
+    return { swept, costs, incidents };
   });
 }
 

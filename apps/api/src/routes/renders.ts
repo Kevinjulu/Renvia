@@ -6,7 +6,7 @@ import { createDb, schema } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
-import { createChargedRender, InsufficientBetaCreditsError, InsufficientCreditsError, isUniqueViolation } from "../lib/credits.js";
+import { createChargedRender, InsufficientBetaCreditsError, InsufficientCreditsError, isUniqueViolation, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
 import { findOwnedProject } from "../lib/projects.js";
 import {
@@ -38,7 +38,9 @@ import {
   refuseBudget,
   refuseCredits,
   refuseDisabled,
+  jobCaps,
   refuseInput,
+  refuseRacedCap,
   refuseStorage,
   resolveLimits,
 } from "../lib/limits.js";
@@ -400,8 +402,13 @@ renders.post("/", async (c) => {
         settings: generationSettings,
         idempotencyKey: body.idempotencyKey,
         configVersion: revision.version,
-      }, funding.charge);
+      }, funding.charge, jobCaps(limits, "render"));
     } catch (error) {
+      // A parallel request took the last slot after this one's pre-flight check.
+      if (error instanceof JobCapError) {
+        const refusal = await refuseRacedCap(db, user, appSettings, "render", billing.plan, betaProgram);
+        return (await replay()) ?? c.json(refusal, refusal.status);
+      }
       if (error instanceof InsufficientBetaCreditsError) {
         const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
         return (await replay()) ?? c.json(refusal, refusal.status);
@@ -495,11 +502,15 @@ renders.post("/:id/upscale", async (c) => {
       settings: { upscale: { target, parentRenderId: parent.id } },
       idempotencyKey,
       configVersion: revision.version,
-    }, funding.charge);
+    }, funding.charge, jobCaps(resolveLimits(user, appSettings, billing.plan, betaProgram), "render"));
     if (funding.program) await reportProgramSpend(c.env, db, funding.program);
     const job = await submitRender(c.env, db, created, origin);
     return c.json({ job: await presentRender(c, job) }, 201);
   } catch (error) {
+    if (error instanceof JobCapError) {
+      const refusal = await refuseRacedCap(db, user, appSettings, "render", billing.plan, betaProgram);
+      return (await replay()) ?? c.json(refusal, refusal.status);
+    }
     if (error instanceof InsufficientBetaCreditsError) {
       const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
       return (await replay()) ?? c.json(refusal, refusal.status);
@@ -565,7 +576,7 @@ renders.get("/:id", async (c) => {
     .select({ render: schema.renders })
     .from(schema.renders)
     .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
-    .where(and(eq(schema.renders.id, id), eq(schema.projects.ownerId, ownerId)))
+    .where(and(eq(schema.renders.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.projects.deletedAt)))
     .limit(1);
 
   if (!row[0]) {
@@ -575,13 +586,13 @@ renders.get("/:id", async (c) => {
   return c.json({ job: await presentRender(c, await refreshRender(c.env, db, row[0].render, new URL(c.req.url).origin)) });
 });
 
-/** The owner's render, or null — hidden renders count as gone. */
+/** The owner's render, or null — hidden renders, and renders in deleted projects, count as gone. */
 async function findOwnedRender(db: ReturnType<typeof createDb>, id: string, ownerId: string) {
   const row = await db
     .select({ render: schema.renders })
     .from(schema.renders)
     .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
-    .where(and(eq(schema.renders.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.renders.hiddenAt)))
+    .where(and(eq(schema.renders.id, id), eq(schema.projects.ownerId, ownerId), isNull(schema.renders.hiddenAt), isNull(schema.projects.deletedAt)))
     .limit(1);
   return row[0]?.render ?? null;
 }

@@ -4,7 +4,7 @@ import { createDb } from "@renvia/db";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getOrCreateUser } from "../lib/users.js";
-import { createChargedSegmentation, InsufficientBetaCreditsError, InsufficientCreditsError } from "../lib/credits.js";
+import { createChargedSegmentation, InsufficientBetaCreditsError, InsufficientCreditsError, JobCapError } from "../lib/credits.js";
 import { fundJob, reportProgramSpend, settleBetaCredits } from "../lib/beta.js";
 import { releaseBudgetReservation, reserveBudget } from "../lib/engine.js";
 import { effectiveBudgetUsd, effectiveEngineMode, getSettings } from "../lib/settings.js";
@@ -18,6 +18,8 @@ import {
   refuseDisabled,
   refuseInput,
   resolveLimits,
+  jobCaps,
+  refuseRacedCap,
 } from "../lib/limits.js";
 import { ownUploadKey } from "../lib/storage.js";
 import { runSegmentation, SAM_COST_MICROS, segmentationModelId } from "../lib/segment.js";
@@ -117,9 +119,14 @@ segmentations.post("/", async (c) => {
       model: mode === "mock" ? "mock" : segmentationModelId(body),
       costMicros,
       configVersion: revision.version,
-    }, funding.charge);
+    }, funding.charge, jobCaps(limits, "segment"));
     if (funding.program) await reportProgramSpend(c.env, db, funding.program);
   } catch (error) {
+    // A parallel request took the day's or month's last selection after the pre-flight check.
+    if (error instanceof JobCapError) {
+      const refusal = await refuseRacedCap(db, user, appSettings, "segment", billing.plan, betaProgram);
+      return c.json(refusal, refusal.status);
+    }
     if (error instanceof InsufficientBetaCreditsError) {
       const refusal = refuseBetaCredits(appSettings, user.betaCredits, credits);
       return c.json(refusal, refusal.status);

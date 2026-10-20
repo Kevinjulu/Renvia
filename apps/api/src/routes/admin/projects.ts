@@ -24,7 +24,7 @@ function projectRenderStats(db: Database) {
         "in_flight_count",
       ),
       totalRenders: sql<number>`count(*)::int`.as("total_renders"),
-      spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}) filter (where ${schema.renders.status} <> 'failed'), 0)::bigint`.as(
+      spentMicros: sql<number>`coalesce(sum(${schema.renders.costMicros}), 0)::bigint`.as(
         "spent_micros",
       ),
       lastRenderAt: sql<Date | null>`max(${schema.renders.createdAt})`.as("last_render_at"),
