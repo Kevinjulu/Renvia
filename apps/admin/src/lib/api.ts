@@ -1,6 +1,8 @@
 import { useAuth } from "@clerk/react";
 import { useMemo } from "react";
 import type {
+  AdminSecurityOverview,
+  AdminSecurityQueueResponse,
   AdminFreeAllowanceDecisionRequest,
   AdminFreeAllowanceResponse,
   AdminBetaAnnouncement,
@@ -160,6 +162,9 @@ export function useAdminApi() {
       inviteBetaTestersBulk: (programId: string, body: { emails?: string[]; userIds?: string[]; sendEmail: boolean; cohort?: string | null; creditsOverride?: number | null; expiresInDays?: number }) =>
         request<{ results: ({ email: string; userId?: string; ok: true } & AdminBetaInvitationCreated | { email: string; userId?: string; ok: false; error: string; code: string })[] }>(getToken, `/admin/beta/programs/${programId}/invitations/bulk`, { method: "POST", body: JSON.stringify(body) }),
       getUserBetaStatus: (userId: string) => request<AdminUserBetaStatus>(getToken, `/admin/beta/users/${userId}`),
+      getSecurityOverview: () => request<AdminSecurityOverview>(getToken, "/admin/security/overview"),
+      getSecurityQueue: (status: "review_required" | "verification_required" | "denied", limit: number, offset: number) =>
+        request<AdminSecurityQueueResponse>(getToken, `/admin/security/queue?status=${status}&limit=${limit}&offset=${offset}`),
       getUserFreeAllowance: (userId: string) => request<AdminFreeAllowanceResponse>(getToken, `/admin/users/${userId}/free-allowance`),
       decideUserFreeAllowance: (userId: string, body: AdminFreeAllowanceDecisionRequest) =>
         request<AdminFreeAllowanceResponse & { granted: boolean }>(getToken, `/admin/users/${userId}/free-allowance`, { method: "POST", body: JSON.stringify(body) }),

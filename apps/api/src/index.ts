@@ -7,6 +7,7 @@ import { uploads } from "./routes/uploads.js";
 import { falWebhook } from "./routes/webhooks/fal.js";
 import { paypalWebhook } from "./routes/webhooks/paypal.js";
 import { paystackWebhook } from "./routes/webhooks/paystack.js";
+import { clerkWebhook } from "./routes/webhooks/clerk.js";
 import { me } from "./routes/me.js";
 import { projects } from "./routes/projects.js";
 import { canvasNodes } from "./routes/canvasNodes.js";
@@ -85,6 +86,8 @@ export interface Env {
   TRUSTED_IP_HEADER?: string;
   /** Cloudflare Turnstile secret, for the free-credit human check. Unset hides the check. */
   TURNSTILE_SECRET_KEY?: string;
+  /** Signing secret (whsec_…) of the Clerk webhook endpoint; unset makes it answer 503. */
+  CLERK_WEBHOOK_SECRET?: string;
 }
 
 export interface AuthVariables {
@@ -147,6 +150,7 @@ app.route("/uploads", uploads);
 app.route("/webhooks/fal", falWebhook);
 app.route("/webhooks/paypal", paypalWebhook);
 app.route("/webhooks/paystack", paystackWebhook);
+app.route("/webhooks/clerk", clerkWebhook);
 app.route("/me", me);
 app.route("/projects", projects);
 app.route("/canvas-nodes", canvasNodes);

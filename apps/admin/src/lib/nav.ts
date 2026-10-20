@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { UserRole } from "@renvia/types";
-import { FlaskConical, Images, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
+import { ShieldCheck, FlaskConical, Images, MessageSquareWarning, ClipboardCheck, CreditCard, FolderKanban, ImageIcon, LayoutDashboard, Scan, ScrollText, Settings, ShieldAlert, Users, Wallet, ChartNoAxesCombined, ListTodo, Gauge, SlidersHorizontal, BadgeDollarSign, Cpu } from "lucide-react";
 
 export interface AdminNavItem {
   to: string;
@@ -212,6 +212,17 @@ export const ADMIN_NAV: AdminNavItem[] = [
     hint: "Sample references for users",
     banner: "/banners/elevation.jpg",
     roles: ["admin"],
+  },
+  {
+    to: "/security",
+    label: "Security",
+    icon: ShieldCheck,
+    end: false,
+    title: "Security",
+    description: "How the free-credit checks are working, and the accounts waiting on a decision. Decide each one on its user page.",
+    hint: "Free-credit checks & review",
+    banner: "/banners/exterior-3.jpg",
+    roles: ["analyst", "support", "billing", "admin"],
   },
   {
     to: "/settings",

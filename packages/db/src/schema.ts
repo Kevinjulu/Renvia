@@ -15,6 +15,11 @@ export const users = pgTable(
   emailNormalized: text("email_normalized"),
   /** Whether Clerk reports the email verified; refreshed on each Studio load. Null before 0041. */
   emailVerified: boolean("email_verified"),
+  /**
+   * When the account was deleted in Clerk. The row and its email and credit history stay (so a
+   * re-created account on the same mailbox is recognised); its browser and network links go.
+   */
+  closedAt: timestamp("closed_at", { withTimezone: true }),
   role: text("role", { enum: ["user", "analyst", "support", "billing", "admin"] }).notNull().default("user"),
   /** Spendable credits; standard renders cost 1, while premium actions can cost more. Every change is mirrored in credit_ledger. */
   creditBalance: integer("credit_balance").notNull().default(0),

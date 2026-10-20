@@ -1928,5 +1928,7 @@ exports[`admin route table > registers the same routes in the same order 1`] = `
   "DELETE /library/:id",
   "GET /users/:id/free-allowance",
   "POST /users/:id/free-allowance",
+  "GET /security/overview",
+  "GET /security/queue",
 ]
 `;

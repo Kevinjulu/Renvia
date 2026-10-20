@@ -31,6 +31,7 @@ import { StudioControlPage } from "./pages/StudioControlPage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { PlansPage } from "./pages/PlansPage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { SecurityPage } from "./pages/SecurityPage";
 import { AppErrorHandling } from "./components/AppErrorHandling";
 
 export default function App() {
@@ -109,6 +110,7 @@ function AdminGate() {
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/beta" element={<BetaProgramsPage />} />
           <Route path="/beta/:id" element={<BetaProgramPage />} />

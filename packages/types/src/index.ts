@@ -2558,3 +2558,54 @@ export interface AdminFreeAllowanceDecisionRequest {
   /** For approve: the approval holds until then, after which the rules decide again. */
   approvedUntil?: string | null;
 }
+
+/** GET /admin/security/overview: how the free-credit checks are working. */
+export interface AdminSecurityOverview {
+  mode: FreeAllowanceMode;
+  signalsEnabled: boolean;
+  securityHashKeyConfigured: boolean;
+  turnstileConfigured: boolean;
+  clerkWebhookConfigured: boolean;
+  /** Accounts by eligibility status. */
+  statuses: Record<FreeAllowanceStatus, number>;
+  /** Of the held statuses, accounts currently on the Free plan (so actually affected). */
+  heldFreeAccounts: number;
+  last7Days: {
+    signups: number;
+    approved: number;
+    verificationRequired: number;
+    reviewRequired: number;
+    /** Sign-up checks in observe mode that would have held the account. */
+    wouldHold: number;
+    claimsPassed: number;
+    claimsFailed: number;
+    operatorDecisions: number;
+  };
+  approvalsToday: number;
+  dailyApprovalLimit: number;
+  /** The last 14 UTC days: sign-up checks and how many of them held (or would have). */
+  daily: { date: string; signups: number; held: number }[];
+  promo: { spentUsd: number; budgetUsd: number | null };
+  links: { devices: number; networks: number };
+  closedAccounts: number;
+}
+
+/** One account waiting on a decision, for GET /admin/security/queue. */
+export interface AdminSecurityQueueItem {
+  userId: string;
+  /** Masked for analysts. */
+  email: string;
+  status: FreeAllowanceStatus;
+  reason: string | null;
+  score: number | null;
+  decidedAt: string | null;
+  createdAt: string;
+  creditBalance: number;
+  /** The account is on the Free plan, so the hold withholds its monthly credits. */
+  freePlan: boolean;
+}
+
+export interface AdminSecurityQueueResponse {
+  items: AdminSecurityQueueItem[];
+  total: number;
+}
