@@ -65,7 +65,7 @@ export function ControlPanel({ projectId }: ControlPanelProps) {
         )}
       </div>
 
-      <div className="studio-generate-bar" data-guide="control.generate">
+      <div className="studio-generate-bar" data-guide={activeTab === "edit" ? "edit.apply" : "control.generate"}>
         <GenerateBar projectId={projectId} />
       </div>
     </div>

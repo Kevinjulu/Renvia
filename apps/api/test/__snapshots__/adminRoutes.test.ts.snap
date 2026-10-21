@@ -1322,7 +1322,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       "creditPricesPublished": false,
       "creditsPerImage": 1,
       "creditsPerSelection": 1,
-      "dailyRenderLimit": 5,
+      "dailyRenderLimit": 10,
       "dailySegmentLimit": null,
       "effectiveBudgetUsd": 0,
       "effectiveMode": "mock",
@@ -1496,7 +1496,7 @@ exports[`admin read responses > returns the same data for every read endpoint 1`
       ],
       "limits": {
         "concurrentRenders": 1,
-        "dailyRenders": 5,
+        "dailyRenders": 10,
         "dailySegments": null,
         "exempt": false,
         "lowCreditThreshold": 5,

@@ -105,7 +105,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <H2>Generate</H2>
           <P>
             Generate renders every uploaded elevation. The number beside the button is variations per elevation. Credits
-            are shown underneath. If you only uploaded a front elevation, you get that one render.
+            are shown underneath. If you only uploaded a front elevation, you get that one render. Your plan runs a set
+            number of renders at once; when you upload more elevations than that, the rest wait in line and start as
+            earlier ones finish. The button shows how far along it is (&ldquo;Rendering 2 of 4&rdquo;) and you can stop the
+            line at any time; renders that haven&apos;t started are never charged.
           </P>
 
           <H2>The canvas and filmstrip</H2>
@@ -122,8 +125,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
 
           <H2>Edit</H2>
           <P>
-            Click Edit after you have a render and it opens full-size with the selection tools on top. Describe the
-            change, use up to five reference images, or both. Choose Selected area and paint the part to limit the change
+            Click Edit after you have a render and it opens full-size with the selection tools on top. Write a
+            prompt, use up to five reference images, or both. Choose Selected area and paint the part to limit the change
             to it. Environment changes such as time of day, season or facade colour apply to the whole image.
           </P>
 
@@ -141,12 +144,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "regional-editing",
     eyebrow: "Guide — Regional editing",
     title: "Three ways to edit a render",
-    summary: "Describe a change, use a reference, or both — plus limiting it to one area and changing the environment.",
+    summary: "Write a prompt, use a reference, or both — plus limiting it to one area and changing the environment.",
     image: "/auth/sign-up.jpg",
     accent: "glow",
     readTime: "2 min read",
     sections: [
-      "Describe",
+      "Prompt",
       "Reference",
       "Both",
       "Limiting a change to one area",
@@ -161,9 +164,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
             top; the Edit panel asks how you want to make the change.
           </P>
 
-          <H2>Describe</H2>
+          <H2>Prompt</H2>
           <P>
-            Type the change in a sentence, for example &ldquo;replace the front door with a dark oak pivot door&rdquo;. Everything
+            Write the change in a sentence, for example &ldquo;replace the front door with a dark oak pivot door&rdquo;. Everything
             you don&apos;t mention stays as it is.
           </P>
 

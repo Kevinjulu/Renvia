@@ -3,7 +3,7 @@ import type { MeResponse, StudioFeatureKey } from "@renvia/types";
 import { ApiError } from "./apiClient";
 
 /** Something a plan unlocks that the user just tried to use. */
-export type UpgradeTopic = "download" | "export.4k" | "export.8k";
+export type UpgradeTopic = "download" | "export.4k" | "export.8k" | "multi-elevation";
 
 export type PlansTab = "plans" | "credits";
 
@@ -46,9 +46,14 @@ export const PLAN_FOR_TOPIC: Record<UpgradeTopic, string> = {
   download: "studio",
   "export.4k": "studio",
   "export.8k": "team",
+  "multi-elevation": "studio",
 };
 
-const FEATURE_TOPICS: Partial<Record<StudioFeatureKey, UpgradeTopic>> = { "export.4k": "export.4k", "export.8k": "export.8k" };
+const FEATURE_TOPICS: Partial<Record<StudioFeatureKey, UpgradeTopic>> = {
+  "export.4k": "export.4k",
+  "export.8k": "export.8k",
+  "render.multiElevation": "multi-elevation",
+};
 
 /** The upgrade explanation for a feature the user's plan doesn't include, or null for any other refusal. */
 export function upgradeTopicFor(key: StudioFeatureKey, availability: { available: boolean; reason: string | null } | undefined): UpgradeTopic | null {

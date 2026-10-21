@@ -8,12 +8,14 @@ import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore, type EditScope } fr
 import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { useAccountStore } from "../../lib/useAccountStore";
 import { PromptAssist } from "./PromptAssist";
+import { EditTourOffer } from "./EditTourOffer";
+import { EDIT_NUDGE_IDS, useEditNudgeStore } from "../../canvas/hooks/useEditNudgeStore";
 
 /** Server default before /me has loaded — matches app_settings.max_prompt_chars's default. */
 const DEFAULT_MAX_PROMPT_CHARS = 1000;
 
 const METHODS: { id: EditMethod; label: string; hint: string }[] = [
-  { id: "prompt", label: "Describe", hint: "Type the change you want." },
+  { id: "prompt", label: "Prompt", hint: "Write the change you want in a prompt." },
   { id: "reference", label: "Reference", hint: "The render takes on the look of your reference images." },
   { id: "reference-prompt", label: "Both", hint: "References, plus what to take from them." },
 ];
@@ -149,13 +151,29 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
     if (areaPainted) setScope("selection");
   }, [areaPainted, setScope]);
 
+  // Apply edit pressed without what it needs: bring the missing control into view and flash it.
+  const nudgeTick = useEditNudgeStore((state) => state.tick);
+  useEffect(() => {
+    const { target } = useEditNudgeStore.getState();
+    if (!nudgeTick || !target) return;
+    const element = document.getElementById(target === "render" ? "edit-open-render" : EDIT_NUDGE_IDS[target]);
+    if (!element) return;
+    element.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) element.focus({ preventScroll: true });
+    element.classList.remove("is-nudged");
+    void element.offsetWidth;
+    element.classList.add("is-nudged");
+    const timer = window.setTimeout(() => element.classList.remove("is-nudged"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [nudgeTick]);
+
   if (!isEditingRender) {
     return (
       <div className="cp-tab-body">
         {pendingRenderJobId ? (
           <div className="cp-hint cp-hint-action">
             <p>Edits change a finished render. Open this view's latest render to start.</p>
-            <button type="button" className="cp-hint-button" onClick={() => startRenderEdit(pendingRenderJobId)}>
+            <button type="button" id="edit-open-render" className="cp-hint-button" onClick={() => startRenderEdit(pendingRenderJobId)}>
               Edit this render
             </button>
           </div>
@@ -175,7 +193,8 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
 
   return (
     <div className="cp-tab-body">
-      <section className="cp-edit-step">
+      <EditTourOffer />
+      <section className="cp-edit-step" id="edit-method" data-guide="edit.method">
         <span className="cp-edit-label" id="edit-method-label">How do you want to edit?</span>
         <div className="cp-segmented" role="group" aria-labelledby="edit-method-label">
           {METHODS.map((item) => (
@@ -194,7 +213,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
       </section>
 
       {method !== "prompt" && (
-        <section className="cp-card cp-references">
+        <section className="cp-card cp-references" id="edit-references" data-guide="edit.references">
           <div className="cp-card-head">
             <strong>Reference images</strong>
             <span>
@@ -245,14 +264,14 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
       )}
 
       {showPrompt && (
-        <div className="cp-prompt">
+        <div className="cp-prompt" data-guide="edit.prompt">
           <div className="cp-prompt-head">
             <label htmlFor="edit-prompt">
               {method === "reference-prompt"
                 ? editReferences.length > 1
-                  ? "What should it take from the references?"
-                  : "What should it take from the reference?"
-                : "Describe the change"}
+                  ? "Prompt: what should it take from the references?"
+                  : "Prompt: what should it take from the reference?"
+                : "Prompt"}
             </label>
             <span>
               {editPrompt.length}/{maxChars}
@@ -286,7 +305,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
         </div>
       )}
 
-      <section className="cp-edit-step">
+      <section className="cp-edit-step" id="edit-scope" data-guide="edit.scope">
         <span className="cp-edit-label" id="edit-scope-label">Apply to</span>
         <div className="cp-segmented" role="group" aria-labelledby="edit-scope-label">
           {SCOPES.map((item) => (
@@ -315,6 +334,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
           ))}
       </section>
 
+      <div data-guide="edit.environment">
       <AdvancedSection
         title="Environment"
         storageKey="renvia.panel.environmentOpen"
@@ -341,6 +361,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
           ))}
         </div>
       </AdvancedSection>
+      </div>
 
       {summary.length > 0 && (
         <div className="cp-edit-summary" role="status">

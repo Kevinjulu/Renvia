@@ -15,6 +15,11 @@ export type GuideTopicId =
   | "canvas.filmstrip"
   | "canvas.editToolbar"
   | "results.panel"
+  | "edit.method"
+  | "edit.prompt"
+  | "edit.scope"
+  | "edit.environment"
+  | "edit.apply"
   | "beta.button";
 
 export interface GuideTopic {
@@ -53,7 +58,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     id: "control.tabs",
     title: "Render and Edit",
     short: "Render creates a visualization. Edit refines a finished render.",
-    body: "Render is for new images from your elevations. Edit is for a later pass: describe a change, borrow from up to five tagged reference images, or both, on the whole render or one selected area, and optionally change the time of day, season, weather or facade.",
+    body: "Render is for new images from your elevations. Edit is for a later pass: write a prompt, borrow from up to five tagged reference images, or both, on the whole render or one selected area, and optionally change the time of day, season, weather or facade.",
     how: "Finish a render first, then switch to Edit — or choose Edit this render from the results panel.",
     article: "regional-editing",
     legend: 7,
@@ -90,7 +95,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     id: "control.generate",
     title: "Generate",
     short: "Renders every uploaded elevation. Credits are shown underneath.",
-    body: "This is the action. The number beside the button is variations per elevation. Cost is credits for your account, or the demo budget if you are an admin.",
+    body: "This is the action. The number beside the button is variations per elevation. If your plan runs fewer renders at once than you have elevations, the rest wait their turn and the button shows how far along it is. Cost is credits for your account, or the demo budget if you are an admin.",
     how: "Upload at least one elevation, add a reference image or a prompt, then Generate. Results appear in the right-hand panel as they finish.",
     article: "getting-started",
     legend: 5,
@@ -126,7 +131,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     title: "Selection tools",
     short: "Brush, rectangle or polygon — only the marked area is regenerated.",
     body: "Click Edit and your render opens with these tools on top. Paint with the brush, draw a rectangle, or click to place a polygon and close it on the first point.",
-    how: "Optional: mark the area to change, then describe the change. Clear removes the current mark; with nothing marked the whole image is edited.",
+    how: "Optional: mark the area to change, then write your prompt. Clear removes the current mark; with nothing marked the whole image is edited.",
     article: "regional-editing",
     tab: "edit",
   },
@@ -138,6 +143,51 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     how: "The column stays empty until an elevation is uploaded or a render finishes. Star important results so they are easier to find.",
     article: "getting-started",
     legend: 6,
+  },
+  "edit.method": {
+    id: "edit.method",
+    title: "How do you want to edit?",
+    short: "Prompt, Reference or Both.",
+    body: "Prompt changes the render from a sentence you write. Reference borrows a look from up to five images, each tagged with the part it is for. Both lets you say exactly what to take from the references.",
+    how: "Most edits are one sentence, so start with Prompt. Use Reference when you have a picture of the roof, wall or paving you want.",
+    article: "regional-editing",
+    tab: "edit",
+  },
+  "edit.prompt": {
+    id: "edit.prompt",
+    title: "Write the prompt",
+    short: "One clear sentence about the change.",
+    body: "Say what should change and to what, for example “Replace the front door with a dark oak pivot door”. Short and specific works better than long and vague.",
+    how: "Press Polish to tighten the wording. Everything you do not mention is kept as it is.",
+    article: "regional-editing",
+    tab: "edit",
+  },
+  "edit.scope": {
+    id: "edit.scope",
+    title: "Whole image or one area",
+    short: "Mark just the part you want changed.",
+    body: "Whole image applies the change everywhere. Selected area changes only the part you mark on the render and leaves the rest exactly as it was, which keeps the design safe.",
+    how: "Choose Selected area, then paint, draw a shape or auto-select on the render. You can tag each area, like “front door”, to help the edit.",
+    article: "regional-editing",
+    tab: "edit",
+  },
+  "edit.environment": {
+    id: "edit.environment",
+    title: "Light, season and weather",
+    short: "Optional changes to the whole scene.",
+    body: "Change the time of day, season, weather or facade colour over the whole image. When you also select an area, the area is edited first and this is applied on top.",
+    how: "Leave everything on Keep as is unless you want the mood to change. Each change is listed under What will happen.",
+    article: "regional-editing",
+    tab: "edit",
+  },
+  "edit.apply": {
+    id: "edit.apply",
+    title: "Apply edit",
+    short: "Runs the edit and shows its credit cost.",
+    body: "Apply edit makes the change as a new image in your history; the render you started from stays as it was. Edits cost credits but never count toward your daily render limit.",
+    how: "Not sure what is missing? Press Apply edit anyway: it tells you what to add and points to it.",
+    article: "regional-editing",
+    tab: "edit",
   },
   // Only on screen for beta testers; it has no legend pin, so the legend never looks for it.
   "beta.button": {
@@ -204,7 +254,22 @@ export const BETA_TOUR = {
   ] satisfies TourStep[],
 } as const;
 
-export type TourId = "orientation" | "beta";
+/** A short walk through the Edit tab: choose how, write the prompt, mark an area, apply. */
+export const EDIT_TOUR = {
+  id: "edit",
+  steps: [
+    { kind: "welcome" },
+    { kind: "spot", topicId: "edit.method", tab: "edit" },
+    { kind: "spot", topicId: "edit.prompt", tab: "edit" },
+    { kind: "spot", topicId: "edit.scope", tab: "edit" },
+    { kind: "spot", topicId: "canvas.editToolbar", tab: "edit" },
+    { kind: "spot", topicId: "edit.environment", tab: "edit" },
+    { kind: "spot", topicId: "edit.apply", tab: "edit" },
+    { kind: "done" },
+  ] satisfies TourStep[],
+} as const;
+
+export type TourId = "orientation" | "beta" | "edit";
 
 export interface TourDefinition {
   id: TourId;
@@ -217,6 +282,19 @@ export interface TourDefinition {
 
 export const TOURS: Record<TourId, TourDefinition> = {
   orientation: { id: "orientation", label: "Studio tour", steps: ORIENTATION_TOUR.steps, welcome: WELCOME_COPY, done: DONE_COPY },
+  edit: {
+    id: "edit",
+    label: "Edit tour",
+    steps: EDIT_TOUR.steps,
+    welcome: {
+      title: "Make a good edit",
+      body: "Change a door, a roof, the paving or the light on a finished render without touching the rest. Five quick steps, about 30 seconds.",
+    },
+    done: {
+      title: "You are ready to edit",
+      body: "Write a prompt, mark the area if you only want part of the image to change, then press Apply edit. Replay this from the Guide menu any time.",
+    },
+  },
   beta: {
     id: "beta",
     label: "Beta tour",
@@ -233,5 +311,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 };
 
 export function tourFor(id: string | null): TourDefinition {
-  return id === "beta" ? TOURS.beta : TOURS.orientation;
+  if (id === "beta") return TOURS.beta;
+  if (id === "edit") return TOURS.edit;
+  return TOURS.orientation;
 }

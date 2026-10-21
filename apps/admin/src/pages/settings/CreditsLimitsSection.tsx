@@ -66,7 +66,7 @@ export function CreditsLimitsSection({ draft, plans, fieldErrors, update, prices
         </div>
         <Field
           label="Daily render limit per user"
-          hint="Leave blank for unlimited. Admins are exempt; failed renders don’t count."
+          hint="Leave blank for unlimited. Edits never count (they only spend credits). Admins are exempt; failed renders don’t count."
           error={fieldErrors.dailyRenderLimit}
         >
           <input

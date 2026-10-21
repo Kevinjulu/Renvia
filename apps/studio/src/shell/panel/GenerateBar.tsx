@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   creditsForRender,
   featuresForRender,
@@ -20,6 +20,9 @@ import { useCanvasStore } from "../../canvas/hooks/useCanvasStore";
 import { buildStrokeMask, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
 import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { queueRender, RenderNotConfirmedError } from "../../canvas/utils/queueRender";
+import { runThrottled } from "../../canvas/utils/runThrottled";
+import { useGenerateBatchStore } from "../../canvas/hooks/useGenerateBatchStore";
+import { useEditNudgeStore } from "../../canvas/hooks/useEditNudgeStore";
 import { nodeForView, renderableBuildingViews } from "../../canvas/buildingViews";
 import { loadImageSize } from "../../canvas/utils/placeImageNode";
 import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
@@ -65,7 +68,33 @@ function localRefusal(
   return { code, message: messages?.[code] ?? null, limit, used };
 }
 
-const SLOW_STATUS = "Ramah Studio is responding slowly — checking whether your render started…";
+/** Refusals that only mean "every slot is busy right now": the render waits its turn instead. */
+function isBusyRefusal(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === "concurrency_limit_reached" || code === "rate_limited";
+}
+
+/** Waits for the next change to the render jobs (a job finishing frees a slot), or `ms`. */
+function waitForJobChange(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    const unsubscribe = useRenderJobsStore.subscribe((state, previous) => {
+      if (state.jobs !== previous.jobs) done();
+    });
+  });
+}
+
+/** Renders the Studio knows are still running; the plan's concurrent cap counts these. */
+function rendersInFlight(): number {
+  return useRenderJobsStore.getState().jobs.filter((job) => job.status === "pending" || job.status === "processing").length;
+}
+
+const SLOW_STATUS ="Ramah Studio is responding slowly — checking whether your render started…";
 const NOT_CONFIRMED_STATUS =
   "Ramah Studio didn't confirm it in time. Check the results panel before trying again — clicking again with the same settings won't charge twice.";
 
@@ -104,7 +133,12 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   // One image per elevation unless the user asks for more variations.
   const [count, setCount] = useState(1);
   const [status, setStatus] = useState<string | null>(null);
+  // Set by an edit being applied; a Generate in progress lives in the batch store instead, so
+  // waiting for a free render slot never locks the Edit tab.
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showEditHint, setShowEditHint] = useState(false);
+  const batch = useGenerateBatchStore();
+  const batchControl = useRef<AbortController | null>(null);
   const [budget, setBudget] = useState<RenderBudgetResponse | null>(null);
   const showLimit = useLimitDialogStore((state) => state.show);
   const setCreditsOpen = useLimitDialogStore((state) => state.setCreditsOpen);
@@ -125,6 +159,9 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
 
   useEffect(refreshBudget, [refreshBudget]);
 
+  // Leaving the project stops sending what's still waiting for a slot; nothing unsent is charged.
+  useEffect(() => () => batchControl.current?.abort(), []);
+
   // A failed render refunds its credits server-side; pull the new balance.
   useEffect(() => {
     if (failedJobCount > 0) void refreshAccount(apiClient.getMe);
@@ -142,12 +179,15 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const renderImageCount = filled.length * count;
   const imageCount = isEdit ? 1 : renderImageCount;
   // The source kind (photo or line drawing) is detected by the server; both cost the same.
+  // More than one elevation in a Generate is the plan's multi-elevation feature.
+  const multiElevation = filled.length > 1;
   const costSettings = isEdit
     ? draft.costSettings
     : {
         referenceImageUrls,
         fidelity: referenceImageUrls.length > 0 ? { mode: fidelityMode, protectedFeatures: protectedGeometry } : undefined,
         highRes,
+        multiElevation: multiElevation || undefined,
       };
   const route = renderRouteFor(costSettings);
   // A two-pass edit's environment pass runs on the single-image edit model.
@@ -171,6 +211,11 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   const needsDirection = !isEdit && !hasRenderDirection({ hasPrompt: prompt.trim().length > 0, hasReference: referenceImageUrls.length > 0 });
   const suggestGenerate = useNextStepHint() === "generate";
 
+  // The hint calms down once the edit has what it needs, or when leaving the Edit tab.
+  useEffect(() => {
+    if (!isEdit || !editProblem) setShowEditHint(false);
+  }, [isEdit, editProblem]);
+
   // The first reason this request would be refused, or null when it should go through.
   // The button stays enabled for these so clicking opens the dialog rather than doing nothing.
   const blocked: LimitRefusal | null = isDisabled
@@ -184,10 +229,13 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         : isOverBudget
           ? localRefusal("budget_exhausted", me?.limitMessages)
           : null;
-  const canSubmit = hasTarget && !isSubmitting && !editProblem && !needsDirection;
+  const generating = !isEdit && batch.active;
+  // Apply edit stays pressable while something is missing: pressing it says what, and points at it.
+  const canSubmit = isEdit ? !isSubmitting : hasTarget && !generating && !needsDirection;
 
   const buttonLabel = (() => {
-    if (isSubmitting) return isEdit ? "Applying…" : "Queuing…";
+    if (isSubmitting) return "Applying…";
+    if (generating) return batch.accepted > 0 ? `Rendering ${batch.accepted} of ${batch.total}…` : "Queuing…";
     if (isDisabled) return "Account disabled";
     if (isMaintenance) return "Temporarily unavailable";
     if (upgradeTopic) return "Upgrade to use";
@@ -200,7 +248,7 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
   })();
 
   const handleGenerate = async () => {
-    if (filled.length === 0 || needsDirection) return;
+    if (filled.length === 0 || needsDirection || useGenerateBatchStore.getState().active) return;
     const suggestedEditPart = suggestedEditPartForPrompt(prompt);
     if (suggestedEditPart) {
       const settings = useGenerationSettingsStore.getState();
@@ -209,9 +257,12 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       setActiveTab("edit");
       return;
     }
-    setIsSubmitting(true);
+    const controller = new AbortController();
+    batchControl.current = controller;
+    useGenerateBatchStore.getState().begin(filled.length * count, () => controller.abort());
     setStatus(null);
     const generationSettings = {
+      multiElevation: multiElevation || undefined,
       styleInfluence,
       preserveStructure,
       referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
@@ -226,42 +277,63 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
       // fine for one view, but "×N variations" and a locked seed contradict each other, so
       // only the first request keeps it and the rest fall back to random.
       let seedUses = 0;
-      const requests = filled.flatMap((view) => {
+      const tasks = filled.flatMap((view) => {
         const node = nodeForView(nodes, view.id);
         if (!node) return [];
-        return Array.from({ length: count }, (_, variation) =>
-          queueRender(
-            apiClient.createRender,
-            {
-              projectId,
-              sourceImageUrl: node.imageUrl,
-              prompt: prompt.trim(),
-              aspectRatio,
-              style,
-              viewKey: view.id,
-              viewLabel: view.label,
-              generationSettings: { ...generationSettings, seed: seedUses++ === 0 ? generationSettings.seed : undefined },
-            },
-            { slot: `${view.id}#${variation}`, onSlow: () => setStatus(SLOW_STATUS) },
-          ),
-        );
+        return Array.from({ length: count }, (_, variation) => {
+          const seedForRequest = seedUses++ === 0 ? generationSettings.seed : undefined;
+          // Nothing is sent, or charged, until this render's turn. Adding the job straight away
+          // keeps the Studio's count of running renders right for the next one in line.
+          return async () => {
+            const created = await queueRender(
+              apiClient.createRender,
+              {
+                projectId,
+                sourceImageUrl: node.imageUrl,
+                prompt: prompt.trim(),
+                aspectRatio,
+                style,
+                viewKey: view.id,
+                viewLabel: view.label,
+                generationSettings: { ...generationSettings, seed: seedForRequest },
+              },
+              { slot: `${view.id}#${variation}`, onSlow: () => setStatus(SLOW_STATUS) },
+            );
+            addJob(created.job);
+            return created;
+          };
+        });
       });
-      const results = await Promise.allSettled(requests);
+      // The plan only allows so many renders at once. The rest wait their turn rather than being
+      // refused, and start as running ones finish.
+      const cap = me?.limits.concurrentRenders ?? null;
+      const results = await runThrottled(tasks, {
+        freeSlots: () => (cap === null ? null : cap - rendersInFlight()),
+        waitForChange: waitForJobChange,
+        isBusy: isBusyRefusal,
+        isFatal: (error) => !isBusyRefusal(error) && limitRefusal(error) !== null,
+        signal: controller.signal,
+        onProgress: (progress) => useGenerateBatchStore.getState().progress(progress),
+      });
       const queued = results.filter(
         (result): result is PromiseFulfilledResult<CreateRenderResponse> => result.status === "fulfilled",
       );
-      queued.forEach(({ value }) => addJob(value.job));
       // A first render queued: the first-run hints have done their job.
       if (queued.length > 0) useGuideStore.getState().finishFirstRunHints();
 
-      const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      const stopped = controller.signal.aborted;
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected" && !(stopped && result.reason instanceof Error && result.reason.name === "AbortError"),
+      );
       const unconfirmed = rejected.filter(({ reason }) => reason instanceof RenderNotConfirmedError).length;
       const blocking = rejected.map(({ reason }) => limitRefusal(reason)).find(Boolean);
       if (blocking) showLimit(blocking);
       const refusal = rejected
         .map(({ reason }) => refusalMessage(errorCode(reason), me?.maintenanceMessage))
         .find(Boolean);
-      if (refusal) {
+      if (stopped) {
+        setStatus(`Stopped. ${queued.length} of ${results.length} renders were sent; the rest weren't started or charged.`);
+      } else if (refusal) {
         setStatus(`${refusal} ${queued.length} of ${results.length} renders queued.`);
       } else if (unconfirmed > 0) {
         setStatus(results.length > 1 ? `${queued.length} of ${results.length} renders queued. ${NOT_CONFIRMED_STATUS}` : NOT_CONFIRMED_STATUS);
@@ -274,7 +346,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
         setStatus(null);
       }
     } finally {
-      setIsSubmitting(false);
+      useGenerateBatchStore.getState().end();
+      batchControl.current = null;
       refreshAfterSubmit();
     }
   };
@@ -382,6 +455,12 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
               showLimit(blocked);
               return;
             }
+            // Pressed before the edit has what it needs: say what's missing and point at it.
+            if (isEdit && draft.problem) {
+              setShowEditHint(true);
+              useEditNudgeStore.getState().nudge(draft.need ?? "render");
+              return;
+            }
             if (isEdit) void handleEditApply();
             else void handleGenerate();
           }}
@@ -417,7 +496,34 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           </button>
         </p>
       )}
-      {editProblem && hasTarget && !status && <p className="mt-2 text-xs text-muted">{editProblem}</p>}
+      {generating && batch.total > 1 && (
+        <div className="cp-batch" role="status">
+          <div className="cp-batch-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round((batch.accepted / batch.total) * 100)}%` }} />
+          </div>
+          <p>
+            {batch.waiting
+              ? `Rendering ${batch.accepted} of ${batch.total}. The next one starts when a render finishes${me?.limits.concurrentRenders ? ` — your plan runs ${me.limits.concurrentRenders} at a time` : ""}.`
+              : `Rendering ${batch.accepted} of ${batch.total}…`}{" "}
+            {batch.waiting && (
+              <button type="button" onClick={() => batch.stop?.()}>
+                Stop
+              </button>
+            )}
+          </p>
+        </div>
+      )}
+      {upgradeTopic === "multi-elevation" && (
+        <p className="mt-2 text-xs text-muted">
+          Your plan renders one elevation at a time. Switch the others off in the elevation card, or upgrade to render them all together.
+        </p>
+      )}
+      {isEdit && editProblem && !status && (hasTarget || showEditHint) && (
+        <p className={`cp-edit-hint ${showEditHint ? "is-nudged" : ""}`} role={showEditHint ? "alert" : undefined}>
+          {showEditHint ? <b>Before you apply: </b> : null}
+          {editProblem}
+        </p>
+      )}
       {needsDirection && hasTarget && !status && <p className="mt-2 text-xs text-muted">Add a reference image or write a prompt to generate.</p>}
       {status && <p className="mt-2 text-xs text-muted">{status}</p>}
     </div>

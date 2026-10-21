@@ -45,7 +45,8 @@ export function ImagePreview() {
   const previewJobId = useRenderJobsStore((state) => state.previewJobId);
   const setPreviewImage = useRenderJobsStore((state) => state.setPreviewImage);
   const activeViewId = useCanvasStore((state) => state.activeViewId);
-  const [loaded, setLoaded] = useState(false);
+  // See RenderPreview: loaded is "this url finished loading", never reset by an effect.
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(image && !previewJobId), ".render-preview-back", { contain: false });
 
   // Picking another view tab means the user wants the canvas back.
@@ -58,7 +59,7 @@ export function ImagePreview() {
   }, [activeViewId]);
 
   const url = image?.url ?? null;
-  useEffect(() => setLoaded(false), [url]);
+  const loaded = loadedUrl === url;
 
   useEffect(() => {
     if (!url) return;
@@ -117,7 +118,7 @@ export function ImagePreview() {
           src={image.url}
           alt={image.title}
           className={`render-preview-image ${loaded ? "is-loaded" : ""}`}
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setLoadedUrl(url)}
           draggable={false}
         />
         {!loaded && <span className="render-preview-spinner" aria-label="Loading image" />}

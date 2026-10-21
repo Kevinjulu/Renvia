@@ -169,10 +169,10 @@ function PlanEditor({ plan, canManage, onChanged }: { plan: AdminPlan; canManage
       <fieldset disabled={!canManage} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="text-xs text-muted">Name<input value={terms.name} maxLength={60} onChange={(event) => set({ name: event.target.value })} className={inputClass()} /></label>
         <label className="text-xs text-muted">Monthly credits<input type="number" min={0} value={terms.monthlyCredits} onChange={(event) => set({ monthlyCredits: Math.max(0, Math.round(Number(event.target.value) || 0)) })} className={inputClass()} /></label>
-        <NullableNumber label="Renders per day" value={terms.dailyRenderLimit} onChange={(dailyRenderLimit) => set({ dailyRenderLimit })} disabled={!canManage} />
-        <NullableNumber label="Renders per month" value={terms.monthlyRenderLimit} onChange={(monthlyRenderLimit) => set({ monthlyRenderLimit })} disabled={!canManage} />
+        <NullableNumber label="Renders per day (edits excluded)" value={terms.dailyRenderLimit} onChange={(dailyRenderLimit) => set({ dailyRenderLimit })} disabled={!canManage} />
+        <NullableNumber label="Renders per month (edits excluded)" value={terms.monthlyRenderLimit} onChange={(monthlyRenderLimit) => set({ monthlyRenderLimit })} disabled={!canManage} />
         <NullableNumber label="Projects" value={terms.maxProjects} onChange={(maxProjects) => set({ maxProjects })} disabled={!canManage} />
-        <label className="text-xs text-muted">Renders at once<input type="number" min={1} max={100} placeholder="1 (default)" value={terms.concurrentRenderLimit ?? ""} onChange={(event) => set({ concurrentRenderLimit: event.target.value === "" ? null : Math.max(1, Math.round(Number(event.target.value))) })} className={inputClass()} /></label>
+        <label className="text-xs text-muted">Renders at once (queue size)<input type="number" min={1} max={100} placeholder="1 (default)" value={terms.concurrentRenderLimit ?? ""} onChange={(event) => set({ concurrentRenderLimit: event.target.value === "" ? null : Math.max(1, Math.round(Number(event.target.value))) })} className={inputClass()} /></label>
         {plan.interval === "month" && (
           <>
             <label className="text-xs text-muted">Price (cents)<input type="number" min={0} value={terms.priceCents} onChange={(event) => set({ priceCents: Math.max(0, Math.round(Number(event.target.value) || 0)) })} className={inputClass()} /></label>

@@ -156,8 +156,8 @@ function capWrites(db: Database, userId: string, caps: JobCaps, kind: "render" |
     ? sql`
         select
           count(*) filter (where r.status in ('pending', 'processing')) as in_flight,
-          count(*) filter (where r.created_at >= ${UTC_DAY_START} and (r.status <> 'failed' or r.cost_micros > 0)) as today,
-          count(*) filter (where r.created_at >= ${UTC_MONTH_START} and (r.status <> 'failed' or r.cost_micros > 0)) as month
+          count(*) filter (where r.job_type not in ('edit', 'edit-references') and r.created_at >= ${UTC_DAY_START} and (r.status <> 'failed' or r.cost_micros > 0)) as today,
+          count(*) filter (where r.job_type not in ('edit', 'edit-references') and r.created_at >= ${UTC_MONTH_START} and (r.status <> 'failed' or r.cost_micros > 0)) as month
         from ${schema.renders} r join ${schema.projects} p on p.id = r.project_id
         where p.owner_id = ${userId} and (r.created_at >= ${UTC_MONTH_START} or r.status in ('pending', 'processing'))`
     : sql`

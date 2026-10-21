@@ -52,7 +52,8 @@ export function resolveLimits(user: UserRow, settings: AppSettingsRow, plan?: Bi
 }
 
 /**
- * Counts against every cap in one round trip. A failed render or segmentation counts toward the
+ * Counts against every cap in one round trip. Edits are not counted toward the day or month: they
+ * only spend credits. They do count as in flight, since they run on the same engine. A failed render or segmentation counts toward the
  * day's and month's allowance only while it still carries provider spend (cost_micros > 0): one
  * cancelled or timed out after fal took it used fal; one fal refused or never received didn't.
  * Renders in deleted projects still count; the project count only covers live projects.
@@ -61,8 +62,8 @@ export async function getUsage(db: Database, userId: string): Promise<UserUsage>
   const [[renders], [segments], [projects], [inFlight]] = await Promise.all([
     db
       .select({
-        today: sql<number>`count(*) filter (where ${schema.renders.createdAt} >= ${UTC_DAY_START})::int`,
-        month: sql<number>`count(*) filter (where ${schema.renders.createdAt} >= ${UTC_MONTH_START})::int`,
+        today: sql<number>`count(*) filter (where ${schema.renders.createdAt} >= ${UTC_DAY_START} and ${schema.renders.jobType} not in ${EDIT_JOB_TYPES_SQL})::int`,
+        month: sql<number>`count(*) filter (where ${schema.renders.createdAt} >= ${UTC_MONTH_START} and ${schema.renders.jobType} not in ${EDIT_JOB_TYPES_SQL})::int`,
       })
       .from(schema.renders)
       .innerJoin(schema.projects, eq(schema.renders.projectId, schema.projects.id))
@@ -156,12 +157,19 @@ function refuse(settings: AppSettingsRow, code: LimitCode, status: Refusal["stat
   return { code, error: limitMessages(settings)[code] ?? DEFAULTS[code], status, ...extra };
 }
 
-type Kind = "render" | "segment";
+/**
+ * What a job is, for the caps. An edit shares the renders' maintenance switch and concurrent-job
+ * cap (it runs on the same engine) but has no daily or monthly count: edits only spend credits.
+ */
+type Kind = "render" | "edit" | "segment";
+
+/** Edit jobs never count toward the daily and monthly render caps (see getUsage). */
+const EDIT_JOB_TYPES_SQL = sql`('edit', 'edit-references')`;
 
 /**
- * The full pre-flight for a render or selection: maintenance, then the daily and
- * monthly caps. Credits and the global fal budget are checked by the callers, which
- * own those transactions. Returns null when the request may proceed.
+ * The full pre-flight for a render, edit or selection: maintenance, then the concurrent, daily
+ * and monthly caps that apply to it. Credits and the global fal budget are checked by the
+ * callers, which own those transactions. Returns null when the request may proceed.
  */
 export async function checkAllowance(
   db: Database,
@@ -176,19 +184,20 @@ export async function checkAllowance(
 
   // The Settings switches and any scheduled window that is running now.
   const maintenance = await effectiveMaintenance(db, settings);
-  const paused = kind === "render" ? maintenance.renders : maintenance.selections;
+  const paused = kind === "segment" ? maintenance.selections : maintenance.renders;
   if (paused) return refuse(settings, "maintenance", 503, maintenance.message?.trim() ? { error: maintenance.message.trim() } : {});
 
-  const daily = kind === "render" ? limits.dailyRenders : limits.dailySegments;
-  const monthly = kind === "render" ? limits.monthlyRenders : limits.monthlySegments;
-  if (daily === null && monthly === null && (kind !== "render" || limits.concurrentRenders === null)) return null;
+  const daily = kind === "render" ? limits.dailyRenders : kind === "segment" ? limits.dailySegments : null;
+  const monthly = kind === "render" ? limits.monthlyRenders : kind === "segment" ? limits.monthlySegments : null;
+  const concurrent = kind === "segment" ? null : limits.concurrentRenders;
+  if (daily === null && monthly === null && concurrent === null) return null;
 
   const usage = await getUsage(db, user.id);
   const usedToday = kind === "render" ? usage.rendersToday : usage.segmentsToday;
   const usedThisMonth = kind === "render" ? usage.rendersThisMonth : usage.segmentsThisMonth;
 
-  if (kind === "render" && limits.concurrentRenders !== null && usage.rendersInFlight >= limits.concurrentRenders) {
-    return refuse(settings, "concurrency_limit_reached", 429, { limit: limits.concurrentRenders, used: usage.rendersInFlight });
+  if (concurrent !== null && usage.rendersInFlight >= concurrent) {
+    return refuse(settings, "concurrency_limit_reached", 429, { limit: concurrent, used: usage.rendersInFlight });
   }
 
   if (daily !== null && usedToday >= daily) {
@@ -206,9 +215,9 @@ export async function checkAllowance(
  */
 export function jobCaps(limits: UserLimits, kind: Kind): JobCaps | null {
   if (limits.exempt) return null;
-  return kind === "render"
-    ? { concurrent: limits.concurrentRenders, daily: limits.dailyRenders, monthly: limits.monthlyRenders }
-    : { concurrent: null, daily: limits.dailySegments, monthly: limits.monthlySegments };
+  if (kind === "segment") return { concurrent: null, daily: limits.dailySegments, monthly: limits.monthlySegments };
+  if (kind === "edit") return { concurrent: limits.concurrentRenders, daily: null, monthly: null };
+  return { concurrent: limits.concurrentRenders, daily: limits.dailyRenders, monthly: limits.monthlyRenders };
 }
 
 /**
@@ -217,7 +226,7 @@ export function jobCaps(limits: UserLimits, kind: Kind): JobCaps | null {
  */
 export async function refuseRacedCap(db: Database, user: UserRow, settings: AppSettingsRow, kind: Kind, plan?: BillingPlanRow, beta?: BetaLimits | null): Promise<Refusal> {
   return (await checkAllowance(db, user, settings, kind, plan, beta))
-    ?? refuse(settings, kind === "render" ? "concurrency_limit_reached" : "daily_limit_reached", 429);
+    ?? refuse(settings, kind === "segment" ? "daily_limit_reached" : "concurrency_limit_reached", 429);
 }
 
 /** Refusal for one of the input caps, which are checked inline rather than pre-flight. */

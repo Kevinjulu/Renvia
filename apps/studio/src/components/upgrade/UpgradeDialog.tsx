@@ -14,6 +14,13 @@ interface Copy {
 function copyFor(topic: UpgradeTopic, me: MeResponse | null): Copy {
   const onPro = me?.entitlement.plan.slug === "studio";
   switch (topic) {
+    case "multi-elevation":
+      return {
+        eyebrow: "Paid feature",
+        title: "Render every elevation at once",
+        body: "On the free plan you can render one elevation at a time. A paid plan renders all of your uploaded elevations in a single Generate, so front, right, back and left come out together.",
+        points: ["All uploaded elevations in one click", "More renders running at the same time", "Clean, watermark-free downloads"],
+      };
     case "download":
       return {
         eyebrow: "Free plan",

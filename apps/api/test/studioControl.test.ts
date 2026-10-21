@@ -283,3 +283,34 @@ describe("maintenance windows", () => {
     expect((await render("customer")).status).toBe(503);
   });
 });
+
+describe("multi-elevation rendering", () => {
+  it("is on for every plan until a rule narrows it", async () => {
+    const profile = await me();
+    expect(profile.features["render.multiElevation"]).toMatchObject({ available: true });
+    expect((await render("customer", { multiElevation: true })).status).toBe(201);
+  });
+
+  it("can be limited to some plans, with a plan reason the Studio turns into an upgrade prompt", async () => {
+    await publish("render.multiElevation", { allowedPlans: ["team"] });
+    await putOnPlan(customerId, "studio");
+
+    expect((await me()).features["render.multiElevation"]).toMatchObject({ available: false, reason: "plan" });
+    const refused = await render("customer", { multiElevation: true });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: "feature_disabled", feature: "render.multiElevation", reason: "plan" });
+
+    // A single-elevation render is a different request and is untouched.
+    expect((await render("customer")).status).toBe(201);
+
+    await putOnPlan(customerId, "team");
+    expect((await render("customer", { multiElevation: true })).status).toBe(201);
+  });
+
+  it("lets admins through whatever the rule says", async () => {
+    await publish("render.multiElevation", { enabled: false });
+    const adminProject = await makeProject((await db.select().from(schema.users).where(eq(schema.users.clerkId, "admin")))[0]!.id);
+    expect((await render("customer", { multiElevation: true })).status).toBe(403);
+    expect((await render("admin", { multiElevation: true }, adminProject.id)).status).toBe(201);
+  });
+});

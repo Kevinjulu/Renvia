@@ -203,11 +203,11 @@ function CustomerNotes({ userId, notes, onDone }: { userId: string; notes: { id:
 
 /** The four caps an admin can override per user, paired with the usage they're measured against. */
 const OVERRIDE_ROWS = [
-  { key: "dailyRenderLimitOverride", label: "Renders per day", limit: "dailyRenders", used: "rendersToday", max: 10_000 },
+  { key: "dailyRenderLimitOverride", label: "Renders per day (edits excluded)", limit: "dailyRenders", used: "rendersToday", max: 10_000 },
   { key: "dailySegmentLimitOverride", label: "Selections per day", limit: "dailySegments", used: "segmentsToday", max: 10_000 },
   {
     key: "monthlyRenderLimitOverride",
-    label: "Renders per month",
+    label: "Renders per month (edits excluded)",
     limit: "monthlyRenders",
     used: "rendersThisMonth",
     max: 100_000,

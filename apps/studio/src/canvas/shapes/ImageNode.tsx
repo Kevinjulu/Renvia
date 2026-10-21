@@ -24,7 +24,9 @@ export function ImageNode({
   onSelect,
   onDragEnd,
 }: ImageNodeProps) {
-  const [image] = useImage(imageUrl, "anonymous");
+  // No crossOrigin: nothing reads this canvas's pixels back, and a CORS request for a URL the
+  // browser already cached from a plain <img> fails the CORS check and leaves the node empty.
+  const [image] = useImage(imageUrl);
 
   return (
     <Group

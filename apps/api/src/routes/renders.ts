@@ -145,6 +145,9 @@ const createRenderSchema = z.object({
       // max) — validated loosely here since an out-of-range value just gets rejected by fal
       // itself rather than doing anything unsafe.
       seed: z.number().int().min(0).max(4_294_967_295).optional(),
+      // Set by the Studio when one Generate covers several elevations. The plan's
+      // render.multiElevation feature gates it (see featuresForRender).
+      multiElevation: z.boolean().optional(),
       // Only the target comes from the client; the API fills in the rest as the passes finish.
       highRes: z.object({ target: z.enum(["4k", "8k"]) }).optional(),
     })
@@ -347,6 +350,8 @@ renders.post("/", rateLimit("render"), async (c) => {
 
   const isAdmin = user.role === "admin";
   const limits = resolveLimits(user, appSettings, billing.plan, betaProgram);
+  // Edits only spend credits: no daily or monthly count, just the concurrent-job cap.
+  const jobKind = settings.edit ? "edit" : "render";
 
   if (body.prompt.length > limits.maxPromptChars) {
     const refusal = refuseInput(appSettings, "prompt_too_long", limits.maxPromptChars, body.prompt.length);
@@ -362,7 +367,7 @@ renders.post("/", rateLimit("render"), async (c) => {
   // Checked together, answered in this order: feature rules, then allowance, then storage.
   const [featureRefusal, allowance, storageFull] = await Promise.all([
     checkFeatures(db, revision, user, billing.plan.slug, featuresForRender(settings), engineMode, betaProgram?.featureGrants),
-    checkAllowance(db, user, appSettings, "render", billing.plan, betaProgram),
+    checkAllowance(db, user, appSettings, jobKind, billing.plan, betaProgram),
     storageWouldExceed(db, appSettings.storageCapMb, estimatedOutputBytes(settings)),
   ]);
   if (featureRefusal) return (await replay()) ?? c.json(featureRefusal, featureRefusal.status);
@@ -430,11 +435,11 @@ renders.post("/", rateLimit("render"), async (c) => {
         idempotencyKey: body.idempotencyKey,
         configVersion: revision.version,
         fundingPool: promo.pool,
-      }, funding.charge, jobCaps(limits, "render"));
+      }, funding.charge, jobCaps(limits, jobKind));
     } catch (error) {
       // A parallel request took the last slot after this one's pre-flight check.
       if (error instanceof JobCapError) {
-        const refusal = await refuseRacedCap(db, user, appSettings, "render", billing.plan, betaProgram);
+        const refusal = await refuseRacedCap(db, user, appSettings, jobKind, billing.plan, betaProgram);
         return (await replay()) ?? c.json(refusal, refusal.status);
       }
       if (error instanceof InsufficientBetaCreditsError) {

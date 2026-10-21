@@ -225,7 +225,13 @@ export function editPassCount(edit: RenderEditSettings): number {
  * Why an edit request can't run, or null when it can. Shared so the Studio explains the same
  * thing the API would refuse.
  */
-export function editRequestProblem({
+export type EditNeed = "prompt" | "reference" | "reference-note" | "area" | "something";
+
+/**
+ * What an edit request is missing, or null when it can run: `need` says which control to point
+ * the person at, `message` says what to do.
+ */
+export function editRequestNeed({
   edit,
   prompt,
   referenceCount,
@@ -233,30 +239,35 @@ export function editRequestProblem({
   edit: RenderEditSettings;
   prompt: string;
   referenceCount: number;
-}): string | null {
+}): { need: EditNeed; message: string } | null {
   const hasPrompt = prompt.trim() !== "";
   const hasReferences = referenceCount > 0;
   const hasEnvironment = hasEnvironmentChange(edit.environment);
-  if (referenceCount > MAX_EDIT_REFERENCES) return `Edits take up to ${MAX_EDIT_REFERENCES} reference images.`;
+  if (referenceCount > MAX_EDIT_REFERENCES) return { need: "reference", message: `Edits take up to ${MAX_EDIT_REFERENCES} reference images.` };
   if ((edit.references ?? []).some((reference) => reference.target === "other" && !reference.note?.trim())) {
-    return "Say what each reference marked “Other” is for.";
+    return { need: "reference-note", message: "Say what each reference marked “Other” is for." };
   }
   // The environment is applied over the whole result, so a selection with nothing else to do
   // inside it would be an empty first pass.
   if (edit.maskImageUrl && !hasPrompt && !hasReferences) {
-    return "Describe the change for the selected area, or clear the selection to change only the environment.";
+    return { need: "prompt", message: "Write a prompt for the selected area, or clear the selection to change only the environment." };
   }
   switch (edit.method) {
     case "prompt":
-      return hasPrompt || hasEnvironment ? null : "Describe the change or pick an environment change.";
+      return hasPrompt || hasEnvironment ? null : { need: "prompt", message: "Write a prompt describing the change, or pick an environment change." };
     case "reference":
-      return hasReferences ? null : "Add a reference image.";
+      return hasReferences ? null : { need: "reference", message: "Add a reference image." };
     case "reference-prompt":
-      if (!hasReferences) return "Add a reference image.";
-      return hasPrompt ? null : "Describe what to take from the reference.";
+      if (!hasReferences) return { need: "reference", message: "Add a reference image." };
+      return hasPrompt ? null : { need: "prompt", message: "Write a prompt for what to take from the reference." };
     default:
-      return hasPrompt || hasReferences || hasEnvironment ? null : "Describe an edit, attach a reference or pick an environment change.";
+      return hasPrompt || hasReferences || hasEnvironment ? null : { need: "something", message: "Write a prompt, attach a reference or pick an environment change." };
   }
+}
+
+/** Why an edit request can't run, or null when it can. The API refuses with the same words. */
+export function editRequestProblem(request: Parameters<typeof editRequestNeed>[0]): string | null {
+  return editRequestNeed(request)?.message ?? null;
 }
 
 /** Present on high-resolution export jobs, which preserve an existing render rather than generating a new design. */
@@ -360,6 +371,12 @@ export interface RenderGenerationSettings {
   highRes?: RenderHighResSettings;
   /** Reuse a previous render's seed to reproduce it, or nudge it with a new prompt/strength. */
   seed?: number;
+  /**
+   * Set by the Studio on every render of a Generate that covers more than one elevation. It only
+   * gates the "render all elevations at once" convenience by plan (Studio Control); it changes
+   * nothing about the render itself, its price or its caps.
+   */
+  multiElevation?: boolean;
 }
 
 /**
@@ -1702,6 +1719,7 @@ export type StudioFeatureKey =
   | "render.standard"
   | "render.references"
   | "render.fidelity"
+  | "render.multiElevation"
   | "edit.standard"
   | "edit.references"
   | "render.upscale"
@@ -1721,6 +1739,7 @@ export const STUDIO_FEATURES: readonly StudioFeatureDefinition[] = [
   { key: "render.standard", label: "Standard render", description: "Render from a photo, 3D massing or line drawing with a prompt.", group: "Render" },
   { key: "render.references", label: "Reference render", description: "Render with style or material reference images.", group: "Render" },
   { key: "render.fidelity", label: "Strict fidelity", description: "Reference render that locks the source design's geometry.", group: "Render" },
+  { key: "render.multiElevation", label: "Multi-elevation render", description: "Render several elevations in one Generate (front, right, back, left and extras).", group: "Render" },
   { key: "edit.standard", label: "Edit", description: "Change part or all of a finished render with an instruction.", group: "Edit" },
   { key: "edit.references", label: "Edit with references", description: "Edit using reference images.", group: "Edit" },
   { key: "render.upscale", label: "Upscale a finished render", description: "Upscale an existing render from its card.", group: "Resolution" },
@@ -1773,6 +1792,7 @@ export function featuresForRender(settings: RenderGenerationSettings): StudioFea
     upscale: "render.upscale",
   };
   const keys: StudioFeatureKey[] = [base[renderRouteFor(settings)]];
+  if (settings.multiElevation) keys.push("render.multiElevation");
   const target = settings.upscale?.target ?? settings.highRes?.target;
   if (target) keys.push(target === "8k" ? "export.8k" : "export.4k");
   return keys;
@@ -2615,3 +2635,18 @@ export interface AdminSecurityQueueResponse {
   items: AdminSecurityQueueItem[];
   total: number;
 }
+
+// ── Plan economy ──────────────────────────────────────────────────────────────────
+
+/**
+ * The launch terms of each plan, in one place. The database (billing_plans, seeded and updated by
+ * migrations) is what the app enforces and the admin edits; this is the reference those seeds,
+ * the marketing copy and the help text are checked against by a test, so a number changed in one
+ * place can't quietly drift from the others. Credits are per image; edits cost credits but never
+ * count toward the daily or monthly render limits.
+ */
+export const PLAN_ECONOMY = {
+  starter: { name: "Free", monthlyCredits: 20, dailyRenderLimit: 10, monthlyRenderLimit: 25, maxProjects: 2, concurrentRenderLimit: 4 },
+  studio: { name: "Pro", monthlyCredits: 300, dailyRenderLimit: 60, monthlyRenderLimit: null, maxProjects: 50, concurrentRenderLimit: 6 },
+  team: { name: "Premium", monthlyCredits: 1000, dailyRenderLimit: 250, monthlyRenderLimit: null, maxProjects: 500, concurrentRenderLimit: 8 },
+} as const;

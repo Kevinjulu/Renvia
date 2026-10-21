@@ -7,7 +7,7 @@ const TIERS = [
     price: "$0",
     period: "",
     billing: "20 free credits every month · no card required",
-    features: ["Up to 5 render jobs per day", "Standard renders: 1 credit", "2 active projects", "Renders stay in the Studio, watermarked"],
+    features: ["Up to 10 renders per day · edits don’t count", "4 renders at once", "Standard renders and edits: 1 credit each", "2 active projects", "Renders stay in the Studio, watermarked"],
     cta: "Start with 20 free credits",
     emphasized: false,
   },
@@ -17,7 +17,7 @@ const TIERS = [
     price: "$29",
     period: "/month",
     billing: "or $290 a year · card, M-Pesa or PayPal",
-    features: ["300 credits every month", "Clean, watermark-free downloads", "Standard and 4K output", "Up to 50 projects"],
+    features: ["300 credits every month", "Clean, watermark-free downloads", "Standard and 4K output", "6 renders at once", "Up to 50 projects"],
     cta: "Get Pro",
     emphasized: false,
   },
@@ -82,7 +82,7 @@ export function Pricing() {
         </div>
 
         <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-3">
-          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">01</span> Start with 25 real rendering credits</div>
+          <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">01</span> Start with 20 free credits every month</div>
           <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">02</span> See every action’s credit cost before you run it</div>
           <div className="bg-[#121414] px-5 py-4 text-[10px] text-white/45"><span className="mr-2 text-white/80">03</span> Yearly billing gets you two months free</div>
         </div>

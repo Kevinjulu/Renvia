@@ -19,7 +19,7 @@ function limits(plan: BillingPlanOffer): string[] {
   const rows = [`${plan.monthlyCredits.toLocaleString()} credits every month`];
   if (plan.maxProjects) rows.push(`Up to ${plan.maxProjects.toLocaleString()} projects`);
   if (plan.concurrentRenderLimit) rows.push(plan.concurrentRenderLimit === 1 ? "One render at a time" : `${plan.concurrentRenderLimit} renders at once`);
-  if (plan.dailyRenderLimit) rows.push(`Up to ${plan.dailyRenderLimit.toLocaleString()} renders a day`);
+  if (plan.dailyRenderLimit) rows.push(`Up to ${plan.dailyRenderLimit.toLocaleString()} renders a day · edits don’t count`);
   return rows;
 }
 

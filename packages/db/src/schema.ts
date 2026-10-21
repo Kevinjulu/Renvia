@@ -653,14 +653,8 @@ export const appSettings = pgTable(
   "app_settings",
   {
     id: integer("id").primaryKey().default(1),
-    /**
-     * @deprecated Never read. New accounts get their plan's monthly allowance as their first
-     * credit period (see planCredits.ts) — that is the one signup grant. Kept only so the column
-     * isn't dropped before a deliberate migration; don't wire it up as a second grant.
-     */
-    signupBonusCredits: integer("signup_bonus_credits").notNull().default(25),
     /** Max renders per non-admin user per UTC day; null = unlimited. */
-    dailyRenderLimit: integer("daily_render_limit").default(5),
+    dailyRenderLimit: integer("daily_render_limit").default(10),
     /** Max segmentations per non-admin user per UTC day; null = unlimited. */
     dailySegmentLimit: integer("daily_segment_limit"),
     /** Max renders per non-admin user per UTC calendar month; null = unlimited. */
@@ -735,7 +729,6 @@ export const appSettings = pgTable(
   },
   (table) => [
     check("app_settings_single_row", sql`${table.id} = 1`),
-    check("app_settings_signup_bonus_range", sql`${table.signupBonusCredits} BETWEEN 0 AND 1000`),
     check(
       "app_settings_daily_limit_range",
       sql`${table.dailyRenderLimit} IS NULL OR ${table.dailyRenderLimit} BETWEEN 1 AND 10000`,

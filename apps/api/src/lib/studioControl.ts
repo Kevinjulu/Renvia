@@ -93,6 +93,8 @@ const FEATURE_ROUTES: Record<StudioFeatureKey, (RenderRoute | SelectionRoute)[]>
   "render.standard": ["photo", "drawing"],
   "render.references": ["references"],
   "render.fidelity": ["fidelity"],
+  // A convenience over the renders it sends; those run on (and are paused with) their own routes.
+  "render.multiElevation": [],
   "edit.standard": ["edit"],
   "edit.references": ["edit-references"],
   "render.upscale": ["upscale"],

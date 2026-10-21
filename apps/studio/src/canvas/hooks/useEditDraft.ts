@@ -1,8 +1,9 @@
 import {
   editPassCount,
-  editRequestProblem,
+  editRequestNeed,
   hasEnvironmentChange,
   type EditEnvironment,
+  type EditNeed,
   type EditMethod,
   type EditMode,
   type EditReference,
@@ -59,11 +60,13 @@ export function useEditDraft() {
   // Checks need to know a mask will be sent; the real URL only exists once it's uploaded on Apply.
   const checked: RenderEditSettings = hasArea ? { ...edit, maskImageUrl: "selection" } : edit;
 
-  const problem = !render
-    ? "Open a finished render to edit it."
+  // What is missing and which control answers it. Without a render open there is nothing to point at.
+  const missing: { need: EditNeed | "render"; message: string } | null = !render
+    ? { need: "render", message: "Open a finished render to edit it." }
     : scope === "selection" && !areaPainted
-      ? "Select the area on the render, or switch to Whole image."
-      : editRequestProblem({ edit: checked, prompt, referenceCount: references.length });
+      ? { need: "area", message: "Select the area on the render, or switch to Whole image." }
+      : editRequestNeed({ edit: checked, prompt, referenceCount: references.length });
+  const problem = missing?.message ?? null;
 
   return {
     render,
@@ -78,6 +81,8 @@ export function useEditDraft() {
     /** How many separate areas are selected. */
     areaCount: hasArea ? areas.length : 0,
     problem,
+    /** The control to point at when the edit can't run yet; "render" when no render is open. */
+    need: missing?.need ?? null,
     passes: editPassCount(checked),
     /** Settings for pricing the edit (the mask placeholder included). */
     costSettings: { referenceImageUrls: references, edit: checked },

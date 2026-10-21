@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { startEditTour } from "./editTour";
 import { useGuideStore } from "./useGuideStore";
 
 export function GuideButton() {
@@ -73,6 +74,16 @@ export function GuideButton() {
             }}
           >
             Take the studio tour
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              startEditTour();
+            }}
+          >
+            How to make a good edit
           </button>
           <button
             type="button"

@@ -252,7 +252,10 @@ export function RenderPreview() {
   const stopEditing = useRenderEditStore((state) => state.stopEditing);
   const addStroke = useRenderEditStore((state) => state.addStroke);
   const apiClient = useApiClient();
-  const [loaded, setLoaded] = useState(false);
+  // Which image has finished loading. Compared with the one on screen rather than reset in an
+  // effect: a cached image can fire onLoad before an effect would run, and a reset after it
+  // would leave the image hidden for good.
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const me = useAccountStore((state) => state.me);
   const tool = useRenderEditStore((state) => state.tool);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -286,8 +289,6 @@ export function RenderPreview() {
   const job = (index >= 0 ? viewable[index] : undefined) ?? null;
   const isEditing = job !== null && targetJobId === job.id;
   const dialogRef = useFocusTrap<HTMLDivElement>(Boolean(job?.resultImageUrl), ".render-preview-back", { contain: false });
-
-  useEffect(() => setLoaded(false), [job?.resultImageUrl, mode]);
 
   // Picking another view tab or filmstrip slot means the user wants the canvas back.
   const firstViewId = useRef(activeViewId);
@@ -377,6 +378,7 @@ export function RenderPreview() {
 
   const title = [job.settings?.upscale ? `${job.settings.upscale.target.toUpperCase()} export` : job.settings?.edit ? "Edit" : "Render", job.viewLabel].filter(Boolean).join(" · ");
   const shownUrl = mode === "source" ? job.sourceImageUrl : job.resultImageUrl;
+  const loaded = loadedUrl === shownUrl;
   const parent = job.settings?.edit ? jobs.find((item) => isSameImage(item.resultImageUrl, job.sourceImageUrl)) : undefined;
   const selected = hasSelection(strokes);
   const isAdmin = me?.role === "admin";
@@ -459,7 +461,7 @@ export function RenderPreview() {
             alt={mode === "source" ? "Source image" : title}
             className={`render-preview-image ${loaded ? "is-loaded" : ""}`}
             style={{ transform: `scale(${zoom})`, transformOrigin }}
-            onLoad={() => setLoaded(true)}
+            onLoad={() => setLoadedUrl(shownUrl)}
             draggable={false}
           />
         )}
@@ -495,10 +497,10 @@ export function RenderPreview() {
                 : tool === "magic"
                 ? "Click the part you want to change, or type what to select. Each automatic selection costs 1 credit; painting is free."
                 : selected
-                ? "Only the highlighted area will change. Describe the change in the Edit panel, add a reference if you like, then Apply edit."
+                ? "Only the highlighted area will change. Write a prompt in the Edit panel, add a reference if you like, then Apply edit."
                 : tool === null
-                  ? "To change only part of the render, pick a tool above and mark it. Or skip it to edit the whole render. Describe the change in the Edit panel."
-                  : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Describe the change in the Edit panel."}
+                  ? "To change only part of the render, pick a tool above and mark it. Or skip it to edit the whole render. Write a prompt in the Edit panel."
+                  : "Paint over the part you want to change, like a door or window, or skip it to edit the whole render. Write a prompt in the Edit panel."}
           </p>
           {isSelecting && <span className="render-edit-pending">Finding that area…</span>}
           {selected && <SelectionTag />}
