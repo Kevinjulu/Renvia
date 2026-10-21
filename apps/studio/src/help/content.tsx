@@ -97,9 +97,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
             No images of your own yet? Library has samples sorted into Windows, Roof, Doors, Pillars, Outdoors and Exterior.
             Style and aspect ratio sit above the prompt — Auto keeps the source image's own shape.
           </P>
-          <Callout label="Preserve structure" accent="blueprint">
-            Leave this on for client elevations. The model may change finish and colour, but it should not
-            invent new openings or reshape the massing.
+          <Callout label="Your design stays put" accent="blueprint">
+            Renders keep your elevation exactly as drawn. The model may change finish, colour and light, but it
+            never invents new openings or reshapes the massing.
           </Callout>
 
           <H2>Generate</H2>
@@ -133,8 +133,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           <H2>The in-studio guide</H2>
           <P>
             The first time you open a project, a short tour names each region. Press Guide in the top bar to
-            inspect the layout anytime, or the small question marks on Style influence and Preserve
-            structure.
+            inspect the layout anytime.
           </P>
         </>
       );

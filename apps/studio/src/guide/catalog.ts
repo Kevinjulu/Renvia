@@ -8,7 +8,6 @@ export type GuideTopicId =
   | "control.tabs"
   | "control.direction"
   | "control.influence"
-  | "control.preserve"
   | "control.generate"
   | "canvas.stage"
   | "canvas.tabs"
@@ -79,15 +78,6 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     short: "How much of your reference images' look the render takes on.",
     body: "With references attached, 1 borrows only their palette and mood, 2 their main materials and colours, 3 also their details such as window frames, railings and soffits, and 4 their full visual character. At every level the shape and camera angle come from your elevation, not the references.",
     how: "Use 3 or 4 when you want the render to look like your reference. Without references, the level sets how strongly the chosen style is applied.",
-    article: "consistent-results",
-    tab: "render",
-  },
-  "control.preserve": {
-    id: "control.preserve",
-    title: "Preserve structure",
-    short: "Keeps window counts, roofs, and massing from being redesigned.",
-    body: "When this is on, the model may change material, colour, and finish, but it should not add balconies, move windows, or reshape the building.",
-    how: "Leave it on for client elevations. Turn it off only when you want a looser interpretation.",
     article: "consistent-results",
     tab: "render",
   },
