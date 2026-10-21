@@ -243,8 +243,10 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
           >
             <span className="reference-action-icon" aria-hidden="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                <path d="M8 1.8 9.4 5.6 13.2 7 9.4 8.4 8 12.2 6.6 8.4 2.8 7l3.8-1.4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                <path d="M12.5 11.5v3M11 13h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                <rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                <rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                <rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                <rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1" stroke="currentColor" strokeWidth="1.2" />
               </svg>
             </span>
             <span className="reference-action-label">Samples</span>

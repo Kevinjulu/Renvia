@@ -94,7 +94,7 @@ export function PromptAssist({ prompt, kind, inputId, sourceLocked = false, onUs
           disabled={polishing || !prompt.trim()}
           title="Suggests a clearer, shorter prompt. Free: it doesn't use credits."
         >
-          {polishing ? "Polishing…" : <>✦ Polish <span className="cp-prompt-free">Free</span></>}
+          {polishing ? "Polishing…" : <>Polish <span className="cp-prompt-free">Free</span></>}
         </button>
         <small className={`cp-prompt-hint ${isLong ? "is-long" : ""}`} aria-live="polite">
           {isLong ? "Long prompts can confuse the render. Try Polish." : TIPS[kind]}

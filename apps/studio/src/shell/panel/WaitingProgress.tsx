@@ -44,7 +44,7 @@ export function WaitingProgress({ job, label, onCancel, isCancelling = false }: 
       </i>
       <div className="waiting-progress-footer">
         <p className="waiting-progress-fact" key={fact}>
-          <span aria-hidden="true">✦</span> {fact}
+          {fact}
         </p>
         {onCancel && (
           <button type="button" className="waiting-progress-cancel" onClick={onCancel} disabled={isCancelling}>

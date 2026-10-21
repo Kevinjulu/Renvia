@@ -367,7 +367,7 @@ export function RenderResultsPanel() {
               onClick={() => void handleToggleFavorite()}
             >
               <svg viewBox="0 0 14 14" aria-hidden="true">
-                <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" />
+                <path d="M7 1.4 8.6 5l3.9.4-2.9 2.6.9 3.8L7 9.8l-3.5 2 .9-3.8L1.5 5.4 5.4 5Z" />
               </svg>
             </button>
             <button

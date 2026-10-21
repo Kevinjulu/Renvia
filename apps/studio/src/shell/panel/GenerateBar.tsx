@@ -467,7 +467,8 @@ export function GenerateBar({ projectId }: GenerateBarProps) {
           className={`flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${nextStepClass(suggestGenerate)}`}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-            <path d="M7 1.5 8.4 5.6 12.5 7 8.4 8.4 7 12.5 5.6 8.4 1.5 7l4.1-1.4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M7 1.4 12.2 4.2v5.6L7 12.6 1.8 9.8V4.2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            <path d="M1.8 4.2 7 7l5.2-2.8M7 7v5.6" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
           </svg>
           {buttonLabel}
         </button>
