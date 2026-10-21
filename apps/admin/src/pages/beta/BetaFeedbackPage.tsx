@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from "../../components/dialogs";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Inbox, MessageSquare } from "lucide-react";
@@ -164,17 +165,17 @@ function Triage({ id, onChanged, siblings }: { id: string; onChanged: () => void
             </label>
             <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
               <Button variant="ghost" disabled={busy || report.assigneeId === me.id} onClick={() => void act(() => api.updateBetaFeedback(report.id, { assigneeId: me.id }))}>{report.assigneeEmail ? `Owner: ${report.assigneeEmail}` : "Assign to me"}</Button>
-              <Button variant="ghost" disabled={busy} onClick={() => {
-                const title = report.knownIssue ? null : window.prompt("Title testers will see for this known issue", report.title);
+              <Button variant="ghost" disabled={busy} onClick={() => void (async () => {
+                const title = report.knownIssue ? null : await promptDialog({ title: "Mark as known issue", label: "Title testers will see for this known issue", defaultValue: report.title, confirmLabel: "Mark" });
                 if (!report.knownIssue && title === null) return;
                 void act(() => api.updateBetaFeedback(report.id, report.knownIssue ? { knownIssue: false } : { knownIssue: true, knownIssueTitle: title?.trim() || null }));
-              }}>{report.knownIssue ? "Unmark known issue" : "Mark as known issue"}</Button>
-              <Button variant="ghost" disabled={busy} onClick={() => {
-                const url = window.prompt("GitHub issue URL", report.githubUrl ?? "");
+              })()}>{report.knownIssue ? "Unmark known issue" : "Mark as known issue"}</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => void (async () => {
+                const url = await promptDialog({ title: "Link GitHub issue", label: "GitHub issue URL", defaultValue: report.githubUrl ?? "", placeholder: "https://github.com/…", confirmLabel: "Link" });
                 if (url !== null) void act(() => api.updateBetaFeedback(report.id, { githubUrl: url.trim() || null }));
-              }}>{report.githubUrl ? "GitHub linked" : "Link GitHub"}</Button>
+              })()}>{report.githubUrl ? "GitHub linked" : "Link GitHub"}</Button>
               {report.status !== "duplicate" && duplicateCandidates.length > 0 && (
-                <select className="rounded-xl border border-hairline bg-canvas px-2 py-1.5 text-xs" value="" disabled={busy} onChange={(event) => event.target.value && window.confirm("Mark this as a duplicate? The tester is told, and the original gains their +1.") && void act(() => api.markBetaFeedbackDuplicate(report.id, event.target.value))} aria-label="Duplicate of">
+                <select className="rounded-xl border border-hairline bg-canvas px-2 py-1.5 text-xs" value="" disabled={busy} onChange={(event) => { const original = event.target.value; if (original) void confirmDialog({ title: "Mark this as a duplicate?", message: "The tester is told, and the original gains their +1.", confirmLabel: "Mark duplicate" }).then((ok) => { if (ok) void act(() => api.markBetaFeedbackDuplicate(report.id, original)); }); }} aria-label="Duplicate of">
                   <option value="">Duplicate of…</option>
                   {duplicateCandidates.map((row) => <option key={row.id} value={row.id}>BETA-{row.number} · {row.title}</option>)}
                 </select>

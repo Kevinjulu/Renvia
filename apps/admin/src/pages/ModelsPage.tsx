@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/dialogs";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Cpu, PauseCircle } from "lucide-react";
@@ -9,6 +10,7 @@ import { formatModel, formatNumber, formatPercent, formatRelative, formatUsd } f
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { inputClass } from "./settings/components";
+import { ModalFrame } from "../components/Overlay";
 
 const ROUTE_LABELS: Record<string, string> = {
   photo: "Photo render",
@@ -38,7 +40,7 @@ export function ModelsPage() {
   const [status, setStatus] = useState<{ tone: "ok" | "info" | "error"; text: string } | null>(null);
 
   const resume = async (model: AdminModel) => {
-    if (!data || !window.confirm(`Resume ${model.id}? New jobs will use it again.`)) return;
+    if (!data || !(await confirmDialog({ title: `Resume ${model.id}?`, message: "New jobs will use it again.", confirmLabel: "Resume" }))) return;
     setStatus(null);
     try {
       const result = await api.holdModel({ modelId: model.id, paused: false, message: null, expectedVersion: data.configVersion, reason: "Resumed from the Model Registry" });
@@ -154,7 +156,7 @@ function PauseDialog({ model, onClose, onConfirm }: { model: AdminModel; onClose
     }
   };
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm" onMouseDown={() => !saving && onClose()}>
+    <ModalFrame onClose={() => !saving && onClose()}>
       <form onSubmit={(event) => void submit(event)} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pause-title" className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-6 shadow-lift">
         <h2 id="pause-title" className="text-lg font-semibold text-primary">Pause {formatModel(model.id)}</h2>
         <p className="mt-1 text-sm text-muted">
@@ -174,6 +176,6 @@ function PauseDialog({ model, onClose, onConfirm }: { model: AdminModel; onClose
           <Button type="submit" variant="danger" disabled={saving || !reason.trim()}>{saving ? "Pausing…" : "Pause model"}</Button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

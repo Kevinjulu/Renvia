@@ -1,10 +1,14 @@
 import { useState, type FormEvent } from "react";
 import type { AdminUpdateUserRequest, AdminUser, UserLimits, UserUsage } from "@renvia/types";
 import { Link, useParams } from "react-router-dom";
-import { ChevronLeft, Clock, Coins, CreditCard, DollarSign, Gauge, History, ImageIcon, Shield, SlidersHorizontal, StickyNote, LogOut, Tags } from "lucide-react";
+import { ChevronLeft, CreditCard, Gauge, History, ImageIcon, Shield, SlidersHorizontal, StickyNote, LogOut, Tags } from "lucide-react";
+import { promptDialog } from "../components/dialogs";
 import { RenderTable } from "../components/RenderTable";
 import { RoleChangeModal } from "../components/RoleChangeModal";
-import { Button, Card, EmptyState, ErrorNote, PageHeader, Pill, Skeleton, StatCard, Table } from "../components/ui";
+import { PageTop } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
+import { Tabs } from "../components/Tabs";
+import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton, Table } from "../components/ui";
 import { ApiError, useAdminApi } from "../lib/api";
 import { formatCreditReason } from "../lib/labels";
 import { formatDateTime, formatNumber, formatRelative, formatUsd } from "../lib/format";
@@ -22,6 +26,7 @@ export function UserDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [roleAction, setRoleAction] = useState<"promote" | "demote" | null>(null);
+  const [tab, setTab] = useState<"overview" | "plan" | "activity">("overview");
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
   if (!data) return <Skeleton className="h-64" />;
@@ -42,18 +47,23 @@ export function UserDetailPage() {
     }
   };
 
-  const toggleDisabled = () => {
+  const toggleDisabled = async () => {
     const verb = user.disabled ? "Enable" : "Disable";
-    if (!window.confirm(`${verb} ${user.email}?${user.disabled ? "" : " They won't be able to render until re-enabled."}`)) return;
-    const reason = window.prompt(`Reason for ${verb.toLowerCase()}ing this account:`);
+    const reason = await promptDialog({
+      title: `${verb} ${user.email}?`,
+      message: user.disabled ? undefined : "They won't be able to render until re-enabled.",
+      label: `Reason for ${verb.toLowerCase()}ing this account`,
+      required: true,
+      confirmLabel: verb,
+    });
     if (!reason?.trim()) return;
     void runAction(() => api.updateUser(user.id, { disabled: !user.disabled, reason: reason.trim() }));
   };
 
-  const revokeSessions = () => {
-    const reason = window.prompt("Reason for revoking all active sessions:");
+  const revokeSessions = async () => {
+    const reason = await promptDialog({ title: "Revoke all active sessions", label: "Reason", required: true, confirmLabel: "Continue" });
     if (!reason?.trim()) return;
-    const confirmEmail = window.prompt(`Type ${user.email} to confirm:`);
+    const confirmEmail = await promptDialog({ title: "Confirm revoke", message: "This signs them out everywhere.", label: `Type ${user.email} to confirm`, required: true, confirmLabel: "Revoke sessions" });
     if (!confirmEmail) return;
     void runAction(() => api.revokeUserSessions(user.id, { reason: reason.trim(), confirmEmail }));
   };
@@ -63,7 +73,7 @@ export function UserDetailPage() {
       <Link to="/users" className="mb-3 inline-flex items-center gap-1 text-sm text-muted transition hover:text-primary">
         <ChevronLeft size={15} /> All users
       </Link>
-      <PageHeader
+      <PageTop
         title={user.email}
         description={`Joined ${formatDateTime(user.createdAt)} · Clerk ${user.clerkId}`}
         actions={
@@ -105,20 +115,23 @@ export function UserDetailPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Credits"
-          value={formatNumber(user.creditBalance)}
-          icon={Coins}
-          accent="amber"
-          detail={`${formatNumber(user.planCredits)} plan · ${formatNumber(user.betaCredits)} beta · ${formatNumber(Math.max(0, user.creditBalance - user.planCredits - user.betaCredits))} kept — ${formatNumber(user.creditsGranted)} granted, ${formatNumber(user.creditsSpent)} used${user.role === "admin" ? " (admins aren't charged)" : ""}`}
-        />
-        <StatCard label="Renders" value={formatNumber(user.renderCount)} icon={ImageIcon} accent="blue" />
-        <StatCard label="Spend" value={formatUsd(user.spentUsd)} icon={DollarSign} accent="emerald" />
-        <StatCard label="Last render" value={<span className="text-lg">{formatRelative(user.lastRenderAt)}</span>} icon={Clock} accent="neutral" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiTile label="Credits" value={formatNumber(user.creditBalance)} detail={`${formatNumber(user.planCredits)} plan · ${formatNumber(user.betaCredits)} beta · ${formatNumber(Math.max(0, user.creditBalance - user.planCredits - user.betaCredits))} kept`} />
+        <KpiTile label="Renders" value={formatNumber(user.renderCount)} detail={`${formatNumber(usage.rendersToday)} today`} />
+        <KpiTile label="Spend" value={formatUsd(user.spentUsd)} />
+        <KpiTile label="Last render" value={formatRelative(user.lastRenderAt)} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-4">
+        <Tabs label="Customer sections" value={tab} onChange={setTab} tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "plan", label: "Plan & limits" },
+          { id: "activity", label: "Activity", badge: renders.length > 0 ? renders.length : undefined },
+        ]} />
+      </div>
+
+      <div hidden={tab !== "overview"} className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Adjust credits" icon={SlidersHorizontal}>
           <AdjustCreditsForm userId={user.id} balance={user.creditBalance} onDone={reload} />
         </Card>
@@ -147,19 +160,7 @@ export function UserDetailPage() {
         </Card>
       </div>
 
-      <Card title="Plan" icon={CreditCard} className="mt-6">
-        <PlanPanel userId={user.id} email={user.email} entitlement={entitlement} plans={plans} canManage={me.role === "admin"} onDone={reload} />
-      </Card>
-
-      <UserBetaPanel user={user} projectCount={projects.length} />
-
-      {me.role !== "user" && <UserFreeAllowancePanel userId={user.id} onDone={reload} />}
-
-      <Card title="Limits & overrides" icon={Gauge} className="mt-6">
-        <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />
-      </Card>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Customer context" icon={Tags}>
           <div className="space-y-3 text-sm">
             <p><span className="text-muted">Tags:</span> {tags.length ? tags.map((tag) => <span key={tag.id} className="mr-1 inline-flex rounded-full bg-blueprint-soft px-2 py-0.5 text-xs text-blueprint">{tag.label}</span>) : " None"}</p>
@@ -170,15 +171,34 @@ export function UserDetailPage() {
         <Card title="Recent errors" icon={Shield}>
           {recentErrors.length ? <ul className="space-y-2 text-sm">{recentErrors.slice(0, 5).map((error) => <li key={error.id}><Link to={`/renders/${error.id}`} className="font-medium text-blueprint hover:underline">{error.projectName}</Link><span className="ml-2 text-muted">{error.errorMessage ?? "Render failed"}</span></li>)}</ul> : <EmptyState>No recent render failures.</EmptyState>}
         </Card>
+
       </div>
 
-      <Card title="Internal support notes" icon={StickyNote} className="mt-6">
+      </div>
+
+      <div hidden={tab !== "plan"} className="space-y-4">
+      <Card title="Plan" icon={CreditCard}>
+        <PlanPanel userId={user.id} email={user.email} entitlement={entitlement} plans={plans} canManage={me.role === "admin"} onDone={reload} />
+      </Card>
+
+      <UserBetaPanel user={user} projectCount={projects.length} />
+
+      {me.role !== "user" && <UserFreeAllowancePanel userId={user.id} onDone={reload} />}
+
+      <Card title="Limits & overrides" icon={Gauge}>
+        <LimitsPanel user={user} limits={limits} usage={usage} disabled={busy} onDone={reload} />
+      </Card>
+      </div>
+
+      <div hidden={tab !== "activity"} className="space-y-4">
+      <Card title="Internal support notes" icon={StickyNote}>
         <CustomerNotes userId={user.id} notes={notes} onDone={reload} />
       </Card>
 
-      <Card title="Recent renders" icon={ImageIcon} className="mt-6">
+      <Card title="Recent renders" icon={ImageIcon}>
         {renders.length === 0 ? <EmptyState icon={ImageIcon}>No renders yet.</EmptyState> : <RenderTable renders={renders} showUser={false} />}
       </Card>
+      </div>
 
       {roleAction && (
         <RoleChangeModal

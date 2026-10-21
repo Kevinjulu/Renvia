@@ -12,10 +12,11 @@ import type {
 } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
 import { NoteDialog } from "../components/NoteDialog";
-import { PageHero } from "../components/PageHero";
+import { PageTop, pageActionClass } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
+import { Tabs } from "../components/Tabs";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatNumber, formatRelative } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useAdmin } from "../lib/useAdmin";
 import { useLoad } from "../lib/useLoad";
 import { inputClass } from "./settings/components";
@@ -44,7 +45,7 @@ export function StudioControlPage() {
   const api = useAdminApi();
   const me = useAdmin();
   const canManage = me.role === "admin";
-  const nav = navForPath("/studio-control");
+  const [tab, setTab] = useState<"features" | "maintenance" | "versions">("features");
   const { data, error, reload, lastUpdated } = useLoad(() => api.getStudioControl(), [api], 60_000);
   const [draft, setDraft] = useState<StudioConfig | null>(null);
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
@@ -67,6 +68,9 @@ export function StudioControlPage() {
   );
 
   if (error && !data) return <ErrorNote onRetry={reload}>{error}</ErrorNote>;
+
+  const maintenanceNow = data?.maintenance.windows.some((window) => window.state === "active") ?? false;
+  const upcoming = data?.maintenance.windows.filter((window) => window.state === "upcoming").length ?? 0;
 
   const updateRule = (key: StudioFeatureKey, patch: Partial<StudioFeatureRule>) => {
     if (!draft) return;
@@ -105,23 +109,30 @@ export function StudioControlPage() {
 
   return (
     <>
-      <PageHero
-        title={nav.title}
-        description={nav.description}
-        image={nav.banner}
-        actions={
-          <div className="flex flex-wrap items-center gap-3 text-xs text-white/80">
-            {data && <span>In force: v{data.current.version} · {formatRelative(data.current.createdAt)}</span>}
-            {lastUpdated && <span className="text-white/60">Updated {formatRelative(lastUpdated.toISOString())}</span>}
-            <Link to="/audit?action=studio.publish" className="rounded-xl border border-white/25 bg-white/10 px-3 py-1.5 font-medium text-white backdrop-blur hover:bg-white/20">Audit trail</Link>
-          </div>
-        }
+      <PageTop
+        title="Studio Control"
+        description={data ? `In force: v${data.current.version} · published ${formatRelative(data.current.createdAt)}` : "Feature rules, rollouts and maintenance windows."}
+        lastUpdated={lastUpdated}
+        onRefresh={reload}
+        actions={<Link to="/audit?action=studio.publish" className={pageActionClass}>Audit trail</Link>}
       />
 
       {!data || !draft ? (
-        <div className="space-y-6"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-60 rounded-2xl" /></div>
+        <div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-24 rounded-2xl" />)}</div><Skeleton className="h-96 rounded-2xl" /></div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiTile label="Version in force" value={`v${data.current.version}`} detail={`${data.revisions.length} saved version${data.revisions.length === 1 ? "" : "s"}`} />
+            <KpiTile label="Features on" value={`${data.features.filter((feature) => data.current.config.features[feature.key].enabled).length}/${data.features.length}`} detail="Enabled in the published rules" />
+            <KpiTile label="Unpublished edits" value={changed.length} tone={changed.length > 0 ? "warn" : "default"} detail={changed.length > 0 ? changed.map((feature) => feature.label).join(", ") : "Draft matches what is live"} />
+            <KpiTile label="Maintenance" value={maintenanceNow ? "Active" : upcoming > 0 ? `${upcoming} upcoming` : "None"} tone={maintenanceNow ? "bad" : "default"} detail={maintenanceNow ? "New jobs in scope are refused" : "Nothing blocking customers"} />
+          </div>
+          <Tabs label="Studio Control sections" value={tab} onChange={setTab} tabs={[
+            { id: "features", label: "Feature rules", badge: changed.length > 0 ? changed.length : undefined },
+            { id: "maintenance", label: "Maintenance", badge: maintenanceNow || upcoming > 0 ? (maintenanceNow ? 1 : upcoming) : undefined },
+            { id: "versions", label: "Versions", badge: data.revisions.length },
+          ]} />
+
           {data.pendingApprovals.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <ClipboardCheck size={16} />
@@ -133,7 +144,8 @@ export function StudioControlPage() {
             <ErrorNote onRetry={discard}>Version {data.current.version} was published while you were editing v{baseVersion}. Discard your edits to continue from the latest.</ErrorNote>
           )}
 
-          <form onSubmit={(event) => void publish(event)} className="space-y-6">
+          <form onSubmit={(event) => void publish(event)} hidden={tab !== "features"} className="space-y-4">
+            <div className="grid items-start gap-4 xl:grid-cols-2">
             {GROUPS.map((group) => (
               <Card key={group} title={group} icon={SlidersHorizontal} bodyClassName="divide-y divide-hairline">
                 {data.features.filter((feature) => feature.group === group).map((feature) => (
@@ -150,6 +162,7 @@ export function StudioControlPage() {
                 ))}
               </Card>
             ))}
+            </div>
 
             {canManage && (changed.length > 0 || status) && (
               <div className="sticky bottom-4 z-20 rounded-2xl border border-hairline bg-canvas/95 p-4 shadow-lift backdrop-blur">
@@ -179,9 +192,9 @@ export function StudioControlPage() {
             )}
           </form>
 
-          <MaintenanceCard data={data} canManage={canManage} onChanged={reload} />
+          <div hidden={tab !== "maintenance"}><MaintenanceCard data={data} canManage={canManage} onChanged={reload} /></div>
 
-          <Card title="Versions" icon={History} bodyClassName="p-0">
+          <Card title="Versions" icon={History} bodyClassName="p-0" className={tab === "versions" ? "" : "hidden"}>
             <ul className="divide-y divide-hairline">
               {data.revisions.map((revision) => (
                 <li key={revision.version} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">

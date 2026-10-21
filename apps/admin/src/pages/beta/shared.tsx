@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/dialogs";
 import type { BetaAnnotations, BetaFeedbackCategory, BetaFeedbackStatus, BetaProgramStatus, MeResponse } from "@renvia/types";
 import { ApiError } from "../../lib/api";
 
@@ -50,8 +51,8 @@ export const CATEGORY_LABEL: Record<BetaFeedbackCategory, string> = {
 export const ROUTINE_REASON = "Changed in Beta Management";
 
 /** A yes/no check before an action that can't be undone; returns the audit note, or null if cancelled. */
-export function confirmAction(message: string): string | null {
-  return window.confirm(message) ? ROUTINE_REASON : null;
+export async function confirmAction(message: string, confirmLabel = "Confirm"): Promise<string | null> {
+  return (await confirmDialog({ title: message.split("? ")[0]! + "?", message: message.includes("? ") ? message.slice(message.indexOf("? ") + 2) : undefined, confirmLabel, danger: true })) ? ROUTINE_REASON : null;
 }
 
 export function errorText(reason: unknown, fallback: string): string {

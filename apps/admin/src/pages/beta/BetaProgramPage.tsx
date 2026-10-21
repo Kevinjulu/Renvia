@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from "../../components/dialogs";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Copy, Users } from "lucide-react";
@@ -50,13 +51,13 @@ export function BetaProgramPage() {
   const { program } = data;
   const used = program.budgetUsd > 0 ? program.spentUsd / program.budgetUsd : 1;
 
-  const changeStatus = (next: "active" | "paused" | "ended", verb: string) => {
+  const changeStatus = async (next: "active" | "paused" | "ended", verb: string) => {
     // Ending can't be undone, so it alone asks why; starting, pausing and resuming just happen.
-    const reason = next === "ended" ? confirmAction(`End ${program.name}? Every tester is completed and their beta credits expire. This can't be undone.`) : ROUTINE_REASON;
+    const reason = next === "ended" ? await confirmAction(`End ${program.name}? Every tester is completed and their beta credits expire. This can't be undone.`, "End program") : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaProgramStatus(program.id, next, reason), `Program ${next === "active" ? "running" : next}.`);
   };
-  const changeBudget = () => {
-    const value = window.prompt(`New Fal budget in USD (now ${formatUsd(program.budgetUsd)}). This never changes the global cap.`, String(program.budgetUsd));
+  const changeBudget = async () => {
+    const value = await promptDialog({ title: "Change Fal budget", message: `Now ${formatUsd(program.budgetUsd)}. This never changes the global cap.`, label: "New budget (USD)", defaultValue: String(program.budgetUsd), confirmLabel: "Set budget" });
     if (value === null) return;
     const budgetUsd = Number(value);
     if (!Number.isFinite(budgetUsd) || budgetUsd < 0) return setStatus({ tone: "error", text: "Enter a dollar amount" });
@@ -83,11 +84,11 @@ export function BetaProgramPage() {
         {can.managePrograms && (program.status === "ended" || (program.status === "draft" && data.enrollments.length === 0)) && (
           <Button
             variant="danger"
-            onClick={() => {
-              if (!window.confirm(`Delete ${program.name} permanently? Its testers' enrollments, invitations, missions, announcements, reports and screenshots are removed. Credit history, renders and the audit log are kept. This can't be undone.`)) return;
+            onClick={() => void (async () => {
+              if (!(await confirmDialog({ title: `Delete ${program.name} permanently?`, message: "Its testers' enrollments, invitations, missions, announcements, reports and screenshots are removed. Credit history, renders and the audit log are kept. This can't be undone.", confirmLabel: "Delete program", danger: true }))) return;
               setStatus(null);
               api.deleteBetaProgram(program.id).then(() => navigate("/beta", { replace: true })).catch((reason: unknown) => setStatus({ tone: "error", text: errorText(reason, "Couldn't delete the program") }));
-            }}
+            })()}
           >
             Delete program
           </Button>
@@ -130,18 +131,18 @@ function TestersTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
   const live = data.enrollments.filter((row) => row.status === "active" || row.status === "suspended");
   const toggle = (id: string) => setSelected((list) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]));
 
-  const lifecycle = (id: string, email: string, status: "active" | "suspended" | "completed" | "revoked", verb: string) => {
+  const lifecycle = async (id: string, email: string, status: "active" | "suspended" | "completed" | "revoked", verb: string) => {
     // Completing or revoking ends their access and expires their credits; suspend/reactivate are reversible.
-    const reason = status === "completed" || status === "revoked" ? confirmAction(`${verb[0]!.toUpperCase()}${verb.slice(1)} ${email}? Their beta credits expire; their own credits, plan and projects are untouched.`) : ROUTINE_REASON;
+    const reason = status === "completed" || status === "revoked" ? await confirmAction(`${verb[0]!.toUpperCase()}${verb.slice(1)} ${email}? Their beta credits expire; their own credits, plan and projects are untouched.`) : ROUTINE_REASON;
     if (reason) void run(() => api.setBetaEnrollmentStatus(id, status, reason), `${email}: ${status}.`);
   };
-  const extend = (id: string, email: string, current: string) => {
-    const value = window.prompt(`New end date for ${email} (YYYY-MM-DD), or blank to follow the program.`, current.slice(0, 10));
+  const extend = async (id: string, email: string, current: string) => {
+    const value = await promptDialog({ title: "Change end date", message: `For ${email}. Leave blank to follow the program.`, label: "New end date (YYYY-MM-DD)", defaultValue: current.slice(0, 10), confirmLabel: "Save date" });
     if (value === null) return;
     void run(() => api.extendBetaEnrollment(id, value ? new Date(`${value}T23:59:59Z`).toISOString() : null, ROUTINE_REASON), `${email}'s end date changed.`);
   };
-  const grant = (ids: string[]) => {
-    const value = window.prompt(`Beta credits to grant to ${ids.length} tester${ids.length === 1 ? "" : "s"} (does not raise the budget)`, "10");
+  const grant = async (ids: string[]) => {
+    const value = await promptDialog({ title: "Grant beta credits", message: `To ${ids.length} tester${ids.length === 1 ? "" : "s"}. This does not raise the budget.`, label: "Credits each", defaultValue: "10", required: true, confirmLabel: "Grant" });
     if (!value) return;
     const amount = Number(value);
     if (!Number.isInteger(amount) || amount < 1) return;
@@ -223,8 +224,8 @@ function InvitationsTab({ data, can, run, reload }: { data: Detail; can: Can; ru
     }
   };
 
-  const revoke = (id: string) => {
-    if (window.confirm("Revoke this invitation? The link stops working and its place is released.")) void run(() => api.revokeBetaInvitation(id, ROUTINE_REASON), "Invitation revoked.");
+  const revoke = async (id: string) => {
+    if (await confirmDialog({ title: "Revoke this invitation?", message: "The link stops working and its place is released.", confirmLabel: "Revoke", danger: true })) void run(() => api.revokeBetaInvitation(id, ROUTINE_REASON), "Invitation revoked.");
   };
 
   return (
@@ -327,7 +328,7 @@ function MissionsTab({ data, can, run }: { data: Detail; can: Can; run: Run }) {
                   <p className="text-sm font-medium text-primary">{mission.title} {!mission.required && <span className="text-xs text-faint">optional</span>}</p>
                   <p className="text-xs text-muted">{ruleSummary(mission.rule)} · {mission.completions} of {testers} done</p>
                 </div>
-                {can.managePrograms && <Button variant="ghost" onClick={() => window.confirm(`Remove "${mission.title}"? Its progress is removed too.`) && void run(() => api.deleteBetaMission(mission.id), "Mission removed.")}>Remove</Button>}
+                {can.managePrograms && <Button variant="ghost" onClick={() => void confirmDialog({ title: `Remove "${mission.title}"?`, message: "Its progress is removed too.", confirmLabel: "Remove", danger: true }).then((ok) => { if (ok) void run(() => api.deleteBetaMission(mission.id), "Mission removed."); })}>Remove</Button>}
               </li>
             ))}
           </ul>
@@ -380,7 +381,7 @@ function AnnouncementsTab({ data, can, run }: { data: Detail; can: Can; run: Run
                   {item.body && <p className="whitespace-pre-line text-xs text-muted">{item.body}</p>}
                   <p className="text-xs text-faint">{new Date(item.publishedAt).toLocaleString()}</p>
                 </div>
-                {can.manageTesters && <Button variant="ghost" onClick={() => window.confirm("Withdraw this announcement?") && void run(() => api.deleteBetaAnnouncement(item.id), "Announcement withdrawn.")}>Withdraw</Button>}
+                {can.manageTesters && <Button variant="ghost" onClick={() => void confirmDialog({ title: "Withdraw this announcement?", confirmLabel: "Withdraw", danger: true }).then((ok) => { if (ok) void run(() => api.deleteBetaAnnouncement(item.id), "Announcement withdrawn."); })}>Withdraw</Button>}
               </li>
             ))}
           </ul>

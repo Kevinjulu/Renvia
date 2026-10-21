@@ -4,6 +4,7 @@ import { Check, X } from "lucide-react";
 import { Button } from "../../components/ui";
 import { ApiError, useAdminApi } from "../../lib/api";
 import { formatNumber } from "../../lib/format";
+import { ModalFrame } from "../../components/Overlay";
 
 export function GrantCreditsModal({ users, onClose, onDone }: { users: AdminUser[]; onClose: () => void; onDone: () => void }) {
   const api = useAdminApi();
@@ -36,7 +37,7 @@ export function GrantCreditsModal({ users, onClose, onDone }: { users: AdminUser
   };
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm">
+    <ModalFrame>
       <form
         onSubmit={(event) => void submit(event)}
         className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-6 shadow-lift"
@@ -89,6 +90,6 @@ export function GrantCreditsModal({ users, onClose, onDone }: { users: AdminUser
           </Button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

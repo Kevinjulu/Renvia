@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/dialogs";
 import { CreditCard, Webhook } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -16,7 +17,7 @@ export function BillingPage() {
   const [replaying, setReplaying] = useState<string | null>(null);
   const [refundNotice, setRefundNotice] = useState<string | null>(null);
   const refund = async (id: string) => {
-    if (!window.confirm("Refund this payment? This automatically removes the unspent purchased credits. Large refunds wait for a second admin.")) return;
+    if (!(await confirmDialog({ title: "Refund this payment?", message: "This automatically removes the unspent purchased credits. Large refunds wait for a second admin.", confirmLabel: "Refund", danger: true }))) return;
     setRefunding(id); setRefundError(null); setRefundNotice(null);
     try {
       const result = await api.refundPayment(id);

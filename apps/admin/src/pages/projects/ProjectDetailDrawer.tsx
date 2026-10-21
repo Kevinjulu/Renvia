@@ -6,14 +6,14 @@ import { useAdminApi } from "../../lib/api";
 import { formatNumber, formatRelative, formatUsd } from "../../lib/format";
 import { useLoad } from "../../lib/useLoad";
 import { HealthPills, MiniStat } from "./parts";
+import { DrawerFrame } from "../../components/Overlay";
 
 export function ProjectDetailDrawer({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const api = useAdminApi();
   const { data, error, loading, reload } = useLoad(() => api.getProject(projectId), [api, projectId]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40 backdrop-blur-sm">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close detail" onClick={onClose} />
+    <DrawerFrame onClose={onClose}>
       <aside
         role="dialog"
         aria-labelledby="project-detail-title"
@@ -117,6 +117,6 @@ export function ProjectDetailDrawer({ projectId, onClose }: { projectId: string;
           )}
         </div>
       </aside>
-    </div>
+    </DrawerFrame>
   );
 }

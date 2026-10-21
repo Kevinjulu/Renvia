@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { AdminUser, AdminUserOrder, AdminUserSort } from "@renvia/types";
@@ -75,7 +76,6 @@ export function UsersPage() {
         offset,
       }),
     [api, search, role, status, balance, sort, order, offset], 20_000,
-    30_000,
   );
 
   const pageIds = useMemo(() => data?.users.map((user) => user.id) ?? [], [data]);
@@ -108,7 +108,7 @@ export function UsersPage() {
   const runToggleDisabled = async (user: AdminUser) => {
     if (user.id === me.id) return;
     const verb = user.disabled ? "Enable" : "Disable";
-    if (!window.confirm(`${verb} ${user.email}?`)) return;
+    if (!(await confirmDialog({ title: `${verb} this account?`, message: user.email, confirmLabel: verb, danger: !user.disabled }))) return;
     setBusyId(user.id);
     setActionError(null);
     try {

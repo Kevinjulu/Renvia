@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import { Fingerprint, ListChecks, ShieldAlert, ShieldCheck, UserCheck, Wallet } from "lucide-react";
 import type { FreeAllowanceStatus } from "@renvia/types";
 import { Card, ErrorNote, Pagination, Pill, Skeleton, StatCard, Table } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { formatUsd } from "../lib/format";
-import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
 
 const PAGE = 25;
@@ -23,7 +22,6 @@ const MODE_LABEL = { off: "Off", observe: "Observe", enforce: "Enforce", paused:
  */
 export function SecurityPage() {
   const api = useAdminApi();
-  const nav = navForPath("/security");
   const overview = useLoad(() => api.getSecurityOverview(), [api], 60_000);
   const [queue, setQueue] = useState<(typeof QUEUES)[number]["status"]>("review_required");
   const [offset, setOffset] = useState(0);
@@ -33,7 +31,7 @@ export function SecurityPage() {
 
   return (
     <>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+      <PageTop title="Free-credit security" description="How the eligibility checks are working, and the accounts waiting on a decision." lastUpdated={overview.lastUpdated} loading={overview.loading} onRefresh={overview.reload} />
 
       {overview.error && !data ? (
         <ErrorNote onRetry={overview.reload}>{overview.error}</ErrorNote>
@@ -52,7 +50,7 @@ export function SecurityPage() {
               detail={data.promo.budgetUsd === null ? "No monthly cap" : `of ${formatUsd(data.promo.budgetUsd)} this month`} />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Card title="Sign-ups checked, last 14 days" icon={ShieldAlert}>
               <div className="flex h-36 items-end gap-1.5" role="img" aria-label="Daily sign-up checks, with how many were held">
                 {data.daily.map((day) => (
@@ -82,7 +80,7 @@ export function SecurityPage() {
         </>
       )}
 
-      <Card title="Review queue" icon={ListChecks} className="mt-6"
+      <Card title="Review queue" icon={ListChecks} className="mt-4"
         actions={
           <div className="flex gap-1">
             {QUEUES.map((item) => (

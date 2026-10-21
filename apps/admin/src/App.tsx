@@ -1,3 +1,4 @@
+import { DialogHost } from "./components/dialogs";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { SignIn, useAuth, useClerk, UserButton } from "@clerk/react";
@@ -164,6 +165,7 @@ function Layout({ me, children }: { me: MeResponse; children: ReactNode }) {
         </main>
       </div>
       {palette && <CommandPalette me={me} onClose={() => setPalette(false)} />}
+      <DialogHost />
     </div>
   );
 }
@@ -186,7 +188,7 @@ function HubTabs({ pathname, role }: { pathname: string; role: string }) {
 function CommandPalette({ me, onClose }: { me: MeResponse; onClose: () => void }) {
   const navigate = useNavigate(); const [query, setQuery] = useState("");
   const items = ADMIN_NAV.filter((item) => item.roles.includes(me.role as never) && `${item.label} ${item.hint}`.toLowerCase().includes(query.toLowerCase()));
-  return <div className="fixed inset-0 z-50 grid place-items-start bg-ink-950/40 p-4 pt-[12vh]" onMouseDown={onClose}><div className="w-full max-w-xl rounded-2xl border border-hairline bg-canvas p-3 shadow-lift" onMouseDown={(event) => event.stopPropagation()}><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Enter" && items[0]) { navigate(items[0].to); onClose(); } }} placeholder="Go to users, billing, incidents…" className="w-full rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm outline-none focus:border-blueprint" /> <div className="mt-2 max-h-72 overflow-auto">{items.map((item) => <button key={item.to} type="button" onClick={() => { navigate(item.to); onClose(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-surface"><item.icon size={17} /><span><span className="block text-sm font-medium">{item.label}</span><span className="block text-xs text-muted">{item.hint}</span></span></button>)}{!items.length && <p className="p-4 text-sm text-muted">No permitted commands found.</p>}</div></div></div>;
+  return <div className="fixed inset-0 z-[60] grid place-items-start bg-ink-950/55 p-4 pt-[12vh]" onMouseDown={onClose}><div className="w-full max-w-xl rounded-2xl border border-hairline bg-canvas p-3 shadow-lift" onMouseDown={(event) => event.stopPropagation()}><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") onClose(); if (event.key === "Enter" && items[0]) { navigate(items[0].to); onClose(); } }} placeholder="Go to users, billing, incidents…" className="w-full rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm outline-none focus:border-blueprint" /> <div className="mt-2 max-h-72 overflow-auto">{items.map((item) => <button key={item.to} type="button" onClick={() => { navigate(item.to); onClose(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-surface"><item.icon size={17} /><span><span className="block text-sm font-medium">{item.label}</span><span className="block text-xs text-muted">{item.hint}</span></span></button>)}{!items.length && <p className="p-4 text-sm text-muted">No permitted commands found.</p>}</div></div></div>;
 }
 
 function Sidebar({ me, open, onClose }: { me: MeResponse; open: boolean; onClose: () => void }) {

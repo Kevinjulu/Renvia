@@ -4,6 +4,7 @@ import { Button, Pill } from "../../components/ui";
 import { NoteDialog } from "../../components/NoteDialog";
 import { useAdminApi } from "../../lib/api";
 import { formatDateTime, formatUsd } from "../../lib/format";
+import { ModalFrame } from "../../components/Overlay";
 
 interface PlanPanelProps {
   userId: string;
@@ -140,7 +141,7 @@ function ChangePlanModal({ userId, email, plans, current, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm">
+    <ModalFrame>
       <form onSubmit={(event) => void submit(event)} className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-6 shadow-lift" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <h2 id={titleId} className="text-lg font-semibold text-primary">Grant a plan</h2>
         <p className="mt-1 break-all text-sm text-muted">{email} gets this plan's limits straight away, without paying. Their own plan is kept underneath.</p>
@@ -177,6 +178,6 @@ function ChangePlanModal({ userId, email, plans, current, onClose, onDone }: {
           <Button type="submit" variant="primary" disabled={!canSubmit}>{saving ? "Saving…" : "Grant plan"}</Button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

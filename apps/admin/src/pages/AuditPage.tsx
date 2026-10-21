@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Download, Search, Shield, ScrollText, UserRound, X } from "lucide-react";
 import { EmptyState, ErrorNote, Pagination, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop, pageActionClass } from "../components/PageTop";
 import { NoteDialog } from "../components/NoteDialog";
 import { useAdminApi } from "../lib/api";
 import { formatNumber, formatRelative } from "../lib/format";
@@ -59,7 +59,6 @@ export function AuditPage() {
         offset,
       }),
     [api, search, action, actorId, range, offset], 20_000,
-    30_000,
   );
 
   const groups = useMemo(() => groupByDay(data?.events ?? []), [data]);
@@ -82,22 +81,17 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHero
+      <PageTop
         title={navForPath("/audit").title}
         description={navForPath("/audit").description}
-        image={navForPath("/audit").banner}
+        lastUpdated={lastUpdated}
+        loading={loading}
+        onRefresh={reload}
         actions={
-          <div className="flex flex-wrap items-center gap-3">
-            {lastUpdated && <span className="text-xs text-white/70">Live · updated {formatRelative(lastUpdated.toISOString())}</span>}
-            <button
-              type="button"
-              onClick={() => setExporting(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
-            >
-              <Download size={15} />
-              Export CSV
-            </button>
-          </div>
+          <button type="button" onClick={() => setExporting(true)} className={pageActionClass}>
+            <Download size={14} />
+            Export CSV
+          </button>
         }
       />
 

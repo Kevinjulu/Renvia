@@ -13,6 +13,8 @@ import {
 } from "@renvia/types";
 import { Button, Card, ErrorNote, Pill, Skeleton } from "../components/ui";
 import { PageTop, pageActionClass } from "../components/PageTop";
+import { KpiTile } from "../components/KpiTile";
+import { Tabs } from "../components/Tabs";
 import { useAdminApi } from "../lib/api";
 import { formatDateTime, formatNumber, formatUsd } from "../lib/format";
 import { useAdmin } from "../lib/useAdmin";
@@ -40,6 +42,7 @@ export function PlansPage() {
   const me = useAdmin();
   const canManage = me.role === "admin";
   const { data, error, loading, reload, lastUpdated } = useLoad(() => api.getPlans(), [api]);
+  const [tab, setTab] = useState<"plans" | "prices" | "packs" | "simulator">("plans");
 
   return (
     <>
@@ -48,17 +51,29 @@ export function PlansPage() {
       {!data ? (
         <div className="space-y-6"><Skeleton className="h-64 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
       ) : (
-        <div className="space-y-6">
-          <CreditPricesCard data={data} canManage={canManage} onChanged={reload} />
-          <Card title="Plans" icon={ReceiptText} bodyClassName="divide-y divide-hairline">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiTile label="Plans" value={data.plans.length} detail={`${data.plans.reduce((sum, plan) => sum + plan.subscribers, 0)} subscribers`} />
+            <KpiTile label="Credit prices" value={`v${data.creditPrices.configVersion}`} detail={`${PRICE_KEYS.length} priced actions`} />
+            <KpiTile label="Credit packs" value={data.packs.filter((pack) => pack.isActive).length} detail={`${data.packs.length} total`} />
+            <KpiTile label="Top-up range" value={data.packs.length ? `${cents(Math.min(...data.packs.map((pack) => pack.priceCents)))}+` : "—"} detail="Cheapest pack" />
+          </div>
+          <Tabs label="Pricing sections" value={tab} onChange={setTab} tabs={[
+            { id: "plans", label: "Plans", badge: data.plans.length },
+            { id: "prices", label: "Credit prices" },
+            { id: "packs", label: "Credit packs", badge: data.packs.length },
+            { id: "simulator", label: "Simulator" },
+          ]} />
+          <div hidden={tab !== "prices"}><CreditPricesCard data={data} canManage={canManage} onChanged={reload} /></div>
+          <Card title="Plans" icon={ReceiptText} bodyClassName="divide-y divide-hairline" className={tab === "plans" ? "" : "hidden"}>
             <p className="px-5 py-3 text-xs text-muted">
               Allowances and limits apply to everyone on the plan from their next request (credits from their next period). PayPal bills each subscriber the price on the PayPal plan they signed up to,
               so a new price needs a new PayPal plan; existing subscribers keep theirs. Which Studio features a plan gets is set in <Link to="/studio-control" className="text-blueprint underline">Studio Control</Link>.
             </p>
             {data.plans.map((plan) => <PlanEditor key={`${plan.id}:${plan.version}`} plan={plan} canManage={canManage} onChanged={reload} />)}
           </Card>
-          <PacksCard packs={data.packs} canManage={canManage} onChanged={reload} />
-          <SimulatorCard data={data} />
+          <div hidden={tab !== "packs"}><PacksCard packs={data.packs} canManage={canManage} onChanged={reload} /></div>
+          <div hidden={tab !== "simulator"}><SimulatorCard data={data} /></div>
         </div>
       )}
     </>

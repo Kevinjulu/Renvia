@@ -1,8 +1,9 @@
+import { confirmDialog } from "../components/dialogs";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Images, Trash2, Upload } from "lucide-react";
 import { thumbnailUrl, DESIGN_CATEGORIES, REFERENCE_CATEGORIES, SAMPLE_CATEGORIES, type AdminStockReference, type SampleCategory } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
-import { PageHero } from "../components/PageHero";
+import { PageTop } from "../components/PageTop";
 import { useAdminApi } from "../lib/api";
 import { navForPath } from "../lib/nav";
 import { useLoad } from "../lib/useLoad";
@@ -106,7 +107,7 @@ export function LibraryPage() {
   };
 
   const remove = async (item: AdminStockReference) => {
-    if (!window.confirm("Delete this image? Users won't see it any more and it's removed from storage. This can't be undone.")) return;
+    if (!(await confirmDialog({ title: "Delete this image?", message: "Users won't see it any more and it's removed from storage. This can't be undone.", confirmLabel: "Delete", danger: true }))) return;
     try {
       await api.deleteStockReference(item.id);
       setItems((current) => current.filter((other) => other.id !== item.id));
@@ -120,7 +121,7 @@ export function LibraryPage() {
 
   return (
     <>
-      <PageHero title={nav.title} description={nav.description} image={nav.banner} />
+      <PageTop title={nav.title} description={nav.description} />
       {error && !data && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
       {status && (
         <p role="status" className={`mb-6 rounded-xl border px-4 py-3 text-sm ${status.tone === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>

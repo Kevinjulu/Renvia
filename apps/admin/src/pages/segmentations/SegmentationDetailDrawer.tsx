@@ -6,6 +6,7 @@ import { useAdminApi } from "../../lib/api";
 import { formatDateTime, formatModel, formatNumber, formatUsd } from "../../lib/format";
 import { useLoad } from "../../lib/useLoad";
 import { DetailField } from "../../components/DetailField";
+import { DrawerFrame } from "../../components/Overlay";
 
 export function SegmentationDetailDrawer({ segmentationId, onClose }: { segmentationId: string; onClose: () => void }) {
   const api = useAdminApi();
@@ -25,8 +26,7 @@ export function SegmentationDetailDrawer({ segmentationId, onClose }: { segmenta
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40 backdrop-blur-sm">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close detail" onClick={onClose} />
+    <DrawerFrame onClose={onClose}>
       <aside
         role="dialog"
         aria-labelledby="segmentation-detail-title"
@@ -152,6 +152,6 @@ export function SegmentationDetailDrawer({ segmentationId, onClose }: { segmenta
           )}
         </div>
       </aside>
-    </div>
+    </DrawerFrame>
   );
 }

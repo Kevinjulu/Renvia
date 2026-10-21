@@ -3,6 +3,7 @@ import { AlertTriangle, Shield, ShieldOff } from "lucide-react";
 import type { AdminUser, UserRole } from "@renvia/types";
 import { Button } from "./ui";
 import { ApiError, useAdminApi } from "../lib/api";
+import { ModalFrame } from "./Overlay";
 
 type RoleAction = "promote" | "demote";
 
@@ -91,7 +92,7 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
   };
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm">
+    <ModalFrame>
       <form
         onSubmit={(event) => void submit(event)}
         className="w-full max-w-lg rounded-2xl border border-hairline bg-canvas p-6 shadow-lift"
@@ -204,6 +205,6 @@ export function RoleChangeModal({ user, action, onClose, onDone }: RoleChangeMod
           </Button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

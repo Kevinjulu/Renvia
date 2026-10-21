@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/dialogs";
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import type { AdminFreeAllowanceDecisionRequest, FreeAllowanceStatus } from "@renvia/types";
@@ -61,7 +62,7 @@ export function UserFreeAllowancePanel({ userId, onDone }: { userId: string; onD
 
   const status = data ? STATUS[data.status] : null;
   return (
-    <Card title="Free credits" icon={ShieldCheck} className="mt-6" actions={status ? <Pill tone={status.tone}>{status.label}</Pill> : undefined}>
+    <Card title="Free credits" icon={ShieldCheck} actions={status ? <Pill tone={status.tone}>{status.label}</Pill> : undefined}>
       {state.error ? (
         <p className="text-sm text-rose-600">{state.error}</p>
       ) : !data ? (
@@ -114,7 +115,7 @@ export function UserFreeAllowancePanel({ userId, onDone }: { userId: string; onD
                 <Button variant="primary" disabled={busy || (data.status === "denied" && !canManage)} onClick={() => void decide("approve")}>Approve</Button>
                 <Button disabled={busy || (data.status === "denied" && !canManage)} onClick={() => void decide("review")}>Needs review</Button>
                 <Button disabled={busy || (data.status === "denied" && !canManage)} onClick={() => void decide("reassess")}>Run checks again</Button>
-                {canManage && <Button variant="ghost" disabled={busy} onClick={() => { if (window.confirm("Deny this account's free monthly credits? Their balance and plan stay as they are.")) void decide("deny"); }}>Deny</Button>}
+                {canManage && <Button variant="ghost" disabled={busy} onClick={() => { void confirmDialog({ title: "Deny free monthly credits?", message: "Their balance and plan stay as they are.", confirmLabel: "Deny", danger: true }).then((ok) => { if (ok) void decide("deny"); }); }}>Deny</Button>}
               </div>
               {message && <p role="status" className={`text-xs ${message.tone === "error" ? "text-rose-600" : "text-emerald-700"}`}>{message.text}</p>}
             </div>

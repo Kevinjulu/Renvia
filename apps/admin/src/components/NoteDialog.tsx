@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Button } from "./ui";
+import { ModalFrame } from "./Overlay";
 
 interface NoteDialogProps {
   title: string;
@@ -47,7 +48,7 @@ export function NoteDialog({ title, description, label, confirmLabel, required =
   };
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm" onMouseDown={() => !saving && onClose()}>
+    <ModalFrame onClose={() => !saving && onClose()}>
       <form
         onSubmit={(event) => void submit(event)}
         onMouseDown={(event) => event.stopPropagation()}
@@ -77,6 +78,6 @@ export function NoteDialog({ title, description, label, confirmLabel, required =
           <Button type="submit" variant={variant} disabled={!canSubmit}>{saving ? "Saving…" : confirmLabel}</Button>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/dialogs";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Copy, Cpu, X } from "lucide-react";
@@ -7,6 +8,7 @@ import { formatDateTime, formatModel, formatNumber, formatRelative, formatUsd } 
 import { useLoad } from "../../lib/useLoad";
 import { useAdmin } from "../../lib/useAdmin";
 import { DetailField } from "../../components/DetailField";
+import { DrawerFrame } from "../../components/Overlay";
 
 export function RenderDetailDrawer({ renderId, onClose }: { renderId: string; onClose: () => void }) {
   const api = useAdminApi();
@@ -29,7 +31,7 @@ export function RenderDetailDrawer({ renderId, onClose }: { renderId: string; on
   };
   const recover = async (action: "refresh" | "cancel") => {
     if (!render) return;
-    if (action === "cancel" && !window.confirm("Cancel this in-flight render? The customer will receive the normal credit refund.")) return;
+    if (action === "cancel" && !(await confirmDialog({ title: "Cancel this in-flight render?", message: "The customer will receive the normal credit refund.", confirmLabel: "Cancel render", danger: true }))) return;
     setRecovering(action); setRecoveryError(null);
     try {
       if (action === "refresh") await api.refreshRender(render.id);
@@ -41,8 +43,7 @@ export function RenderDetailDrawer({ renderId, onClose }: { renderId: string; on
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40 backdrop-blur-sm">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close detail" onClick={onClose} />
+    <DrawerFrame onClose={onClose}>
       <aside
         role="dialog"
         aria-labelledby="render-detail-title"
@@ -188,6 +189,6 @@ export function RenderDetailDrawer({ renderId, onClose }: { renderId: string; on
           )}
         </div>
       </aside>
-    </div>
+    </DrawerFrame>
   );
 }

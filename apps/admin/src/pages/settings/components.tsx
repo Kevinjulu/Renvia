@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, XCircle, type LucideIcon } from "lucide-react";
 import { Button } from "../../components/ui";
 import { type ChangeItem, asRecord, stringify } from "./diff";
+import { ModalFrame } from "../../components/Overlay";
 
 type CardTone = "default" | "caution" | "danger";
 type CardAccent = "blue" | "amber" | "emerald" | "rose" | "neutral";
@@ -167,7 +168,7 @@ export function ConfirmSaveModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink-950/40 p-4 backdrop-blur-sm">
+    <ModalFrame>
       <div role="dialog" aria-labelledby="settings-confirm-title" className="w-full max-w-md rounded-2xl border border-hairline bg-canvas p-6 shadow-lift">
         <h2 id="settings-confirm-title" className="text-lg font-semibold text-primary">
           Confirm settings changes
@@ -203,6 +204,6 @@ export function ConfirmSaveModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 }

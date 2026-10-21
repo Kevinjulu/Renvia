@@ -1,3 +1,4 @@
+import { confirmDialog } from "../../components/dialogs";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FlaskConical, ShieldCheck, UserPlus } from "lucide-react";
@@ -68,7 +69,7 @@ export function UserBetaPanel({ user, projectCount }: { user: AdminUser; project
   };
 
   const revoke = async (id: string) => {
-    if (!window.confirm("Revoke this invitation? Its place is released and it disappears from their Studio.")) return;
+    if (!(await confirmDialog({ title: "Revoke this invitation?", message: "Its place is released and it disappears from their Studio.", confirmLabel: "Revoke", danger: true }))) return;
     try {
       await api.revokeBetaInvitation(id, ROUTINE_REASON);
       status.reload();
@@ -79,7 +80,7 @@ export function UserBetaPanel({ user, projectCount }: { user: AdminUser; project
   };
 
   return (
-    <Card title="Beta program" icon={FlaskConical} className="mt-6" actions={live ? <Pill tone="emerald">Testing now</Pill> : pending.length ? <Pill tone="blue">Invited</Pill> : undefined}>
+    <Card title="Beta program" icon={FlaskConical} actions={live ? <Pill tone="emerald">Testing now</Pill> : pending.length ? <Pill tone="blue">Invited</Pill> : undefined}>
       {status.data === null && !status.error ? (
         <Skeleton className="h-24" />
       ) : status.error ? (
