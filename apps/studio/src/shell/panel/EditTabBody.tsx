@@ -4,7 +4,7 @@ import { ReferenceBar } from "./ReferenceBar";
 import { AdvancedSection } from "./AdvancedSection";
 import { ENVIRONMENT_CONTROLS, environmentLabels } from "./editEnvironmentOptions";
 import { hasSelection, startRenderEdit, useRenderEditStore } from "../../canvas/hooks/useRenderEditStore";
-import { STYLE_INFLUENCE_LABELS, useGenerationSettingsStore, type EditScope } from "../../canvas/hooks/useGenerationSettingsStore";
+import { useGenerationSettingsStore, type EditScope } from "../../canvas/hooks/useGenerationSettingsStore";
 import { useEditDraft } from "../../canvas/hooks/useEditDraft";
 import { useAccountStore } from "../../lib/useAccountStore";
 import { PromptAssist } from "./PromptAssist";
@@ -137,8 +137,6 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
   const setScope = useGenerationSettingsStore((state) => state.setEditScope);
   const environment = useGenerationSettingsStore((state) => state.editEnvironment);
   const setEnvironment = useGenerationSettingsStore((state) => state.setEditEnvironment);
-  const editInfluence = useGenerationSettingsStore((state) => state.editInfluence);
-  const setEditInfluence = useGenerationSettingsStore((state) => state.setEditInfluence);
   const me = useAccountStore((state) => state.me);
 
   const isEditingRender = useRenderEditStore((state) => state.targetJobId !== null);
@@ -376,18 +374,6 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
         </div>
       )}
 
-      <AdvancedSection summary={`${STYLE_INFLUENCE_LABELS[editInfluence - 1]} strength`}>
-        <label className="cp-setting is-stacked" data-guide="control.influence">
-          <span>
-            <strong>Edit strength</strong>
-            <small>How far the change may depart from the current image</small>
-          </span>
-          <span className="cp-range">
-            <input type="range" min="1" max="4" value={editInfluence} onChange={(event) => setEditInfluence(Number(event.target.value))} />
-            <b>{STYLE_INFLUENCE_LABELS[editInfluence - 1]}</b>
-          </span>
-        </label>
-      </AdvancedSection>
     </div>
   );
 }

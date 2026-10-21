@@ -8,7 +8,6 @@ export type GuideTopicId =
   | "control.tabs"
   | "control.direction"
   | "control.samples"
-  | "control.influence"
   | "control.generate"
   | "canvas.stage"
   | "canvas.tabs"
@@ -80,15 +79,6 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     body: "Samples are images picked by the Ramah Studio team. References (windows, roofs, doors, pillars, outdoors and exteriors) guide the materials and setting of your render. Designs (a 3D model such as ArchiCAD, a photo or a drawing) are original buildings you can use as your first elevation.",
     how: "Open Samples and click a reference to add it to this render, or switch to Designs to start an elevation. An empty elevation also offers \"start from a sample design\".",
     article: "getting-started",
-    tab: "render",
-  },
-  "control.influence": {
-    id: "control.influence",
-    title: "Style influence",
-    short: "How much of your reference images' look the render takes on.",
-    body: "With references attached, 1 borrows only their palette and mood, 2 their main materials and colours, 3 also their details such as window frames, railings and soffits, and 4 their full visual character. At every level the shape and camera angle come from your elevation, not the references.",
-    how: "Use 3 or 4 when you want the render to look like your reference. Without references, the level sets how strongly the chosen style is applied.",
-    article: "consistent-results",
     tab: "render",
   },
   "control.generate": {
