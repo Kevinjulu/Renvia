@@ -62,6 +62,7 @@ export function CreditsPage() {
         offset,
       }),
     [api, search, reason, direction, userId, sort, order, offset],
+    30_000,
   );
 
   const groups = useMemo(() => groupByDay(data?.entries ?? []), [data]);
@@ -95,6 +96,12 @@ export function CreditsPage() {
                   {formatNumber(data.summary.outstanding)}
                 </p>
                 <p className="mt-2 text-sm text-muted">Credits currently held across all users</p>
+                <p className="mt-1 text-xs text-faint">
+                  {formatNumber(data.summary.outstandingBreakdown.plan)} plan · {formatNumber(data.summary.outstandingBreakdown.beta)} beta · {formatNumber(data.summary.outstandingBreakdown.permanent)} kept (purchases and admin grants)
+                </p>
+                <p className="mt-1 text-xs text-faint">
+                  = {formatNumber(data.summary.granted)} granted − {formatNumber(data.summary.spent)} used − {formatNumber(data.summary.expired)} expired − {formatNumber(data.summary.removed)} removed
+                </p>
 
                 <div className="mt-6">
                   <div className="flex h-3 overflow-hidden rounded-full bg-surface-muted">

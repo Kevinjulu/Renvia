@@ -14,7 +14,7 @@ import { betaCan, endOfDay, errorText, programDays, PROGRAM_STATUS_TONE, schedul
 export function BetaProgramsPage() {
   const api = useAdminApi();
   const can = betaCan(useAdmin());
-  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.listBetaPrograms(), [api]);
+  const { data, error, loading, reload, lastUpdated } = useLoad(() => api.listBetaPrograms(), [api], 30_000);
   const [creating, setCreating] = useState(false);
 
   return (

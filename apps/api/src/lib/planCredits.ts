@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { schema, type Database } from "@renvia/db";
 import type { BillingEntitlement } from "./billing.js";
 import { getBillingEntitlement } from "./billing.js";
@@ -62,10 +62,14 @@ export function grantsMonthlyCredits(billing: BillingEntitlement, now = new Date
   return creditSchedule(billing, now) !== null;
 }
 
-/** Credits that never expire: purchases (net of refunds) and admin grants (net of removals). */
+/**
+ * Credits that never expire: purchases (net of refunds) and admin grants (net of removals). An
+ * admin removal that had to dip into plan credits records that part as plan_amount, so only the
+ * rest counts against the permanent total.
+ */
 async function permanentCredits(db: Database, userId: string): Promise<number> {
   const [row] = await db
-    .select({ total: sql<number>`coalesce(sum(${ledger.amount}) filter (where ${ledger.reason} in ('purchase', 'purchase_refund', 'admin_grant')), 0)::int` })
+    .select({ total: sql<number>`coalesce(sum(${ledger.amount} - ${ledger.planAmount}) filter (where ${ledger.reason} in ('purchase', 'purchase_refund', 'admin_grant')), 0)::int` })
     .from(ledger)
     .where(eq(ledger.userId, userId));
   return Math.max(0, Number(row?.total ?? 0));
@@ -149,6 +153,11 @@ async function renewPeriod(db: Database, period: PeriodStart): Promise<void> {
  * only reads what `billing` already holds. Returns true when it changed the user's balance.
  */
 export async function ensureCreditPeriod(db: Database, userId: string, signup: Date, billing: BillingEntitlement, now = new Date()): Promise<boolean> {
+  // A granted plan that ran out takes its credits with it, even mid-period.
+  const expired = billing.entitlement.overridePlanId !== null && !billing.override
+    ? await revokeOverrideCredits(db, userId, billing.basePlan.monthlyCredits, { endOverride: true, note: "Granted plan ended" })
+    : 0;
+  if (expired > 0) return true;
   const schedule = creditSchedule(billing, now);
   if (!schedule) return false;
   const { entitlement } = billing;
@@ -174,6 +183,70 @@ export async function startPaidPeriod(db: Database, period: PeriodStart): Promis
   const [row] = await db.select({ start: entitlements.creditPeriodStart }).from(entitlements).where(eq(entitlements.userId, period.userId));
   if (row?.start) await renewPeriod(db, period);
   else await startFirstPeriod(db, period);
+}
+
+/**
+ * Takes back the plan credits an admin-granted plan handed out, once it is removed or has ended:
+ * the part of this period's allowance that came from the granted plan (and is still unspent)
+ * leaves the balance (recorded as plan_expiry), and the period's high-water mark returns to the
+ * base allowance so granting a plan again tops up properly. Purchased, admin and beta credits are
+ * never touched. One transaction; the user-row update locks it, so a repeat finds nothing to take.
+ * With `endOverride` the finished override is also cleared from the entitlement.
+ * Returns the credits taken back.
+ */
+export async function revokeOverrideCredits(
+  db: Database,
+  userId: string,
+  baseAllowance: number,
+  { endOverride = false, note }: { endOverride?: boolean; note: string },
+): Promise<number> {
+  // What the granted plan added this period: the allowance handed out beyond the base plan's,
+  // never more than is left (spending takes plan credits first, so what was used is not clawed back).
+  const added = sql`least(${users.planCredits}, greatest(0, (select ${entitlements.periodCreditsGranted} from ${entitlements} where ${entitlements.userId} = ${users.id}) - ${baseAllowance}))`;
+  const [, , removed] = await db.batch([
+    db
+      .update(users)
+      .set({
+        // SET expressions read the row as it was, so last_plan_debit gets the part being removed.
+        lastPlanDebit: added,
+        creditBalance: sql`${users.creditBalance} - ${added}`,
+        planCredits: sql`${users.planCredits} - ${added}`,
+      })
+      .where(eq(users.id, userId)),
+    db
+      .update(entitlements)
+      .set({
+        periodCreditsGranted: baseAllowance,
+        lastTopup: 0,
+        ...(endOverride ? { overridePlanId: null, overrideEndsAt: null, overrideReason: null, overrideSetBy: null, overrideSetAt: null } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(entitlements.userId, userId)),
+    db.execute<{ amount: number }>(sql`
+      insert into ${ledger} (${sql.identifier("user_id")}, ${sql.identifier("amount")}, ${sql.identifier("plan_amount")}, ${sql.identifier("reason")}, ${sql.identifier("note")})
+      select ${users.id}, -${users.lastPlanDebit}, -${users.lastPlanDebit}, 'plan_expiry', ${note}
+      from ${users}
+      where ${users.id} = ${userId} and ${users.lastPlanDebit} > 0
+      returning ${sql.identifier("amount")}`),
+  ]);
+  return -Number(removed.rows[0]?.amount ?? 0);
+}
+
+/** Cron sweep for granted plans that ended without being removed by hand. */
+export async function settleExpiredOverrides(db: Database, now = new Date(), limit = 200): Promise<{ settled: number }> {
+  const rows = await db
+    .select({ userId: entitlements.userId })
+    .from(entitlements)
+    .where(and(isNotNull(entitlements.overridePlanId), lte(entitlements.overrideEndsAt, now)))
+    .limit(limit);
+  let settled = 0;
+  for (const { userId } of rows) {
+    const billing = await getBillingEntitlement(db, userId);
+    if (!billing || billing.override) continue;
+    await revokeOverrideCredits(db, userId, billing.basePlan.monthlyCredits, { endOverride: true, note: "Granted plan ended" });
+    settled += 1;
+  }
+  return { settled };
 }
 
 /**
@@ -215,7 +288,9 @@ export async function topUpPlanCredits(db: Database, userId: string, allowance: 
  * Free accounts whose allowance is held are left out, so they can't fill the batch every day:
  * they start their period on their next request once allowed.
  */
-export async function renewDueCreditPeriods(db: Database, now = new Date(), limit = 500): Promise<{ renewed: number }> {
+export async function renewDueCreditPeriods(db: Database, now = new Date(), limit = 500): Promise<{ renewed: number; overridesSettled: number }> {
+  // Granted plans that ended hand their credits back before any renewal is worked out.
+  const { settled: overridesSettled } = await settleExpiredOverrides(db, now);
   const held = sql`(
     ${entitlements.freeAllowanceStatus} in ('verification_required', 'review_required', 'denied')
     and (select ${schema.billingPlans.interval} from ${schema.billingPlans} where ${schema.billingPlans.id} = ${entitlements.planId}) = 'none'
@@ -232,6 +307,6 @@ export async function renewDueCreditPeriods(db: Database, now = new Date(), limi
     const billing = await getBillingEntitlement(db, user.id);
     if (billing && (await ensureCreditPeriod(db, user.id, user.createdAt, billing, now))) renewed += 1;
   }
-  return { renewed };
+  return { renewed, overridesSettled };
 }
 

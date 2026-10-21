@@ -159,7 +159,7 @@ describe("renewal", () => {
     const due = await accountInPeriod(15, 5, { start: ago(31 * DAY), dueAt: ago(DAY) });
     const notDue = await accountInPeriod(15, 5);
 
-    expect(await renewDueCreditPeriods(db)).toEqual({ renewed: 1 });
+    expect(await renewDueCreditPeriods(db)).toEqual({ renewed: 1, overridesSettled: 0 });
     expect(await credits(due.id)).toEqual({ balance: 30, plan: 20 });
     expect(await credits(notDue.id)).toEqual({ balance: 15, plan: 5 });
   });

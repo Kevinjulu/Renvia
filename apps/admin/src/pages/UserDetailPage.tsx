@@ -18,7 +18,7 @@ export function UserDetailPage() {
   const { id = "" } = useParams();
   const api = useAdminApi();
   const me = useAdmin();
-  const { data, error, reload } = useLoad(() => api.getUser(id), [api, id]);
+  const { data, error, reload } = useLoad(() => api.getUser(id), [api, id], 30_000);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [roleAction, setRoleAction] = useState<"promote" | "demote" | null>(null);
@@ -108,10 +108,10 @@ export function UserDetailPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Credits"
-          value={user.role === "admin" ? "Unlimited" : formatNumber(user.creditBalance)}
+          value={formatNumber(user.creditBalance)}
           icon={Coins}
           accent="amber"
-          detail={user.role === "admin" ? "Admins aren't charged" : undefined}
+          detail={`${formatNumber(user.planCredits)} plan · ${formatNumber(user.betaCredits)} beta · ${formatNumber(Math.max(0, user.creditBalance - user.planCredits - user.betaCredits))} kept — ${formatNumber(user.creditsGranted)} granted, ${formatNumber(user.creditsSpent)} used${user.role === "admin" ? " (admins aren't charged)" : ""}`}
         />
         <StatCard label="Renders" value={formatNumber(user.renderCount)} icon={ImageIcon} accent="blue" />
         <StatCard label="Spend" value={formatUsd(user.spentUsd)} icon={DollarSign} accent="emerald" />

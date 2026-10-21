@@ -938,7 +938,16 @@ export interface AdminUser {
   clerkId: string;
   email: string;
   role: UserRole;
+  /** Everything spendable: planCredits + betaCredits + the permanent rest (purchases, admin grants). */
   creditBalance: number;
+  /** The part of the balance from the plan's monthly allowance (expires at renewal). */
+  planCredits: number;
+  /** The part granted by a beta program (expires with the enrollment). */
+  betaCredits: number;
+  /** All credits ever added for this user (plans, beta, purchases, admin), not counting refunds of charges. */
+  creditsGranted: number;
+  /** Credits charged for renders and selections, net of refunds. */
+  creditsSpent: number;
   disabled: boolean;
   /** Per-user limit overrides; null = inherit the global setting. */
   dailyRenderLimitOverride: number | null;
@@ -969,7 +978,7 @@ export interface AdminUsersResponse {
   };
 }
 
-export type AdminUserSort = "createdAt" | "lastActiveAt" | "lastRenderAt" | "creditBalance" | "renderCount" | "spentUsd";
+export type AdminUserSort = "createdAt" | "lastActiveAt" | "lastRenderAt" | "creditBalance" | "creditsGranted" | "creditsSpent" | "renderCount" | "spentUsd";
 export type AdminUserOrder = "asc" | "desc";
 
 export interface AdminBulkGrantCreditsRequest {
@@ -1077,6 +1086,9 @@ export interface AdminUserEntitlement {
   /** Unspent monthly plan credits (part of the balance) and what the plan grants each period. */
   planCredits: number;
   monthlyAllowance: number;
+  /** The rest of the balance: beta-program credits (expire with the enrollment) and permanent credits (purchases, admin grants). */
+  betaCredits: number;
+  permanentCredits: number;
   /** When plan credits next expire and the allowance is granted; null until the first period starts. */
   nextCreditRenewalAt: string | null;
   /** The most recent admin-granted plan. `active` is false once its end date has passed. */
@@ -1146,7 +1158,7 @@ export interface AdminOverviewResponse {
     byModel: { model: string; renders: number; spentUsd: number }[];
   };
   /** Credits currently held by users, and all-time granted/spent. */
-  credits: { outstanding: number; granted: number; spent: number; grantedLast7Days: number; spentLast7Days: number };
+  credits: { outstanding: number; outstandingBreakdown: { plan: number; beta: number; permanent: number }; granted: number; spent: number; expired: number; removed: number; grantedLast7Days: number; spentLast7Days: number };
   /** Live, internally tracked fal spend against the configured API-token budget. */
   tokenUsage: {
     provider: "fal";
@@ -1404,10 +1416,18 @@ export interface AdminCreditsResponse {
   entries: AdminCreditEntry[];
   total: number;
   summary: {
+    /** Credits users hold now = plan + beta + permanent. */
     outstanding: number;
+    outstandingBreakdown: { plan: number; beta: number; permanent: number };
+    /** All time: granted - spent - expired - removed = outstanding. */
     granted: number;
+    /** Charges net of their refunds. */
     spent: number;
-    /** Net ledger movement in the last 7 days (grants − spends). */
+    /** Plan, beta and signup credits that ran out. */
+    expired: number;
+    /** Credits an admin took away or a purchase refund reversed. */
+    removed: number;
+    /** Net ledger movement in the last 7 days. */
     netLast7Days: number;
     byReason: { reason: CreditLedgerReason; count: number; totalAmount: number }[];
   };

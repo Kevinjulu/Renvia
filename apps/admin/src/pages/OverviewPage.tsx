@@ -269,7 +269,7 @@ function KpiRow({ data, days, revenue }: { data: AdminOverviewResponse; days: Da
         <Kpi label={`Segmentations · ${days}d`} value={formatNumber(total((day) => day.segmentations))} delta={<Delta current={total((day) => day.segmentations)} previous={before((day) => day.segmentations, "segmentations")} />} spark={current.map((day) => day.segmentations)} detail={`${formatPercent(data.segmentations.failureRate)} failure rate`} />
       )}
       <Kpi label={`fal spend · ${days}d`} value={formatUsd(spend)} delta={<Delta current={spend} previous={before((day) => day.spentUsd, "spentUsd")} invert />} spark={current.map((day) => day.spentUsd)} color={CHART.amber} detail={`${formatUsd(data.spend.spentUsd)} of ${formatUsd(data.spend.budgetUsd)} budget`} />
-      <Kpi label="Credits held" value={formatNumber(data.credits.outstanding)} detail={`${formatNumber(data.credits.grantedLast7Days)} granted · ${formatNumber(data.credits.spentLast7Days)} used this week`} />
+      <Kpi label="Credits held" value={formatNumber(data.credits.outstanding)} detail={`${formatNumber(data.credits.outstandingBreakdown.plan)} plan · ${formatNumber(data.credits.outstandingBreakdown.beta)} beta · ${formatNumber(data.credits.outstandingBreakdown.permanent)} kept — ${formatNumber(data.credits.grantedLast7Days)} granted · ${formatNumber(data.credits.spentLast7Days)} used this week`} />
     </div>
   );
 }
@@ -325,6 +325,10 @@ function LivePanel({ data }: { data: AdminOverviewResponse }) {
   const ratio = data.spend.budgetUsd > 0 ? data.spend.spentUsd / data.spend.budgetUsd : 0;
   const fal = data.falAccount;
   const lowBalance = fal.status === "ok" && fal.balanceUsd !== null && fal.balanceUsd < 5;
+  // fal's invoice for 30 days against what the app recorded for the same days: a gap means calls
+  // made outside the app, or prices that changed, so the tracked budget above understates real spend.
+  const trackedLast30 = data.daily.reduce((sum, day) => sum + day.spentUsd, 0);
+  const drift = fal.status === "ok" ? fal.spentLast30DaysUsd - trackedLast30 : 0;
   return (
     <Card title="Live now" icon={Users} className="h-full" actions={<Pill tone={data.spend.mode === "prod" ? "amber" : "neutral"}>{MODE_LABEL[data.spend.mode]}</Pill>}>
       <div className="grid grid-cols-3 gap-2 text-center">
@@ -345,6 +349,11 @@ function LivePanel({ data }: { data: AdminOverviewResponse }) {
         <p className={`mt-2 text-center text-xs ${lowBalance ? "font-semibold text-rose-700" : "text-muted"}`}>
           {fal.status === "ok" ? `fal balance ${fal.balanceUsd === null ? "—" : formatUsd(fal.balanceUsd)} · billed ${formatUsd(fal.spentLast30DaysUsd)} in 30d` : fal.status === "error" ? "fal billing unavailable" : "fal balance not configured"}
         </p>
+        {Math.abs(drift) >= 1 && (
+          <p className="mt-1 text-center text-xs font-medium text-amber-700">
+            fal billed {formatUsd(Math.abs(drift))} {drift > 0 ? "more" : "less"} than the app tracked in 30 days ({formatUsd(trackedLast30)}) — the tracked budget {drift > 0 ? "understates" : "overstates"} real spend.
+          </p>
+        )}
       </div>
     </Card>
   );

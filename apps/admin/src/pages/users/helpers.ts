@@ -14,6 +14,8 @@ export const SORTABLE: { key: AdminUserSort; label: string }[] = [
   { key: "lastActiveAt", label: "Last active" },
   { key: "createdAt", label: "Joined" },
   { key: "creditBalance", label: "Credits" },
+  { key: "creditsGranted", label: "Granted" },
+  { key: "creditsSpent", label: "Used" },
   { key: "renderCount", label: "Renders" },
   { key: "spentUsd", label: "Spend" },
 ];

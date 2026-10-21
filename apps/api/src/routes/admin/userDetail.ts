@@ -7,7 +7,7 @@ import { schema, type Database } from "@renvia/db";
 import type { AdminLedgerEntry, AdminPlanOption, AdminUserEntitlement } from "@renvia/types";
 import { getSettings } from "../../lib/settings.js";
 import { ensureEntitlement, getBillingEntitlement, overrideIsActive } from "../../lib/billing.js";
-import { ensureCreditPeriod, topUpPlanCredits } from "../../lib/planCredits.js";
+import { ensureCreditPeriod, revokeOverrideCredits, topUpPlanCredits } from "../../lib/planCredits.js";
 import { getUsage, resolveLimits } from "../../lib/limits.js";
 import { denyUnless } from "./permissions.js";
 import { selectAdminRenders, toAdminRender, findAdminUser, recordAdminEvent, adminEventInsert, balanceCapGuard, isBalanceCapViolation } from "./shared.js";
@@ -24,7 +24,7 @@ async function adminEntitlementFor(db: Database, userId: string): Promise<{ view
   const billing = await getBillingEntitlement(db, userId);
   if (!billing) return null;
   const { entitlement, basePlan } = billing;
-  const [credits] = await db.select({ planCredits: schema.users.planCredits }).from(schema.users).where(eq(schema.users.id, userId));
+  const [credits] = await db.select({ planCredits: schema.users.planCredits, betaCredits: schema.users.betaCredits, creditBalance: schema.users.creditBalance }).from(schema.users).where(eq(schema.users.id, userId));
   let override: AdminUserEntitlement["override"] = null;
   if (entitlement.overridePlanId) {
     const [[overridePlan], [setBy]] = await Promise.all([
@@ -56,6 +56,8 @@ async function adminEntitlementFor(db: Database, userId: string): Promise<{ view
       provider: entitlement.provider,
       planCredits: credits?.planCredits ?? 0,
       monthlyAllowance: billing.plan.monthlyCredits,
+      betaCredits: credits?.betaCredits ?? 0,
+      permanentCredits: Math.max(0, (credits?.creditBalance ?? 0) - (credits?.planCredits ?? 0) - (credits?.betaCredits ?? 0)),
       nextCreditRenewalAt: entitlement.nextCreditGrantAt?.toISOString() ?? null,
       override,
     },
@@ -232,10 +234,19 @@ userDetailRoutes.post("/users/:id/credits", async (c) => {
         .set({
           creditBalance: sql`${schema.users.creditBalance} + ${amount}`,
           planCredits: sql`least(${schema.users.planCredits}, ${schema.users.creditBalance} + ${amount} - ${schema.users.betaCredits})`,
+          // The plan credits this removal had to take, copied into the ledger row below.
+          lastPlanDebit: sql`${schema.users.planCredits} - least(${schema.users.planCredits}, ${schema.users.creditBalance} + ${amount} - ${schema.users.betaCredits})`,
         })
         .where(eq(schema.users.id, id))
         .returning({ id: schema.users.id }),
-      db.insert(schema.creditLedger).values({ userId: id, amount, reason: "admin_grant", note, actorId: adminUser.id }),
+      db.insert(schema.creditLedger).values({
+        userId: id,
+        amount,
+        planAmount: sql`-(select ${schema.users.lastPlanDebit} from ${schema.users} where ${schema.users.id} = ${id})`,
+        reason: "admin_grant",
+        note,
+        actorId: adminUser.id,
+      }),
       db.insert(schema.adminEvents).values({
         actorId: adminUser.id,
         action: "credits.adjust",
@@ -480,13 +491,13 @@ userDetailRoutes.post("/users/:id/plan/clear", async (c) => {
 
   const before = await adminEntitlementFor(db, id);
   if (!before?.view.override) return c.json({ error: "They have no granted plan to remove", code: "no_override" }, 409);
-  await db.batch([
-    db.update(schema.userEntitlements).set({ overridePlanId: null, overrideEndsAt: null, overrideReason: null, overrideSetBy: null, overrideSetAt: null, updatedAt: new Date() }).where(eq(schema.userEntitlements.userId, id)),
-    adminEventInsert(db, {
-      actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
-      summary: `${target.email}: removed granted ${before.view.override.planName}, back on ${before.view.basePlanName}`,
-      detail: { reason, before: { override: before.view.override }, after: { plan: before.view.basePlanSlug } },
-    }),
-  ]);
+  const billing = (await getBillingEntitlement(db, id))!;
+  // The granted plan's credits go with it: only the base plan's allowance stays this period.
+  const creditsRemoved = await revokeOverrideCredits(db, id, billing.basePlan.monthlyCredits, { endOverride: true, note: `Granted ${before.view.override.planName} removed` });
+  await recordAdminEvent(db, {
+    actorId: actor.id, action: "billing.entitlement", targetType: "user", targetId: id,
+    summary: `${target.email}: removed granted ${before.view.override.planName}, back on ${before.view.basePlanName}${creditsRemoved > 0 ? `, −${creditsRemoved} plan credits` : ""}`,
+    detail: { reason, before: { override: before.view.override }, after: { plan: before.view.basePlanSlug }, planCreditsRemoved: creditsRemoved },
+  });
   return c.json({ entitlement: (await adminEntitlementFor(db, id))!.view });
 });

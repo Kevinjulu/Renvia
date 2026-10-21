@@ -19,12 +19,16 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // A refresh the timer asked for keeps the screen as it is; only a first load or new filters dim it.
+  const background = useRef(false);
   const loadRef = useRef(load);
   loadRef.current = load;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const quiet = background.current;
+    background.current = false;
+    if (!quiet) setLoading(true);
     loadRef
       .current()
       .then((result) => {
@@ -37,7 +41,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
         if (!cancelled) setError(reason instanceof Error ? reason.message : "Something went wrong");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !quiet) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -50,7 +54,7 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[], pollMs = 0):
     if (!pollMs) return;
     // Background tabs do not need live operational traffic. A visibility change
     // refreshes once immediately when the operator returns.
-    const tick = () => { if (document.visibilityState === "visible") setVersion((value) => value + 1); };
+    const tick = () => { if (document.visibilityState === "visible") { background.current = true; setVersion((value) => value + 1); } };
     const timer = window.setInterval(tick, pollMs);
     document.addEventListener("visibilitychange", tick);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", tick); };

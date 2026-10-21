@@ -7,10 +7,12 @@ import { effectiveMaintenance } from "../../lib/studioControl.js";
 import { BYTES_PER_MB, storageUsage } from "../../lib/storage.js";
 import { falAccount } from "../../lib/falAccount.js";
 import { denyUnless } from "./permissions.js";
-import { MICROS_PER_USD, stuckBeforeSql, selectAdminRenders, toAdminRender } from "./shared.js";
+import { MICROS_PER_USD, stuckBeforeSql, selectAdminRenders, toAdminRender, creditFlow, balanceBreakdown } from "./shared.js";
 import type { AdminContext } from "./context.js";
 
 export const overviewRoutes = new Hono<AdminContext>();
+
+const lastWeek = creditFlow(sql`now() - interval '7 days'`, "Last7Days");
 
 overviewRoutes.get("/overview", async (c) => {
   const denied = denyUnless(c, "overview.read"); if (denied) return c.json(denied, 403);
@@ -43,7 +45,7 @@ overviewRoutes.get("/overview", async (c) => {
         activeLast24Hours: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '24 hours')::int`,
         activeLast7Days: sql<number>`count(*) filter (where ${schema.users.role} = 'user' and not ${schema.users.disabled} and ${schema.users.lastActiveAt} >= now() - interval '7 days')::int`,
         disabled: sql<number>`count(*) filter (where ${schema.users.disabled})::int`,
-        outstanding: sql<number>`coalesce(sum(${schema.users.creditBalance}), 0)::int`,
+        ...balanceBreakdown(),
       })
       .from(schema.users),
     db
@@ -66,10 +68,9 @@ overviewRoutes.get("/overview", async (c) => {
       .orderBy(desc(sql`sum(${schema.renders.costMicros})`)),
     db
       .select({
-        granted: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.reason} not in ('render_refund', 'segment_refund')), 0)::int`,
-        spent: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.reason} in ('render', 'render_refund', 'segment', 'segment_refund')), 0)::int`,
-        grantedLast7Days: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0 and ${schema.creditLedger.createdAt} >= now() - interval '7 days' and ${schema.creditLedger.reason} not in ('render_refund', 'segment_refund')), 0)::int`,
-        spentLast7Days: sql<number>`coalesce(-sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} < 0 and ${schema.creditLedger.createdAt} >= now() - interval '7 days'), 0)::int`,
+        ...creditFlow(),
+        grantedLast7Days: lastWeek.granted,
+        spentLast7Days: lastWeek.spent,
       })
       .from(schema.creditLedger),
     // 60 days in one query: the newest 30 are returned as `daily`, the 30 before them
@@ -306,7 +307,7 @@ overviewRoutes.get("/overview", async (c) => {
         spentUsd: Number(row.spentMicros) / MICROS_PER_USD,
       })),
     },
-    credits: { outstanding: users!.outstanding, granted: credits?.granted ?? 0, spent: credits?.spent ?? 0, grantedLast7Days: credits?.grantedLast7Days ?? 0, spentLast7Days: credits?.spentLast7Days ?? 0 },
+    credits: { outstanding: users!.outstanding, outstandingBreakdown: { plan: users!.plan, beta: users!.beta, permanent: users!.permanent }, granted: credits?.granted ?? 0, spent: credits?.spent ?? 0, expired: credits?.expired ?? 0, removed: credits?.removed ?? 0, grantedLast7Days: credits?.grantedLast7Days ?? 0, spentLast7Days: credits?.spentLast7Days ?? 0 },
     tokenUsage: {
       provider: "fal",
       configured: Boolean(c.env.FAL_KEY?.trim()),

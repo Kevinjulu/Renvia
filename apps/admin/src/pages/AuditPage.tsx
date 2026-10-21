@@ -59,6 +59,7 @@ export function AuditPage() {
         offset,
       }),
     [api, search, action, actorId, range, offset], 20_000,
+    30_000,
   );
 
   const groups = useMemo(() => groupByDay(data?.events ?? []), [data]);

@@ -55,6 +55,7 @@ export function PlanPanel({ userId, email, entitlement, plans, canManage, onDone
       <p className="text-muted">
         <span className="font-medium text-primary">{entitlement.planCredits} of {entitlement.monthlyAllowance}</span> monthly plan credits left
         {entitlement.nextCreditRenewalAt ? `, renewing ${formatDateTime(entitlement.nextCreditRenewalAt)}` : ", first period starts when they next sign in"}.
+        {" "}Balance = {entitlement.planCredits} plan + {entitlement.betaCredits} beta + {entitlement.permanentCredits} permanent (purchases and admin grants).
       </p>
 
       {canManage ? (

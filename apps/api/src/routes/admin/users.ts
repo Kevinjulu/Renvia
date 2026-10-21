@@ -4,7 +4,7 @@ import { z } from "zod";
 import { schema } from "@renvia/db";
 import type { AdminUserOrder, AdminUserSort } from "@renvia/types";
 import { denyUnless } from "./permissions.js";
-import { userStats, toAdminUser, paging } from "./shared.js";
+import { userStats, userCreditStats, toAdminUser, paging } from "./shared.js";
 import type { AdminContext } from "./context.js";
 
 export const usersRoutes = new Hono<AdminContext>();
@@ -18,7 +18,7 @@ usersRoutes.get("/users", async (c) => {
   const status = z.enum(["active", "disabled"]).optional().parse(c.req.query("status") || undefined);
   const balance = z.enum(["low", "zero"]).optional().parse(c.req.query("balance") || undefined);
   const sort = z
-    .enum(["createdAt", "lastActiveAt", "lastRenderAt", "creditBalance", "renderCount", "spentUsd"])
+    .enum(["createdAt", "lastActiveAt", "lastRenderAt", "creditBalance", "creditsGranted", "creditsSpent", "renderCount", "spentUsd"])
     .default("lastActiveAt")
     .parse(c.req.query("sort") || "lastActiveAt") as AdminUserSort;
   const order = z.enum(["asc", "desc"]).default("desc").parse(c.req.query("order") || "desc") as AdminUserOrder;
@@ -37,10 +37,15 @@ usersRoutes.get("/users", async (c) => {
   const where = filters.length ? and(...filters) : undefined;
 
   const stats = userStats(db);
+  const credit = userCreditStats(db);
   const direction = order === "asc" ? asc : desc;
   const orderBy =
     sort === "creditBalance"
       ? direction(schema.users.creditBalance)
+      : sort === "creditsGranted"
+        ? direction(sql`coalesce(${credit.granted}, 0)`)
+        : sort === "creditsSpent"
+          ? direction(sql`coalesce(${credit.spent}, 0)`)
       : sort === "renderCount"
         ? direction(sql`coalesce(${stats.renderCount}, 0)`)
         : sort === "spentUsd"
@@ -59,6 +64,10 @@ usersRoutes.get("/users", async (c) => {
         email: schema.users.email,
         role: schema.users.role,
         creditBalance: schema.users.creditBalance,
+        planCredits: schema.users.planCredits,
+        betaCredits: schema.users.betaCredits,
+        creditsGranted: sql<number>`coalesce(${credit.granted}, 0)::int`,
+        creditsSpent: sql<number>`coalesce(${credit.spent}, 0)::int`,
         disabled: schema.users.disabled,
         dailyRenderLimitOverride: schema.users.dailyRenderLimitOverride,
         dailySegmentLimitOverride: schema.users.dailySegmentLimitOverride,
@@ -73,6 +82,7 @@ usersRoutes.get("/users", async (c) => {
       })
       .from(schema.users)
       .leftJoin(stats, eq(stats.userId, schema.users.id))
+      .leftJoin(credit, eq(credit.userId, schema.users.id))
       .where(where)
       .orderBy(orderBy)
       .limit(limit)

@@ -18,7 +18,7 @@ const ENROLLMENT_TONE = { active: "emerald", suspended: "amber", completed: "neu
 export function UserBetaPanel({ user, projectCount }: { user: AdminUser; projectCount: number }) {
   const api = useAdminApi();
   const can = betaCan(useAdmin());
-  const status = useLoad(() => api.getUserBetaStatus(user.id), [api, user.id]);
+  const status = useLoad(() => api.getUserBetaStatus(user.id), [api, user.id], 30_000);
   const programs = useLoad(() => api.listBetaPrograms(), [api]);
   const [programId, setProgramId] = useState("");
   const [credits, setCredits] = useState<number | null>(null);

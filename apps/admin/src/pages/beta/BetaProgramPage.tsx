@@ -29,7 +29,7 @@ export function BetaProgramPage() {
   const navigate = useNavigate();
   const api = useAdminApi();
   const can = betaCan(useAdmin());
-  const { data, error, reload } = useLoad(() => api.getBetaProgram(id), [api, id]);
+  const { data, error, reload } = useLoad(() => api.getBetaProgram(id), [api, id], 30_000);
   const [tab, setTab] = useState<Tab>("testers");
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 

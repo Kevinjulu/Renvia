@@ -75,6 +75,7 @@ export function UsersPage() {
         offset,
       }),
     [api, search, role, status, balance, sort, order, offset], 20_000,
+    30_000,
   );
 
   const pageIds = useMemo(() => data?.users.map((user) => user.id) ?? [], [data]);
@@ -265,6 +266,10 @@ export function UsersPage() {
                         <td className="hidden px-5 py-3 tabular-nums text-muted lg:table-cell">{formatRelative(user.createdAt)}</td>
                         <td className="px-5 py-3 tabular-nums">
                           {user.role === "admin" ? <span className="text-faint">Unlimited</span> : formatNumber(user.creditBalance)}
+                          <p className="mt-0.5 text-[11px] font-normal text-faint" title="Balance = plan + beta + kept credits (purchases and admin grants). Granted counts everything added; used is net of refunds.">
+                            {user.role === "admin" ? `holds ${formatNumber(user.creditBalance)} · ` : ""}{formatNumber(user.planCredits)} plan · {formatNumber(user.betaCredits)} beta · {formatNumber(Math.max(0, user.creditBalance - user.planCredits - user.betaCredits))} kept
+                          </p>
+                          <p className="text-[11px] font-normal text-faint">{formatNumber(user.creditsGranted)} granted · {formatNumber(user.creditsSpent)} used</p>
                         </td>
                         <td className="px-5 py-3 tabular-nums">{formatNumber(user.renderCount)}</td>
                         <td className="hidden px-5 py-3 tabular-nums lg:table-cell">{formatUsd(user.spentUsd)}</td>

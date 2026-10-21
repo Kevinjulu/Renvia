@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Database } from "@renvia/db";
 import type { AdminAuditAction, AdminRender, AdminUser, RenderStatus, SegmentationStatus } from "@renvia/types";
@@ -42,8 +42,54 @@ export function userStats(db: Database) {
     .as("user_stats");
 }
 
+const REFUND_REASONS = sql`('render_refund', 'segment_refund')`;
+const SPEND_REASONS = sql`('render', 'render_refund', 'segment', 'segment_refund')`;
+const EXPIRY_REASONS = sql`('plan_expiry', 'promo_expiry', 'beta_expiry', 'subscription_expiry')`;
+
+/**
+ * The one definition of credit movement the admin shows, so every page agrees. Over the ledger,
+ * granted - spent - expired - removed = the credits users hold now:
+ *  - granted: everything that added credits except refunds of a charge (plans, beta, purchases, admin)
+ *  - spent: charges net of their refunds
+ *  - expired: plan, beta and signup credits that ran out
+ *  - removed: credits an admin took away or a purchase refund reversed
+ * `since` limits it to a window; omitted, it is all time.
+ */
+export function creditFlow(since?: SQL, suffix = "") {
+  const amount = schema.creditLedger.amount;
+  const reason = schema.creditLedger.reason;
+  const inWindow = since ? sql` and ${schema.creditLedger.createdAt} >= ${since}` : sql``;
+  return {
+    granted: sql<number>`coalesce(sum(${amount}) filter (where ${amount} > 0 and ${reason} not in ${REFUND_REASONS}${inWindow}), 0)::int`.as(`granted${suffix}`),
+    spent: sql<number>`coalesce(-sum(${amount}) filter (where ${reason} in ${SPEND_REASONS}${inWindow}), 0)::int`.as(`spent${suffix}`),
+    expired: sql<number>`coalesce(-sum(${amount}) filter (where ${reason} in ${EXPIRY_REASONS}${inWindow}), 0)::int`.as(`expired${suffix}`),
+    removed: sql<number>`coalesce(-sum(${amount}) filter (where ${amount} < 0 and ${reason} in ('admin_grant', 'purchase_refund')${inWindow}), 0)::int`.as(`removed${suffix}`),
+  };
+}
+
+/** What the balances are made of: plan credits (expire at renewal), beta credits (expire with the enrollment) and the rest. */
+export function balanceBreakdown() {
+  const u = schema.users;
+  return {
+    outstanding: sql<number>`coalesce(sum(${u.creditBalance}), 0)::int`,
+    plan: sql<number>`coalesce(sum(${u.planCredits}), 0)::int`,
+    beta: sql<number>`coalesce(sum(${u.betaCredits}), 0)::int`,
+    permanent: sql<number>`coalesce(sum(${u.creditBalance} - ${u.planCredits} - ${u.betaCredits}), 0)::int`,
+  };
+}
+
+/** Per-user credits granted and spent, from the ledger (same definitions as creditFlow). */
+export function userCreditStats(db: Database) {
+  return db
+    .select({ userId: schema.creditLedger.userId, ...creditFlow() })
+    .from(schema.creditLedger)
+    .groupBy(schema.creditLedger.userId)
+    .as("user_credit_stats");
+}
+
 export function selectAdminUsers(db: Database) {
   const stats = userStats(db);
+  const credit = userCreditStats(db);
   return db
     .select({
       id: schema.users.id,
@@ -51,6 +97,10 @@ export function selectAdminUsers(db: Database) {
       email: schema.users.email,
       role: schema.users.role,
       creditBalance: schema.users.creditBalance,
+      planCredits: schema.users.planCredits,
+      betaCredits: schema.users.betaCredits,
+      creditsGranted: sql<number>`coalesce(${credit.granted}, 0)::int`,
+      creditsSpent: sql<number>`coalesce(${credit.spent}, 0)::int`,
       disabled: schema.users.disabled,
       dailyRenderLimitOverride: schema.users.dailyRenderLimitOverride,
       dailySegmentLimitOverride: schema.users.dailySegmentLimitOverride,
@@ -64,7 +114,8 @@ export function selectAdminUsers(db: Database) {
       lastRenderAt: stats.lastRenderAt,
     })
     .from(schema.users)
-    .leftJoin(stats, eq(stats.userId, schema.users.id));
+    .leftJoin(stats, eq(stats.userId, schema.users.id))
+    .leftJoin(credit, eq(credit.userId, schema.users.id));
 }
 
 export type AdminUserRow = Awaited<ReturnType<ReturnType<typeof selectAdminUsers>["execute"]>>[number];

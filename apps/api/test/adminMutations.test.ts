@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { settleExpiredOverrides } from "../src/lib/planCredits.js";
 import { schema } from "@renvia/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClerkClient } from "@clerk/backend";
@@ -395,6 +396,13 @@ describe("granted plans", () => {
     const after = await detail();
     expect(after.entitlement).toMatchObject({ planSlug: "starter", override: { planSlug: "studio", active: false } });
     expect(after.limits.dailyRenders).not.toBe(50);
+
+    // The sweep takes the ended plan's credits back and clears it, leaving the fixture's 15.
+    expect(await settleExpiredOverrides(db)).toEqual({ settled: 1 });
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row).toMatchObject({ creditBalance: 15, planCredits: 0 });
+    expect((await detail()).entitlement).toMatchObject({ override: null });
+    expect(await settleExpiredOverrides(db)).toEqual({ settled: 0 });
   });
 
   it("removes a granted plan and refuses to remove one that isn't there", async () => {
@@ -404,7 +412,18 @@ describe("granted plans", () => {
     const res = await call("admin", "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "partnership ended" });
     expect(res.status).toBe(200);
     expect((await detail()).entitlement).toMatchObject({ planSlug: "starter", override: null });
-    expect((await events("billing.entitlement")).map((e) => e.summary)).toContain("customer@example.test: removed granted Studio, back on Starter");
+    expect((await events("billing.entitlement")).map((e) => e.summary)).toContain("customer@example.test: removed granted Studio, back on Starter, −200 plan credits");
+    // The plan's credits leave with it; the 15 credits the fixture started with stay.
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(row).toMatchObject({ creditBalance: 15, planCredits: 0 });
+    const [expiry] = await db.select().from(schema.creditLedger).where(and(eq(schema.creditLedger.userId, actors.customer.id), eq(schema.creditLedger.reason, "plan_expiry")));
+    expect(expiry).toMatchObject({ amount: -200, planAmount: -200 });
+
+    // Granting it again must hand the allowance out again, not think it was already given.
+    await call("admin", "PUT", `/users/${actors.customer.id}/plan`, { planId: studio.id, endsAt: null, reason: "partner again" });
+    const [regranted] = await db.select().from(schema.users).where(eq(schema.users.id, actors.customer.id));
+    expect(regranted).toMatchObject({ creditBalance: 215, planCredits: 200 });
+    await call("admin", "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "again" });
 
     const again = await call("admin", "POST", `/users/${actors.customer.id}/plan/clear`, { reason: "again" });
     expect(again.status).toBe(409);

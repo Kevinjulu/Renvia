@@ -5,24 +5,18 @@ import { z } from "zod";
 import { schema } from "@renvia/db";
 import type { AdminCreditDirection, AdminCreditEntry, AdminCreditOrder, AdminCreditSort, CreditLedgerReason } from "@renvia/types";
 import { denyUnless } from "./permissions.js";
-import { paging } from "./shared.js";
+import { paging, creditFlow, balanceBreakdown } from "./shared.js";
 import type { AdminContext } from "./context.js";
 
 export const creditsRoutes = new Hono<AdminContext>();
 
-const CREDIT_REASONS = [
-  "signup_bonus",
-  "initial_grant",
-  "admin_grant",
-  "render",
-  "render_refund",
-  "segment",
-  "segment_refund",
-  "purchase",
-  "purchase_refund",
-  "subscription_grant",
-  "subscription_expiry",
-] as const satisfies readonly CreditLedgerReason[];
+/** Every ledger reason, so the filter can reach plan and beta rows too. A missing one fails to compile. */
+const REASON_MAP: Record<CreditLedgerReason, true> = {
+  signup_bonus: true, initial_grant: true, admin_grant: true, render: true, render_refund: true, segment: true, segment_refund: true,
+  purchase: true, purchase_refund: true, subscription_grant: true, subscription_expiry: true,
+  plan_grant: true, plan_expiry: true, promo_expiry: true, beta_grant: true, beta_expiry: true,
+};
+const CREDIT_REASONS = Object.keys(REASON_MAP) as [CreditLedgerReason, ...CreditLedgerReason[]];
 
 function toAdminCreditEntry(
   entry: typeof schema.creditLedger.$inferSelect,
@@ -92,11 +86,10 @@ creditsRoutes.get("/credits", async (c) => {
       .innerJoin(schema.users, eq(schema.creditLedger.userId, schema.users.id))
       .leftJoin(actor, eq(schema.creditLedger.actorId, actor.id))
       .where(where),
-    db.select({ outstanding: sql<number>`coalesce(sum(${schema.users.creditBalance}), 0)::int` }).from(schema.users),
+    db.select(balanceBreakdown()).from(schema.users),
     db
       .select({
-        granted: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.amount} > 0), 0)::int`,
-        spent: sql<number>`coalesce(sum(abs(${schema.creditLedger.amount})) filter (where ${schema.creditLedger.amount} < 0), 0)::int`,
+        ...creditFlow(),
         netLast7Days: sql<number>`coalesce(sum(${schema.creditLedger.amount}) filter (where ${schema.creditLedger.createdAt} >= now() - interval '7 days'), 0)::int`,
       })
       .from(schema.creditLedger),
@@ -117,8 +110,11 @@ creditsRoutes.get("/credits", async (c) => {
     total: count?.total ?? 0,
     summary: {
       outstanding: balances?.outstanding ?? 0,
+      outstandingBreakdown: { plan: balances?.plan ?? 0, beta: balances?.beta ?? 0, permanent: balances?.permanent ?? 0 },
       granted: flow?.granted ?? 0,
       spent: flow?.spent ?? 0,
+      expired: flow?.expired ?? 0,
+      removed: flow?.removed ?? 0,
       netLast7Days: flow?.netLast7Days ?? 0,
       byReason: reasonRows.map((row) => ({
         reason: row.reason as CreditLedgerReason,

@@ -24,10 +24,10 @@ const MODE_LABEL = { off: "Off", observe: "Observe", enforce: "Enforce", paused:
 export function SecurityPage() {
   const api = useAdminApi();
   const nav = navForPath("/security");
-  const overview = useLoad(() => api.getSecurityOverview(), [api]);
+  const overview = useLoad(() => api.getSecurityOverview(), [api], 60_000);
   const [queue, setQueue] = useState<(typeof QUEUES)[number]["status"]>("review_required");
   const [offset, setOffset] = useState(0);
-  const list = useLoad(() => api.getSecurityQueue(queue, PAGE, offset), [api, queue, offset]);
+  const list = useLoad(() => api.getSecurityQueue(queue, PAGE, offset), [api, queue, offset], 60_000);
   const data = overview.data;
   const peak = Math.max(1, ...(data?.daily.map((day) => day.signups) ?? [1]));
 

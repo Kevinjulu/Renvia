@@ -74,6 +74,7 @@ export function RendersPage() {
         offset,
       }),
     [api, search, status, kind, stuck, model, userId, projectId, sort, order, offset], 20_000,
+    30_000,
   );
 
   const toggleSort = (key: AdminRenderSort) => {

@@ -75,6 +75,7 @@ export function SegmentationsPage() {
         offset,
       }),
     [api, search, status, mode, stuck, model, userId, sort, order, offset],
+    30_000,
   );
 
   const toggleSort = (key: AdminSegmentationSort) => {

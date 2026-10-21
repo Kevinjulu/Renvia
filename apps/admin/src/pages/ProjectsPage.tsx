@@ -61,6 +61,7 @@ export function ProjectsPage() {
         offset,
       }),
     [api, search, health, sort, order, offset],
+    30_000,
   );
 
   const openDetail = (id: string) => {
