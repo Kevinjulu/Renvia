@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { StockReference } from "@renvia/types";
 import { useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { nodeToPersistedData, placeImageInView } from "../utils/placeImageNode";
@@ -13,13 +14,10 @@ export function useElevationUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingViewId, setUploadingViewId] = useState<string | null>(null);
 
-  // Uploads one file into one elevation. Byte progress fills 0–90%; placing it on the canvas finishes it.
-  const uploadOne = useCallback(
-    async (view: BuildingView, file: File, onProgress: (fraction: number) => void) => {
-      setUploadingViewId(view.id);
-      const { publicUrl } = await apiClient.uploadImage(file, (fraction) => onProgress(fraction * 0.9));
+  // Puts an image that is already in storage into one elevation and saves it with the project.
+  const placeStoredImage = useCallback(
+    async (view: BuildingView, publicUrl: string) => {
       const { kind, node } = await placeImageInView(view, publicUrl);
-      onProgress(1);
 
       const projectId = useCanvasStore.getState().projectId;
       if (projectId) {
@@ -38,6 +36,17 @@ export function useElevationUpload() {
       }
     },
     [apiClient],
+  );
+
+  // Uploads one file into one elevation. Byte progress fills 0–90%; placing it on the canvas finishes it.
+  const uploadOne = useCallback(
+    async (view: BuildingView, file: File, onProgress: (fraction: number) => void) => {
+      setUploadingViewId(view.id);
+      const { publicUrl } = await apiClient.uploadImage(file, (fraction) => onProgress(fraction * 0.9));
+      await placeStoredImage(view, publicUrl);
+      onProgress(1);
+    },
+    [apiClient, placeStoredImage],
   );
 
   // Runs uploads one after another and reports their combined progress to the rail's upload button.
@@ -89,6 +98,39 @@ export function useElevationUpload() {
         await uploadOne(view, file, onProgress);
       }),
     [runBatch, uploadOne],
+  );
+
+  // Starts an elevation from a sample design: the team's image is copied into the person's own
+  // storage, then placed like any upload. It goes to `view` when given; otherwise to the active
+  // elevation if that is empty, else the first empty one, else a new elevation.
+  const placeSampleDesign = useCallback(
+    (sample: StockReference, view?: BuildingView) =>
+      runBatch(1, async (_index, onProgress) => {
+        let target = view;
+        if (!target) {
+          const { views, nodes, activeViewId, addBuildingView } = useCanvasStore.getState();
+          target = views.find((item) => item.id === activeViewId && !nodeForView(nodes, item.id)) ?? views.find((item) => !nodeForView(nodes, item.id));
+          if (!target) {
+            const id = addBuildingView(`Elevation ${views.length + 1}`);
+            target = useCanvasStore.getState().views.find((item) => item.id === id);
+          }
+        }
+        if (!target) return;
+        setUploadingViewId(target.id);
+        try {
+          const { publicUrl } = await apiClient.useSampleDesign(sample.id);
+          onProgress(0.7);
+          await placeStoredImage(target, publicUrl);
+          onProgress(1);
+        } catch (error) {
+          // A storage limit explains itself in the shared dialog; anything else gets a plain note.
+          if (!reportLimit(error)) {
+            reportClientError(error);
+            showStudioNotice("Couldn't add that sample design. Try again, or upload your own image.");
+          }
+        }
+      }),
+    [apiClient, placeStoredImage, runBatch],
   );
 
   const uploadToActiveView = useCallback(
@@ -145,5 +187,5 @@ export function useElevationUpload() {
     [apiClient],
   );
 
-  return { uploadToView, uploadFiles, uploadToActiveView, clearViewImage, removeView, isUploading, uploadingViewId };
+  return { uploadToView, uploadFiles, uploadToActiveView, placeSampleDesign, clearViewImage, removeView, isUploading, uploadingViewId };
 }

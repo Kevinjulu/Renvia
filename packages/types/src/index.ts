@@ -879,10 +879,31 @@ export const REFERENCE_CATEGORIES = [
 
 export type ReferenceCategory = (typeof REFERENCE_CATEGORIES)[number]["key"];
 
-/** A sample reference the team uploaded for every user. */
+/**
+ * Sample original designs: what a person would upload as an elevation, in the three forms the
+ * Studio accepts. Picking one copies it into the person's own storage as their elevation.
+ */
+export const DESIGN_CATEGORIES = [
+  { key: "design-3d", label: "3D model" },
+  { key: "design-photo", label: "Photo" },
+  { key: "design-drawing", label: "Drawing" },
+] as const;
+
+export type DesignCategory = (typeof DESIGN_CATEGORIES)[number]["key"];
+
+/** Every Samples category: references first, then designs. */
+export const SAMPLE_CATEGORIES = [...REFERENCE_CATEGORIES, ...DESIGN_CATEGORIES] as const;
+
+export type SampleCategory = ReferenceCategory | DesignCategory;
+
+export function isDesignCategory(category: SampleCategory): category is DesignCategory {
+  return DESIGN_CATEGORIES.some((item) => item.key === category);
+}
+
+/** A sample the team uploaded for every user: a reference image or an original design. */
 export interface StockReference {
   id: string;
-  category: ReferenceCategory;
+  category: SampleCategory;
   url: string;
   caption: string | null;
 }
@@ -890,6 +911,11 @@ export interface StockReference {
 /** Visible samples only, in each category's display order. */
 export interface ListStockReferencesResponse {
   references: StockReference[];
+}
+
+/** A design sample copied into the caller's own storage, ready to place as an elevation. */
+export interface UseSampleDesignResponse {
+  publicUrl: string;
 }
 
 export interface AdminStockReference extends StockReference {

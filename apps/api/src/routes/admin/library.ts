@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@renvia/db";
-import { REFERENCE_CATEGORIES, type AdminStockReference, type AdminStockReferencesResponse, type ReferenceCategory } from "@renvia/types";
+import { SAMPLE_CATEGORIES, type AdminStockReference, type AdminStockReferencesResponse, type SampleCategory } from "@renvia/types";
 import type { AdminContext } from "./context.js";
 import { denyUnless } from "./permissions.js";
 import { adminEventInsert } from "./shared.js";
@@ -18,15 +18,16 @@ import {
 } from "../../lib/stockReferences.js";
 
 /**
- * Sample reference images shown to every Studio user under the library's category chips.
+ * Sample images shown to every Studio user in Samples: reference images by category, and original
+ * designs (3D model, photo, drawing) a new user can start a project from.
  * Admin-only; every change is recorded as library.update.
  */
 export const libraryRoutes = new Hono<AdminContext>();
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const categorySchema = z.enum(REFERENCE_CATEGORIES.map((category) => category.key) as [ReferenceCategory, ...ReferenceCategory[]]);
+const categorySchema = z.enum(SAMPLE_CATEGORIES.map((category) => category.key) as [SampleCategory, ...SampleCategory[]]);
 const captionSchema = z.string().trim().max(120).transform((value) => value || null);
-const categoryLabel = (key: ReferenceCategory) => REFERENCE_CATEGORIES.find((category) => category.key === key)!.label;
+const categoryLabel = (key: SampleCategory) => SAMPLE_CATEGORIES.find((category) => category.key === key)!.label;
 
 type StockRow = typeof schema.stockReferences.$inferSelect;
 

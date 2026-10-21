@@ -32,6 +32,7 @@ import type {
   ListProjectsResponse,
   ListReferenceImagesResponse,
   ListStockReferencesResponse,
+  UseSampleDesignResponse,
   ListRendersResponse,
   MeCreditsResponse,
   MeResponse,
@@ -334,6 +335,8 @@ function createApiClient(getToken: GetToken) {
     deleteProject: (id: string) => request<DeleteProjectResponse>(getToken, `/projects/${id}`, { method: "DELETE" }),
     listReferences: () => request<ListReferenceImagesResponse>(getToken, "/references"),
     listStockReferences: () => request<ListStockReferencesResponse>(getToken, "/references/stock"),
+    /** Copies a sample design into the caller's own storage; place the returned link as an elevation. */
+    useSampleDesign: (id: string) => request<UseSampleDesignResponse>(getToken, `/references/stock/${id}/use`, { method: "POST" }),
     createReference: (body: CreateReferenceImageRequest) =>
       request<ReferenceImage>(getToken, "/references", {
         method: "POST",

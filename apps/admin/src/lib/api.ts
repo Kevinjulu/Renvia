@@ -8,7 +8,7 @@ import type {
   AdminBetaAnnouncement,
   AdminStockReference,
   AdminStockReferencesResponse,
-  ReferenceCategory,
+  SampleCategory,
   AdminBetaEnrollment,
   AdminBetaFeedbackDetail,
   AdminBetaFeedbackListResponse,
@@ -184,11 +184,11 @@ export function useAdminApi() {
         request<AdminBetaFeedbackListResponse>(getToken, `/admin/beta/feedback${query(params)}`),
       getBetaFeedback: (id: string) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`),
       listStockReferences: () => request<AdminStockReferencesResponse>(getToken, "/admin/library"),
-      uploadStockReference: (category: ReferenceCategory, file: File, caption: string) =>
+      uploadStockReference: (category: SampleCategory, file: File, caption: string) =>
         request<AdminStockReference>(getToken, `/admin/library/${category}${query({ caption: caption.trim() })}`, { method: "POST", body: file }),
       updateStockReference: (id: string, body: { caption?: string; hidden?: boolean }) =>
         request<AdminStockReference>(getToken, `/admin/library/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-      orderStockReferences: (category: ReferenceCategory, ids: string[]) =>
+      orderStockReferences: (category: SampleCategory, ids: string[]) =>
         request<{ ok: true }>(getToken, `/admin/library/order/${category}`, { method: "POST", body: JSON.stringify({ ids }) }),
       deleteStockReference: (id: string) => request<{ deleted: true }>(getToken, `/admin/library/${id}`, { method: "DELETE" }),
       updateBetaFeedback: (id: string, body: Record<string, unknown>) => request<AdminBetaFeedbackDetail>(getToken, `/admin/beta/feedback/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { thumbnailUrl, REFERENCE_CATEGORIES, type ReferenceCategory, type ReferenceImage, type StockReference } from "@renvia/types";
+import { useEffect, useRef, useState } from "react";
+import { thumbnailUrl, type ReferenceImage } from "@renvia/types";
 import { ApiError, useApiClient } from "../../lib/apiClient";
 import { reportLimit } from "../../lib/useLimitDialog";
 import { viewImage } from "../../canvas/utils/viewImage";
+import { useElevationUpload } from "../../canvas/hooks/useElevationUpload";
+import { ReferenceModal } from "./ReferenceModal";
+import { SamplesDialog } from "./SamplesDialog";
 
-type Panel = "library" | "more" | null;
-/** The library modal shows the user's own images or one category of the team's samples. */
-type LibraryTab = "yours" | ReferenceCategory;
+type Panel = "library" | "samples" | "more" | null;
 
 function Spinner({ size = 16 }: { size?: number }) {
   return (
@@ -17,42 +18,6 @@ function Spinner({ size = 16 }: { size?: number }) {
   );
 }
 
-function ReferenceModal({
-  title,
-  titleId,
-  children,
-  onClose,
-  wide,
-}: {
-  title: string;
-  titleId: string;
-  children: ReactNode;
-  onClose: () => void;
-  wide?: boolean;
-}) {
-  return (
-    <div className="reference-modal-backdrop" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={`reference-modal ${wide ? "is-wide" : ""}`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="reference-modal-header">
-          <h2 id={titleId}>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="reference-modal-close">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="m2 2 8 8M10 2 2 10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="reference-modal-body">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 interface ReferenceBarProps {
   /** Attached reference URLs; the caller's store is the source of truth. */
   urls: string[];
@@ -60,10 +25,13 @@ interface ReferenceBarProps {
   maxReferences: number;
   /** Shown on the actions once the limit is reached. */
   atCapHint?: string;
+  /** Offer sample designs (to start an elevation from) in Samples. Off where only references apply. */
+  allowDesigns?: boolean;
 }
 
-export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCapHint }: ReferenceBarProps) {
+export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCapHint, allowDesigns = true }: ReferenceBarProps) {
   const apiClient = useApiClient();
+  const { placeSampleDesign } = useElevationUpload();
   // Attaching happens after an await, so read the latest list rather than this render's.
   const urlsRef = useRef(attachedUrls);
   urlsRef.current = attachedUrls;
@@ -74,11 +42,6 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
   const [library, setLibrary] = useState<ReferenceImage[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
-  // The team's samples, shown as category chips beside the user's own images.
-  const [stock, setStock] = useState<StockReference[]>([]);
-  const [stockLoaded, setStockLoaded] = useState(false);
-  const [libraryTab, setLibraryTab] = useState<LibraryTab>("yours");
-  const libraryTabChosen = useRef(false);
 
   const [isUploading, setIsUploading] = useState(false);
 
@@ -87,7 +50,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
   const [isPasting, setIsPasting] = useState(false);
 
   useEffect(() => {
-    if (!openPanel) return;
+    if (!openPanel || openPanel === "samples") return; // the Samples popup closes itself on Escape
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpenPanel(null);
     };
@@ -105,33 +68,19 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
     onChange(urlsRef.current.filter((item) => item !== url));
   };
 
+  // The person's own saved images. A failed load leaves it empty; reopening retries it.
   const loadLibrary = async () => {
-    if ((libraryLoaded && stockLoaded) || libraryLoading) return;
+    if (libraryLoaded || libraryLoading) return;
     setLibraryLoading(true);
-    // Either list failing leaves that part empty; reopening retries it.
-    const [own, samples] = await Promise.allSettled([
-      libraryLoaded ? Promise.resolve({ references: library }) : apiClient.listReferences(),
-      stockLoaded ? Promise.resolve({ references: stock }) : apiClient.listStockReferences(),
-    ]);
-    const ownReferences = own.status === "fulfilled" ? own.value.references : [];
-    const stockReferences = samples.status === "fulfilled" ? samples.value.references : [];
-    if (own.status === "fulfilled") {
-      setLibrary(ownReferences);
+    try {
+      const own = await apiClient.listReferences();
+      setLibrary(own.references);
       setLibraryLoaded(true);
+    } catch {
+      // shown as an empty library
+    } finally {
+      setLibraryLoading(false);
     }
-    if (samples.status === "fulfilled") {
-      setStock(stockReferences);
-      setStockLoaded(true);
-    }
-    // Someone with nothing saved yet starts on the first category instead of an empty grid.
-    const firstCategory = REFERENCE_CATEGORIES.find(({ key }) => stockReferences.some((item) => item.category === key));
-    if (!libraryTabChosen.current && ownReferences.length === 0 && firstCategory) setLibraryTab(firstCategory.key);
-    setLibraryLoading(false);
-  };
-
-  const chooseLibraryTab = (tab: LibraryTab) => {
-    libraryTabChosen.current = true;
-    setLibraryTab(tab);
   };
 
   const openPanelSafe = (panel: Exclude<Panel, null>) => {
@@ -181,12 +130,10 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
     }
   };
 
-  // Only categories with at least one visible sample get a chip.
-  const stockCategories = REFERENCE_CATEGORIES.filter(({ key }) => stock.some((reference) => reference.category === key));
-  const shownTab: LibraryTab = stockCategories.some(({ key }) => key === libraryTab) ? libraryTab : "yours";
-
   const atCap = attachedUrls.length >= maxReferences;
   const capHint = atCapHint ?? `Remove one first — up to ${maxReferences} references per render`;
+  // Samples still opens at the cap when it can offer designs; only references are held back.
+  const samplesBlocked = atCap && !allowDesigns;
 
   return (
     <>
@@ -257,7 +204,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
             onClick={() => openPanelSafe("library")}
             aria-pressed={openPanel === "library"}
             disabled={atCap}
-            title={atCap ? capHint : undefined}
+            title={atCap ? capHint : "Images you have saved before"}
           >
             <span className="reference-action-icon" aria-hidden="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
@@ -284,63 +231,47 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
             </span>
             <span className="reference-action-label">Browse</span>
           </button>
+
+          <button
+            type="button"
+            className={`reference-action ${openPanel === "samples" ? "is-active" : ""}`}
+            onClick={() => openPanelSafe("samples")}
+            aria-pressed={openPanel === "samples"}
+            disabled={samplesBlocked}
+            title={samplesBlocked ? capHint : "Ready-made references and designs from the Ramah Studio team"}
+            data-guide="control.samples"
+          >
+            <span className="reference-action-icon" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1.8 9.4 5.6 13.2 7 9.4 8.4 8 12.2 6.6 8.4 2.8 7l3.8-1.4Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                <path d="M12.5 11.5v3M11 13h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="reference-action-label">Samples</span>
+          </button>
         </div>
       </div>
 
+      {openPanel === "samples" && (
+        <SamplesDialog
+          mode={allowDesigns ? "all" : "references"}
+          referencesFull={atCap}
+          onClose={() => setOpenPanel(null)}
+          onPickReference={(sample) => {
+            attach(sample);
+            setOpenPanel(null);
+          }}
+          onPickDesign={(sample) => {
+            setOpenPanel(null);
+            void placeSampleDesign(sample);
+          }}
+        />
+      )}
+
       {openPanel === "library" && (
-        <ReferenceModal title="Reference library" titleId="reference-library-title" onClose={() => setOpenPanel(null)} wide>
-          {stockCategories.length > 0 && (
-            <div className="reference-library-tabs" role="tablist" aria-label="Library sections">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={shownTab === "yours"}
-                className={`reference-library-tab ${shownTab === "yours" ? "is-active" : ""}`}
-                onClick={() => chooseLibraryTab("yours")}
-              >
-                Yours
-              </button>
-              {stockCategories.map((category) => (
-                <button
-                  key={category.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={shownTab === category.key}
-                  className={`reference-library-tab ${shownTab === category.key ? "is-active" : ""}`}
-                  onClick={() => chooseLibraryTab(category.key)}
-                >
-                  {category.label}
-                </button>
-              ))}
-            </div>
-          )}
+        <ReferenceModal title="Your library" titleId="reference-library-title" onClose={() => setOpenPanel(null)} wide>
           {libraryLoading ? (
             <p className="reference-modal-empty">Loading your references…</p>
-          ) : shownTab !== "yours" ? (
-            <>
-              <p className="reference-modal-lead reference-library-lead">
-                Samples picked by the Ramah Studio team. Click one to use it as a reference for this render.
-              </p>
-              <div className="reference-image-grid">
-                {stock
-                  .filter((reference) => reference.category === shownTab)
-                  .map((reference) => (
-                    <button
-                      key={reference.id}
-                      type="button"
-                      onClick={() => {
-                        attach(reference);
-                        setOpenPanel(null);
-                      }}
-                      className="reference-image-tile"
-                      title={reference.caption ?? "Use this sample"}
-                    >
-                      <img src={thumbnailUrl(reference.url)} alt={reference.caption ?? ""} loading="lazy" />
-                      {reference.caption && <span className="reference-image-caption">{reference.caption}</span>}
-                    </button>
-                  ))}
-              </div>
-            </>
           ) : library.length === 0 ? (
             <div className="reference-modal-blank">
               <div className="reference-modal-blank-icon" aria-hidden="true">
@@ -352,8 +283,7 @@ export function ReferenceBar({ urls: attachedUrls, onChange, maxReferences, atCa
               <p className="reference-modal-blank-title">Your library is empty</p>
               <p className="reference-modal-blank-copy">
                 Upload an image or add one from a link — everything you save shows up here so you don&apos;t have to
-                upload it again.
-                {stockCategories.length > 0 && " Or start with one of our samples in the sections above."}
+                upload it again. Or start with one of our Samples.
               </p>
             </div>
           ) : (

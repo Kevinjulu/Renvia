@@ -89,12 +89,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
             next Generate, or Remove its image altogether. You can add extra views such as a roof or
             isometric if you need them.
           </P>
+          <P>
+            Nothing to upload yet? An empty elevation offers &ldquo;start from a sample design&rdquo;: pick a 3D model
+            (ArchiCAD or similar), a photo or a drawing from Samples and it becomes your elevation, copied into your
+            own account.
+          </P>
 
           <H2>Prompt, references, and style</H2>
           <P>
             Generate needs direction: a reference image, a prompt, or both. A short prompt sets atmosphere and materials. Reference images are stronger:
             the model blends them with your elevation so cladding, landscape, and lighting follow what you show.
-            No images of your own yet? Library has samples sorted into Windows, Roof, Doors, Pillars, Outdoors and Exterior.
+            No images of your own yet? Samples has ready-made references sorted into Windows, Roof, Doors, Pillars, Outdoors and Exterior. Library keeps the images you have saved before.
             Style and aspect ratio sit above the prompt — Auto keeps the source image's own shape.
           </P>
           <Callout label="Your design stays put" accent="blueprint">

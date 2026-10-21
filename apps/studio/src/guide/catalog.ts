@@ -7,6 +7,7 @@ export type GuideTopicId =
   | "control.style"
   | "control.tabs"
   | "control.direction"
+  | "control.samples"
   | "control.influence"
   | "control.generate"
   | "canvas.stage"
@@ -39,7 +40,7 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     title: "Active elevation",
     short: "The side selected on the canvas — switch sides with the tabs or filmstrip.",
     body: "Each elevation is one side of the same building. Upload only the sides you have. Generate renders every uploaded elevation and ignores empty ones. Switch one off to skip it without deleting it.",
-    how: "Click the card or drop a PNG, JPEG, or WebP to upload. Replace swaps the image; Remove drops it. Pick another side from the tabs above the canvas or the filmstrip below it.",
+    how: "Click the card or drop a PNG, JPEG, or WebP to upload, or choose \"start from a sample design\" if you have nothing to hand. Replace swaps the image; Remove drops it. Pick another side from the tabs above the canvas or the filmstrip below it.",
     article: "getting-started",
     tab: "render",
     legend: 1,
@@ -67,10 +68,19 @@ export const GUIDE_TOPICS: Record<GuideTopicId, GuideTopic> = {
     title: "Prompt and references",
     short: "Direction for materials, light, and setting. Add a reference image or a prompt.",
     body: "The prompt describes atmosphere and materials in a sentence. Reference images are stronger: the model blends them with your elevation so cladding, landscape, and lighting follow what you show.",
-    how: "Generate needs at least one reference image or a prompt. References usually work best: add up to eight from upload, the library, or a URL. Not sure where to start? Open Library and pick a sample from Windows, Roof, Doors, Pillars, Outdoors or Exterior.",
+    how: "Generate needs at least one reference image or a prompt. References usually work best: add up to eight by upload, from your library, from a link, or from Samples. Not sure where to start? Open Samples and pick from Windows, Roof, Doors, Pillars, Outdoors or Exterior.",
     article: "getting-started",
     tab: "render",
     legend: 4,
+  },
+  "control.samples": {
+    id: "control.samples",
+    title: "Samples",
+    short: "Ready-made references and sample designs, so you can start with nothing of your own.",
+    body: "Samples are images picked by the Ramah Studio team. References (windows, roofs, doors, pillars, outdoors and exteriors) guide the materials and setting of your render. Designs (a 3D model such as ArchiCAD, a photo or a drawing) are original buildings you can use as your first elevation.",
+    how: "Open Samples and click a reference to add it to this render, or switch to Designs to start an elevation. An empty elevation also offers \"start from a sample design\".",
+    article: "getting-started",
+    tab: "render",
   },
   "control.influence": {
     id: "control.influence",
@@ -211,6 +221,7 @@ export const ORIENTATION_TOUR = {
     { kind: "spot", topicId: "canvas.stage", tab: "render" },
     { kind: "spot", topicId: "canvas.tabs", tab: "render" },
     { kind: "spot", topicId: "control.direction", tab: "render" },
+    { kind: "spot", topicId: "control.samples", tab: "render" },
     { kind: "spot", topicId: "control.generate", tab: "render" },
     { kind: "spot", topicId: "results.panel", tab: "render" },
     { kind: "spot", topicId: "control.tabs", tab: "render" },
@@ -235,6 +246,7 @@ export const BETA_TOUR = {
     { kind: "welcome" },
     { kind: "spot", topicId: "control.uploads", tab: "render" },
     { kind: "spot", topicId: "control.direction", tab: "render" },
+    { kind: "spot", topicId: "control.samples", tab: "render" },
     { kind: "spot", topicId: "control.generate", tab: "render" },
     { kind: "spot", topicId: "results.panel", tab: "render" },
     { kind: "spot", topicId: "control.tabs", tab: "render" },

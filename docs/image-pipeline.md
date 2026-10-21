@@ -10,7 +10,7 @@ An audit of the codebase found:
 | --- | --- |
 | AI render results | Already compressed: the models are asked for JPEG at about 1K. |
 | 4K/8K upscales | Already compressed: JPEG quality 92 with full-resolution colour (4:4:4). |
-| Admin reference library, beta screenshots | Already compressed: WebP, capped at 1600px and 2048px. |
+| Admin Samples (reference and design images), beta screenshots | Already compressed: WebP, capped at 1600px and 2048px. |
 | **User uploads** (elevations, references, assets, pasted links) | **Stored exactly as sent.** Up to 10 MB each, original format, EXIF (including phone GPS location) kept. |
 | **Grids, cards and tables** | **No thumbnails.** Project cards, the filmstrip, Assets and every admin table downloaded full-size originals to draw 64px tiles. |
 | **Serving** | **Every image view streamed the whole file through a Vercel function,** using function time and Vercel's 100 GB/month transfer allowance. |

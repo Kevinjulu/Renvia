@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { schema } from "@renvia/db";
-import type { ReferenceCategory, StockReference } from "@renvia/types";
+import type { SampleCategory, StockReference } from "@renvia/types";
 import type { Env } from "../index.js";
 import { signedUploadUrl } from "./storage.js";
 
@@ -31,7 +31,7 @@ export async function compressStockImage(input: ArrayBuffer): Promise<Buffer> {
   throw new StockImageTooLargeError();
 }
 
-export function stockReferenceKey(category: ReferenceCategory): string {
+export function stockReferenceKey(category: SampleCategory): string {
   return `stock/${category}/${crypto.randomUUID()}.webp`;
 }
 

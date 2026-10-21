@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Images, Trash2, Upload } from "lucide-react";
-import { thumbnailUrl, REFERENCE_CATEGORIES, type AdminStockReference, type ReferenceCategory } from "@renvia/types";
+import { thumbnailUrl, DESIGN_CATEGORIES, REFERENCE_CATEGORIES, SAMPLE_CATEGORIES, type AdminStockReference, type SampleCategory } from "@renvia/types";
 import { Button, Card, EmptyState, ErrorNote, Pill, Skeleton } from "../components/ui";
 import { PageHero } from "../components/PageHero";
 import { useAdminApi } from "../lib/api";
@@ -20,13 +20,19 @@ function errorText(reason: unknown, fallback: string) {
   return reason instanceof Error ? reason.message : fallback;
 }
 
-/** Sample reference images every Studio user can pick from the library's category chips. */
+/** The groups the category chips are shown in. */
+const GROUPS = [
+  { label: "References", categories: REFERENCE_CATEGORIES },
+  { label: "Designs", categories: DESIGN_CATEGORIES },
+] as const;
+
+/** Sample images every Studio user can pick in Samples: reference images, and original designs to start from. */
 export function LibraryPage() {
   const api = useAdminApi();
   const nav = navForPath("/library");
   const { data, error, reload } = useLoad(() => api.listStockReferences(), [api]);
   const [items, setItems] = useState<AdminStockReference[]>([]);
-  const [category, setCategory] = useState<ReferenceCategory>(REFERENCE_CATEGORIES[0].key);
+  const [category, setCategory] = useState<SampleCategory>(SAMPLE_CATEGORIES[0].key);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -109,7 +115,8 @@ export function LibraryPage() {
     }
   };
 
-  const label = REFERENCE_CATEGORIES.find((item) => item.key === category)!.label;
+  const label = SAMPLE_CATEGORIES.find((item) => item.key === category)!.label;
+  const isDesign = DESIGN_CATEGORIES.some((item) => item.key === category);
 
   return (
     <>
@@ -126,32 +133,39 @@ export function LibraryPage() {
       ) : (
         <div className="space-y-6">
           <p className="text-sm text-muted">
-            These images appear for every Studio user under the Library&apos;s category chips. Users attach one with a click; nothing is copied into their account. Images are shrunk to WebP
-            (1600 px, under 600 KB) on upload. Categories with no visible images are hidden from users. Stored so far: <strong className="text-primary">{formatBytes(totalBytes)}</strong>.
+            These images appear for every Studio user in <strong className="text-primary">Samples</strong>. <strong className="text-primary">References</strong> are attached to a render with a click; nothing is
+            copied into the user&apos;s account. <strong className="text-primary">Designs</strong> (a 3D model such as ArchiCAD, a photo or a drawing) are original buildings a new user can start a project from:
+            the picked image is copied into their own storage as their elevation. Images are shrunk to WebP (1600 px, under 600 KB) on upload. Categories with no visible images are hidden from users.
+            Stored so far: <strong className="text-primary">{formatBytes(totalBytes)}</strong>.
           </p>
 
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Categories">
-            {REFERENCE_CATEGORIES.map((item) => {
-              const count = items.filter((other) => other.category === item.key).length;
-              const active = item.key === category;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setCategory(item.key)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${active ? "border-primary bg-primary text-white" : "border-hairline bg-canvas text-primary hover:border-hairline-strong"}`}
-                >
-                  {item.label}
-                  <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
-                </button>
-              );
-            })}
+          <div className="space-y-3" role="tablist" aria-label="Categories">
+            {GROUPS.map((group) => (
+              <div key={group.label} className="flex flex-wrap items-center gap-2">
+                <span className="w-24 text-xs font-semibold uppercase tracking-[.08em] text-faint">{group.label}</span>
+                {group.categories.map((item) => {
+                  const count = items.filter((other) => other.category === item.key).length;
+                  const active = item.key === category;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setCategory(item.key)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${active ? "border-primary bg-primary text-white" : "border-hairline bg-canvas text-primary hover:border-hairline-strong"}`}
+                    >
+                      {item.label}
+                      <span className={`tabular-nums text-xs ${active ? "text-white/70" : "text-faint"}`}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           <Card
-            title={`${label} samples`}
+            title={isDesign ? `${label} designs` : `${label} samples`}
             icon={Images}
             actions={
               <Button variant="primary" icon={Upload} disabled={uploading !== null} onClick={() => fileInputRef.current?.click()}>
@@ -185,7 +199,7 @@ export function LibraryPage() {
               className={`rounded-xl border-2 border-dashed p-3 transition ${dragging ? "border-blueprint bg-blueprint-soft/40" : "border-transparent"}`}
             >
               {inCategory.length === 0 ? (
-                <EmptyState icon={Images}>No {label.toLowerCase()} samples yet. Drop images here or use Upload images.</EmptyState>
+                <EmptyState icon={Images}>No {label.toLowerCase()} {isDesign ? "designs" : "samples"} yet. Drop images here or use Upload images.{isDesign ? " Whole-building images work best: they become a new user's first elevation." : ""}</EmptyState>
               ) : (
                 <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                   {inCategory.map((item, index) => (

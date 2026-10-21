@@ -28,11 +28,11 @@ export function hasRenderDirection({ hasReference, hasPrompt }: Pick<NextStepSta
 export const NEXT_STEP_COPY: Record<NextStudioStep, { title: string; body: string }> = {
   upload: {
     title: "Start here",
-    body: "Upload an elevation or a photo of the building.",
+    body: "Upload an elevation or a photo of the building, or start from a sample design.",
   },
   reference: {
     title: "Next: add a reference image",
-    body: "Show the look you want. References guide materials, light and setting better than a prompt.",
+    body: "Show the look you want. References guide materials, light and setting better than a prompt. Samples has ready-made ones.",
   },
   generate: {
     title: "Ready to render",

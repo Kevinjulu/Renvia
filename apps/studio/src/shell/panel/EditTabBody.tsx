@@ -226,6 +226,7 @@ export function EditTabBody({ pendingRenderJobId = null }: EditTabBodyProps) {
             urls={editReferences.map((reference) => reference.url)}
             onChange={setReferenceUrls}
             maxReferences={maxReferences}
+            allowDesigns={false}
             atCapHint={`Edits take up to ${maxReferences} ${maxReferences === 1 ? "reference" : "references"}. Remove one to add another`}
           />
           {editReferences.length > 0 && (

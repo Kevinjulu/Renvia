@@ -7,6 +7,8 @@ import { viewImage } from "../../canvas/utils/viewImage";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NextStepCallout, nextStepClass, useNextStepHint } from "../../guide/NextStepHint";
 import { PROTECTED_IMAGES } from "../../lib/protectedImages";
+import { useSamples } from "../../lib/useSamples";
+import { SamplesDialog } from "./SamplesDialog";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -20,7 +22,9 @@ export function ActiveElevationCard() {
   const activeViewId = useCanvasStore((state) => state.activeViewId);
   const skippedViewIds = useCanvasStore((state) => state.skippedViewIds);
   const toggleViewSkipped = useCanvasStore((state) => state.toggleViewSkipped);
-  const { uploadToView, clearViewImage, removeView, isUploading, uploadingViewId } = useElevationUpload();
+  const { uploadToView, placeSampleDesign, clearViewImage, removeView, isUploading, uploadingViewId } = useElevationUpload();
+  const { designs } = useSamples();
+  const [samplesOpen, setSamplesOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -116,6 +120,11 @@ export function ActiveElevationCard() {
             {uploading ? "Uploading…" : "Upload or drop an image"}
           </button>
         )}
+        {!node && designs.length > 0 && (
+          <button type="button" className="sample-design-link" onClick={() => setSamplesOpen(true)} disabled={isUploading}>
+            or start from a sample design
+          </button>
+        )}
         <small>{summary}</small>
       </div>
 
@@ -124,6 +133,17 @@ export function ActiveElevationCard() {
           <input type="checkbox" checked={!skipped} onChange={() => toggleViewSkipped(view.id)} aria-label={`Render ${view.label}`} />
           <span aria-hidden="true" />
         </label>
+      )}
+
+      {samplesOpen && (
+        <SamplesDialog
+          mode="designs"
+          onClose={() => setSamplesOpen(false)}
+          onPickDesign={(sample) => {
+            setSamplesOpen(false);
+            void placeSampleDesign(sample, view);
+          }}
+        />
       )}
 
       {confirmingRemove && (

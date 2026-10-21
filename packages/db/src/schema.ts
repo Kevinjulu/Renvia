@@ -279,7 +279,9 @@ export const stockReferences = pgTable(
   "stock_references",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    category: text("category", { enum: ["windows", "roof", "doors", "pillars", "outdoors", "exterior"] }).notNull(),
+    category: text("category", {
+      enum: ["windows", "roof", "doors", "pillars", "outdoors", "exterior", "design-3d", "design-photo", "design-drawing"],
+    }).notNull(),
     key: text("key").notNull().unique(),
     caption: text("caption"),
     sortOrder: integer("sort_order").notNull().default(0),

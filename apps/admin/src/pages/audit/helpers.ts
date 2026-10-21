@@ -22,7 +22,7 @@ export const ACTIONS: { value: ActionFilter; label: string }[] = [
   { value: "maintenance.window", label: "Maintenance windows" },
   { value: "plan.update", label: "Plans & pricing" },
   { value: "beta.update", label: "Beta program" },
-  { value: "library.update", label: "Reference library" },
+  { value: "library.update", label: "Samples" },
   { value: "security.decision", label: "Free credit eligibility" },
 ];
 
@@ -74,7 +74,7 @@ export const ACTION_META: Record<
   "maintenance.window": { label: "Maintenance window", tone: "amber", icon: AlertTriangle, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "plan.update": { label: "Plans & pricing", tone: "amber", icon: Coins, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
   "beta.update": { label: "Beta program", tone: "blue", icon: UserRound, chip: "bg-blueprint-soft text-blueprint" },
-  "library.update": { label: "Reference library", tone: "neutral", icon: Images, chip: "bg-surface-muted text-secondary" },
+  "library.update": { label: "Samples", tone: "neutral", icon: Images, chip: "bg-surface-muted text-secondary" },
   "security.decision": { label: "Free credit eligibility", tone: "amber", icon: Shield, chip: "bg-[#f8ebe3] text-[#8a3d14]" },
 };
 

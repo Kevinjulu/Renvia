@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, schema } from "@renvia/db";
-import type { ListStockReferencesResponse } from "@renvia/types";
+import { isDesignCategory, type ListStockReferencesResponse, type UseSampleDesignResponse } from "@renvia/types";
 import type { AppContext } from "../index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireActiveAccount } from "../middleware/activeAccount.js";
@@ -10,7 +10,7 @@ import { rateLimit } from "../lib/rateLimit.js";
 import { getOrCreateUser, getOrCreateUserId } from "../lib/users.js";
 import { reserveUploadStorage } from "../lib/limits.js";
 import { getSettings } from "../lib/settings.js";
-import { objectKeyFor, publicUploadUrl, putObject, releaseUpload } from "../lib/storage.js";
+import { getObject, objectKeyFor, publicUploadUrl, putObject, releaseUpload, signedUploadUrl } from "../lib/storage.js";
 import { ImportImageError, importImageFromUrl } from "../lib/importImage.js";
 import { optimizeUpload, UnreadableImageError } from "../lib/optimizeImage.js";
 import { presentForViewer } from "../lib/presentAsset.js";
@@ -55,6 +55,47 @@ references.get("/stock", async (c) => {
     references: await Promise.all(rows.map((row) => presentStockReference(c.env, origin, row))),
   };
   return c.json(response);
+});
+
+/**
+ * Starts a project from a sample design: copies it into the caller's own storage and hands back a
+ * link to the copy, which they place as an elevation like any upload. A copy (rather than a link
+ * to the shared sample) means an admin hiding or deleting the sample later can't break a project,
+ * and it counts toward the caller's storage like their own upload. Reference samples aren't
+ * copied; they're attached by link.
+ */
+references.post("/stock/:id/use", rateLimit("upload"), async (c) => {
+  const { clerkId } = c.get("auth");
+  const id = z.string().uuid().safeParse(c.req.param("id"));
+  if (!id.success) return c.json({ error: "Not found" }, 404);
+  const db = createDb(c.env.DATABASE_URL);
+
+  const sample = await db.query.stockReferences.findFirst({
+    where: and(eq(schema.stockReferences.id, id.data), eq(schema.stockReferences.hidden, false)),
+  });
+  if (!sample) return c.json({ error: "Not found" }, 404);
+  if (!isDesignCategory(sample.category)) {
+    return c.json({ error: "Only sample designs can be used as an elevation", code: "not_a_design" }, 400);
+  }
+
+  const object = await getObject(c.env, sample.key);
+  if (!object) return c.json({ error: "That sample is unavailable right now" }, 404);
+  const bytes = await new Response(object.body).arrayBuffer();
+
+  const settings = await getSettings(db);
+  const user = await getOrCreateUser(c.env, db, clerkId);
+  const key = objectKeyFor(clerkId, object.contentType);
+  const refusal = await reserveUploadStorage(db, user, clerkId, settings, key, bytes.byteLength, object.contentType);
+  if (refusal) return c.json(refusal, refusal.status);
+  try {
+    await putObject(c.env, key, bytes, object.contentType);
+  } catch (error) {
+    await releaseUpload(db, key);
+    throw error;
+  }
+
+  const response: UseSampleDesignResponse = { publicUrl: await signedUploadUrl(c.env, new URL(c.req.url).origin, key) };
+  return c.json(response, 201);
 });
 
 references.post("/", rateLimit("upload"), async (c) => {
